@@ -29,6 +29,7 @@ import { DuplicateWorkspaceUseCase } from "../application/duplicate-workspace.us
 import { GetWorkspaceUseCase } from "../application/get-workspace.use-case";
 import { ListWorkspacesUseCase } from "../application/list-workspaces.use-case";
 import { RenameWorkspaceUseCase } from "../application/rename-workspace.use-case";
+import { SetWorkspaceRootPathUseCase } from "../application/set-workspace-root-path.use-case";
 import { UpdateWorkspaceRulesetUseCase } from "../application/update-workspace-ruleset.use-case";
 import { WorkspaceNotFoundError } from "../application/workspace-application.errors";
 import { Workspace } from "../domain/workspace";
@@ -36,6 +37,7 @@ import { WorkspaceArchivedError } from "../domain/workspace.errors";
 import { CreateWorkspaceDto } from "./dto/create-workspace.dto";
 import { DuplicateWorkspaceDto } from "./dto/duplicate-workspace.dto";
 import { RenameWorkspaceDto } from "./dto/rename-workspace.dto";
+import { SetWorkspaceRootPathDto } from "./dto/set-workspace-root-path.dto";
 import { UpdateWorkspaceRulesetDto } from "./dto/update-workspace-ruleset.dto";
 
 function toWorkspaceResponse(workspace: Workspace) {
@@ -45,6 +47,7 @@ function toWorkspaceResponse(workspace: Workspace) {
     description: workspace.description ?? null,
     status: workspace.status,
     ruleset: workspace.ruleset,
+    rootPath: workspace.rootPath ?? null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   };
@@ -57,6 +60,7 @@ function toHttpError(error: DomainError): Error {
   if (error instanceof WorkspaceArchivedError) {
     return new ConflictException(error.message);
   }
+  // EmptyWorkspaceRootPathError and any other validation error fall through to 400.
   return new BadRequestException(error.message);
 }
 
@@ -77,6 +81,7 @@ export class WorkspaceController {
     private readonly getWorkspaceUseCase: GetWorkspaceUseCase,
     private readonly listWorkspacesUseCase: ListWorkspacesUseCase,
     private readonly updateWorkspaceRulesetUseCase: UpdateWorkspaceRulesetUseCase,
+    private readonly setWorkspaceRootPathUseCase: SetWorkspaceRootPathUseCase,
   ) {}
 
   @Post()
@@ -128,6 +133,22 @@ export class WorkspaceController {
     const result = await this.updateWorkspaceRulesetUseCase.execute({
       workspaceId,
       ruleset: dto.ruleset,
+    });
+    if (result.isFailure) {
+      throw toHttpError(result.error);
+    }
+    return toWorkspaceResponse(result.value);
+  }
+
+  @Patch(":workspaceId/root-path")
+  @RequirePermission("manage_workspace_rules")
+  async setRootPath(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: SetWorkspaceRootPathDto,
+  ) {
+    const result = await this.setWorkspaceRootPathUseCase.execute({
+      workspaceId,
+      rootPath: dto.rootPath,
     });
     if (result.isFailure) {
       throw toHttpError(result.error);

@@ -3,13 +3,19 @@ import { WorkspaceStatus } from "@repo/db";
 import { AggregateRoot } from "../../../kernel/domain/aggregate-root";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { WorkspaceArchived, WorkspaceCreated } from "./workspace-events";
-import { EmptyWorkspaceNameError, WorkspaceArchivedError } from "./workspace.errors";
+import {
+  EmptyWorkspaceNameError,
+  EmptyWorkspaceRootPathError,
+  WorkspaceArchivedError,
+} from "./workspace.errors";
 
 export interface WorkspaceProps {
   name: string;
   description?: string;
   status: WorkspaceStatus;
   ruleset: Record<string, unknown>;
+  /** Filesystem root a Process.cwd must resolve within — null until configured. */
+  rootPath?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +73,10 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
     return this.props.ruleset;
   }
 
+  get rootPath(): string | undefined {
+    return this.props.rootPath;
+  }
+
   get createdAt(): Date {
     return this.props.createdAt;
   }
@@ -97,6 +107,16 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
     this.props.updatedAt = new Date();
   }
 
+  setRootPath(rootPath: string): void {
+    this.ensureNotArchived();
+    const trimmed = rootPath.trim();
+    if (!trimmed) {
+      throw new EmptyWorkspaceRootPathError();
+    }
+    this.props.rootPath = trimmed;
+    this.props.updatedAt = new Date();
+  }
+
   archive(): void {
     this.ensureNotArchived();
     this.props.status = WorkspaceStatus.ARCHIVED;
@@ -105,10 +125,14 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
   }
 
   duplicate(newName: string): Workspace {
-    return Workspace.create({
+    const duplicated = Workspace.create({
       name: newName,
       description: this.props.description,
       ruleset: { ...this.props.ruleset },
     });
+    if (this.props.rootPath !== undefined) {
+      duplicated.props.rootPath = this.props.rootPath;
+    }
+    return duplicated;
   }
 }

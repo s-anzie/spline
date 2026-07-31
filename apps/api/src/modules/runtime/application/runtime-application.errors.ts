@@ -1,0 +1,58 @@
+import { DomainError } from "../../../kernel/domain/domain-error";
+
+export class MachineNotFoundError extends DomainError {
+  constructor(machineId: string) {
+    super("MACHINE_NOT_FOUND", `Machine "${machineId}" was not found`);
+  }
+}
+
+export class ProcessNotFoundError extends DomainError {
+  constructor(processId: string) {
+    super("PROCESS_NOT_FOUND", `Process "${processId}" was not found`);
+  }
+}
+
+export class AgentSessionNotFoundError extends DomainError {
+  constructor(sessionId: string) {
+    super("AGENT_SESSION_NOT_FOUND", `Agent session "${sessionId}" was not found`);
+  }
+}
+
+export class MachineNotLinkedToWorkspaceError extends DomainError {
+  constructor(machineId: string, workspaceId: string) {
+    super(
+      "MACHINE_NOT_LINKED_TO_WORKSPACE",
+      `Machine "${machineId}" is not linked to workspace "${workspaceId}"`,
+    );
+  }
+}
+
+export class WorkspaceRootPathNotConfiguredError extends DomainError {
+  constructor(workspaceId: string) {
+    super(
+      "WORKSPACE_ROOT_PATH_NOT_CONFIGURED",
+      `Workspace "${workspaceId}" has no rootPath configured — set one before starting processes`,
+    );
+  }
+}
+
+export class ProcessCwdOutsideWorkspaceRootError extends DomainError {
+  constructor(cwd: string) {
+    super("PROCESS_CWD_OUTSIDE_WORKSPACE_ROOT", `"${cwd}" resolves outside the workspace root`);
+  }
+}
+
+export class ProcessNotLockedByRequesterError extends DomainError {
+  constructor(processId: string) {
+    super(
+      "PROCESS_NOT_LOCKED_BY_REQUESTER",
+      `Process "${processId}" must be locked by the requester before start/stop`,
+    );
+  }
+}
+
+export class AgentAlreadyHasActiveSessionError extends DomainError {
+  constructor(agentId: string) {
+    super("AGENT_ALREADY_HAS_ACTIVE_SESSION", `Agent "${agentId}" already has an active session`);
+  }
+}

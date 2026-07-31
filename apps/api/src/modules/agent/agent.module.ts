@@ -37,7 +37,7 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
     { provide: AGENT_REPOSITORY, useClass: PrismaAgentRepository },
     { provide: PROVIDER_PROFILE_REPOSITORY, useClass: PrismaProviderProfileRepository },
   ],
-  exports: [UpdateAgentPresenceUseCase],
+  exports: [UpdateAgentPresenceUseCase, GetAgentUseCase],
 })
 export class AgentModule implements OnModuleInit {
   constructor(

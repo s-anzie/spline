@@ -4,18 +4,22 @@ import { JwtModule, JwtSignOptions } from "@nestjs/jwt";
 
 import { AssignWorkspaceRoleUseCase } from "./application/assign-workspace-role.use-case";
 import { IssueAgentTokenUseCase } from "./application/issue-agent-token.use-case";
+import { IssueMachineTokenUseCase } from "./application/issue-machine-token.use-case";
 import { LoginUseCase } from "./application/login.use-case";
 import { PermissionsService } from "./application/permissions.service";
 import { PASSWORD_HASHER } from "./application/ports/password-hasher.port";
 import { TOKEN_SERVICE } from "./application/ports/token-service.port";
 import { RegisterUserUseCase } from "./application/register-user.use-case";
 import { VerifyAgentTokenUseCase } from "./application/verify-agent-token.use-case";
+import { VerifyMachineTokenUseCase } from "./application/verify-machine-token.use-case";
 import { AGENT_CREDENTIAL_REPOSITORY } from "./domain/ports/agent-credential.repository.port";
+import { MACHINE_CREDENTIAL_REPOSITORY } from "./domain/ports/machine-credential.repository.port";
 import { USER_REPOSITORY } from "./domain/ports/user.repository.port";
 import { WORKSPACE_MEMBERSHIP_REPOSITORY } from "./domain/ports/workspace-membership.repository.port";
 import { BcryptPasswordHasher } from "./infrastructure/bcrypt-password-hasher";
 import { JwtTokenService } from "./infrastructure/jwt-token.service";
 import { PrismaAgentCredentialRepository } from "./infrastructure/prisma-agent-credential.repository";
+import { PrismaMachineCredentialRepository } from "./infrastructure/prisma-machine-credential.repository";
 import { PrismaUserRepository } from "./infrastructure/prisma-user.repository";
 import { PrismaWorkspaceMembershipRepository } from "./infrastructure/prisma-workspace-membership.repository";
 import { AuthController } from "./interface/auth.controller";
@@ -53,6 +57,8 @@ import { RequesterResolver } from "./interface/requester-resolver";
     AssignWorkspaceRoleUseCase,
     IssueAgentTokenUseCase,
     VerifyAgentTokenUseCase,
+    IssueMachineTokenUseCase,
+    VerifyMachineTokenUseCase,
     PermissionsService,
     RequesterResolver,
     JwtAuthGuard,
@@ -60,6 +66,7 @@ import { RequesterResolver } from "./interface/requester-resolver";
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: WORKSPACE_MEMBERSHIP_REPOSITORY, useClass: PrismaWorkspaceMembershipRepository },
     { provide: AGENT_CREDENTIAL_REPOSITORY, useClass: PrismaAgentCredentialRepository },
+    { provide: MACHINE_CREDENTIAL_REPOSITORY, useClass: PrismaMachineCredentialRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SERVICE, useClass: JwtTokenService },
   ],
@@ -67,6 +74,8 @@ import { RequesterResolver } from "./interface/requester-resolver";
     AssignWorkspaceRoleUseCase,
     IssueAgentTokenUseCase,
     VerifyAgentTokenUseCase,
+    IssueMachineTokenUseCase,
+    VerifyMachineTokenUseCase,
     PermissionsService,
     RequesterResolver,
     JwtAuthGuard,
@@ -75,6 +84,7 @@ import { RequesterResolver } from "./interface/requester-resolver";
     // resolves them for @UseGuards() in another module — see comment above.
     WORKSPACE_MEMBERSHIP_REPOSITORY,
     AGENT_CREDENTIAL_REPOSITORY,
+    MACHINE_CREDENTIAL_REPOSITORY,
     PASSWORD_HASHER,
     TOKEN_SERVICE,
   ],

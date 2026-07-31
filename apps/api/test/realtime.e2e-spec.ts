@@ -1,12 +1,12 @@
 import { AddressInfo } from "node:net";
 
 import { INestApplication, ValidationPipe } from "@nestjs/common";
-import { IoAdapter } from "@nestjs/platform-socket.io";
 import { Test } from "@nestjs/testing";
 import { io, Socket } from "socket.io-client";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
+import { SingleServerIoAdapter } from "../src/realtime/single-server-io.adapter";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { resetDatabase } from "./setup/reset-database";
 
@@ -20,7 +20,7 @@ describe("Realtime (e2e)", () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
-    app.useWebSocketAdapter(new IoAdapter(app));
+    app.useWebSocketAdapter(new SingleServerIoAdapter(app));
     await app.init();
     await app.listen(0);
     prisma = app.get(PrismaService);

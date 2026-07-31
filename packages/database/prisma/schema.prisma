@@ -64,6 +64,22 @@ model AgentCredential {
   @@map("agent_credentials")
 }
 
+/// Machine credential letting a LocalMachine daemon authenticate its outbound
+/// WebSocket connection to MachineGateway. Same shape as AgentCredential, but
+/// deliberately NOT resolved via RequesterResolver/ActorType — a machine is
+/// execution infrastructure, not an RBAC actor performing workspace actions.
+model MachineCredential {
+  id         String    @id @default(uuid())
+  machineId  String    @unique
+  tokenHash  String
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  machine LocalMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@map("machine_credentials")
+}
+
 // ---------------------------------------------------------------------------
 // Workspace
 // ---------------------------------------------------------------------------
@@ -80,6 +96,9 @@ model Workspace {
   status      WorkspaceStatus @default(ACTIVE)
   /// Workspace-specific rules imposed on agents (free-form, validated in the domain layer)
   ruleset     Json            @default("{}")
+  /// Filesystem root a Process.cwd must resolve within (anti-traversal). Null
+  /// until the owner configures it — process start is refused until then.
+  rootPath    String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -87,12 +106,14 @@ model Workspace {
   goals          Goal[]
   tasks          Task[]
   agents         Agent[]
+  agentSessions  AgentSession[]
   processes      Process[]
   resourceLocks  ResourceLock[]
   decisions      Decision[]
   events         Event[]
   notifications  Notification[]
   artifacts      Artifact[]
+  runtimeCommands RuntimeCommand[]
 
   @@map("workspaces")
 }
@@ -236,6 +257,7 @@ model Agent {
   workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   credential AgentCredential?
   processes  Process[]
+  sessions   AgentSession[]
 
   @@index([workspaceId])
   @@map("agents")
@@ -270,6 +292,82 @@ model ProviderProfile {
 }
 
 // ---------------------------------------------------------------------------
+// LocalMachine / AgentSession — spec 5's "Local Agent Runtime": a daemon
+// installed per work machine that connects outbound to MachineGateway and
+// really launches/supervises claude/codex CLI sessions via child_process.
+// ---------------------------------------------------------------------------
+
+enum LocalMachineRuntimeStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+}
+
+model LocalMachine {
+  id            String                    @id @default(uuid())
+  hostname      String
+  os            String
+  /// Workspaces this machine is allowed to run sessions/processes for (Json
+  /// array of ids — same "list of ids" convention as Agent.capabilities).
+  workspaceIds  Json                      @default("[]")
+  runtimeStatus LocalMachineRuntimeStatus @default(OFFLINE)
+  lastSeenAt    DateTime?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  credential    MachineCredential?
+  agentSessions AgentSession[]
+  processes     Process[]
+  commands      RuntimeCommand[]
+
+  @@map("local_machines")
+}
+
+enum AgentSessionStatus {
+  STARTING
+  RUNNING
+  AWAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CRASHED
+  STOPPED
+}
+
+enum ApprovalState {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  DENIED
+}
+
+model AgentSession {
+  id               String              @id @default(uuid())
+  agentId          String
+  provider         String
+  workspaceId      String
+  machineId        String
+  status           AgentSessionStatus  @default(STARTING)
+  startedAt        DateTime            @default(now())
+  lastHeartbeatAt  DateTime?
+  currentProcessId String?
+  currentTaskId    String?
+  approvalState    ApprovalState       @default(NOT_REQUIRED)
+  endedAt          DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  agent     Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  machine   LocalMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  processes Process[]
+
+  @@index([workspaceId])
+  @@index([agentId])
+  @@index([machineId])
+  @@map("agent_sessions")
+}
+
+// ---------------------------------------------------------------------------
 // Process
 // ---------------------------------------------------------------------------
 
@@ -288,25 +386,37 @@ enum RestartPolicy {
 }
 
 model Process {
-  id            String        @id @default(uuid())
-  workspaceId   String
-  name          String
-  command       String
-  cwd           String
-  env           Json          @default("{}")
-  status        ProcessStatus @default(STOPPED)
-  ownerAgentId  String?
-  ports         Json          @default("[]")
-  logsRef       String?
-  restartPolicy RestartPolicy @default(NEVER)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id             String        @id @default(uuid())
+  workspaceId    String
+  name           String
+  command        String
+  cwd            String
+  env            Json          @default("{}")
+  status         ProcessStatus @default(STOPPED)
+  ownerAgentId   String?
+  /// Set together with ownerAgentId (derived from the session's agentId)
+  /// when the process was launched via an AgentSession rather than directly.
+  ownerSessionId String?
+  /// Which LocalMachine actually runs this process — set once dispatched.
+  machineId      String?
+  /// OS process id on that machine — needed for the boot-time reconciliation
+  /// (liveness probe) and for MachineGateway to route stop commands.
+  pid            Int?
+  ports          Json          @default("[]")
+  logsRef        String?
+  restartPolicy  RestartPolicy @default(NEVER)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  ownerAgent Agent?     @relation(fields: [ownerAgentId], references: [id], onDelete: SetNull)
-  artifacts  Artifact[]
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerAgent   Agent?        @relation(fields: [ownerAgentId], references: [id], onDelete: SetNull)
+  ownerSession AgentSession? @relation(fields: [ownerSessionId], references: [id], onDelete: SetNull)
+  machine      LocalMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  artifacts    Artifact[]
 
   @@index([workspaceId])
+  @@index([machineId])
+  @@index([ownerSessionId])
   @@map("processes")
 }
 
@@ -493,4 +603,43 @@ model Artifact {
   @@index([decisionId])
   @@index([processId])
   @@map("artifacts")
+}
+
+// ---------------------------------------------------------------------------
+// RuntimeCommand — persisted command queue between the hub (this API) and a
+// LocalMachine daemon. Postgres-backed on purpose (no new broker dependency):
+// a use-case enqueues a row instead of executing anything directly;
+// MachineGateway delivers PENDING rows to a machine once it connects.
+// ---------------------------------------------------------------------------
+
+enum RuntimeCommandType {
+  START_PROCESS
+  STOP_PROCESS
+  START_SESSION
+  STOP_SESSION
+}
+
+enum RuntimeCommandStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  COMPLETED
+  FAILED
+}
+
+model RuntimeCommand {
+  id          String               @id @default(uuid())
+  machineId   String
+  workspaceId String
+  type        RuntimeCommandType
+  payload     Json
+  status      RuntimeCommandStatus @default(PENDING)
+  createdAt   DateTime             @default(now())
+  completedAt DateTime?
+
+  machine   LocalMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([machineId, status])
+  @@map("runtime_commands")
 }

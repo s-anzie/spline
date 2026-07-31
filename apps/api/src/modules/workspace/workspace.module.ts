@@ -7,6 +7,7 @@ import { DuplicateWorkspaceUseCase } from "./application/duplicate-workspace.use
 import { GetWorkspaceUseCase } from "./application/get-workspace.use-case";
 import { ListWorkspacesUseCase } from "./application/list-workspaces.use-case";
 import { RenameWorkspaceUseCase } from "./application/rename-workspace.use-case";
+import { SetWorkspaceRootPathUseCase } from "./application/set-workspace-root-path.use-case";
 import { UpdateWorkspaceRulesetUseCase } from "./application/update-workspace-ruleset.use-case";
 import { WORKSPACE_REPOSITORY } from "./domain/ports/workspace.repository.port";
 import { PrismaWorkspaceRepository } from "./infrastructure/prisma-workspace.repository";
@@ -23,6 +24,7 @@ import { WorkspaceController } from "./interface/workspace.controller";
     GetWorkspaceUseCase,
     ListWorkspacesUseCase,
     UpdateWorkspaceRulesetUseCase,
+    SetWorkspaceRootPathUseCase,
     { provide: WORKSPACE_REPOSITORY, useClass: PrismaWorkspaceRepository },
   ],
   exports: [GetWorkspaceUseCase],

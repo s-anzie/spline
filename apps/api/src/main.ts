@@ -3,9 +3,9 @@ import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
-import { IoAdapter } from "@nestjs/platform-socket.io";
 
 import { AppModule } from "./app.module";
+import { SingleServerIoAdapter } from "./realtime/single-server-io.adapter";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -18,7 +18,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.enableCors();
-  app.useWebSocketAdapter(new IoAdapter(app));
+  app.useWebSocketAdapter(new SingleServerIoAdapter(app));
 
   const configService = app.get(ConfigService);
   const port = configService.get<string>("PORT") ?? "3001";

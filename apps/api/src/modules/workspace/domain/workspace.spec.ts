@@ -1,7 +1,11 @@
 import { WorkspaceStatus } from "@repo/db";
 
 import { Workspace } from "./workspace";
-import { EmptyWorkspaceNameError, WorkspaceArchivedError } from "./workspace.errors";
+import {
+  EmptyWorkspaceNameError,
+  EmptyWorkspaceRootPathError,
+  WorkspaceArchivedError,
+} from "./workspace.errors";
 
 describe("Workspace", () => {
   it("creates an active workspace with a trimmed name", () => {
@@ -39,6 +43,21 @@ describe("Workspace", () => {
     workspace.updateRuleset({ maxConcurrentAgents: 3 });
 
     expect(workspace.ruleset).toEqual({ maxConcurrentAgents: 3 });
+  });
+
+  it("sets the root path", () => {
+    const workspace = Workspace.create({ name: "My Project" });
+    expect(workspace.rootPath).toBeUndefined();
+
+    workspace.setRootPath("/home/bradley/dev-apps/spline");
+
+    expect(workspace.rootPath).toBe("/home/bradley/dev-apps/spline");
+  });
+
+  it("rejects an empty root path", () => {
+    const workspace = Workspace.create({ name: "My Project" });
+
+    expect(() => workspace.setRootPath("   ")).toThrow(EmptyWorkspaceRootPathError);
   });
 
   it("archives the workspace and records a domain event", () => {

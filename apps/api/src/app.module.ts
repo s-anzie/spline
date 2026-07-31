@@ -9,6 +9,7 @@ import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { ResourceLockModule } from "./modules/resource-lock/resource-lock.module";
+import { RuntimeModule } from "./modules/runtime/runtime.module";
 import { TaskModule } from "./modules/task/task.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 import { KernelModule } from "./kernel/kernel.module";
@@ -28,6 +29,7 @@ import { RealtimeModule } from "./realtime/realtime.module";
     WorkspaceModule,
     AgentModule,
     ResourceLockModule,
+    RuntimeModule,
     RealtimeModule,
     GoalModule,
     TaskModule,

@@ -1,0 +1,38 @@
+import { AgentSessionStatus } from "@repo/db";
+
+import { UniqueEntityId } from "../../../../kernel/domain/unique-entity-id";
+import { AgentSessionRepository } from "../../domain/ports/agent-session.repository.port";
+import { AgentSession } from "../../domain/agent-session";
+
+const TERMINAL_STATUSES: AgentSessionStatus[] = [
+  AgentSessionStatus.COMPLETED,
+  AgentSessionStatus.FAILED,
+  AgentSessionStatus.CRASHED,
+  AgentSessionStatus.STOPPED,
+];
+
+export class InMemoryAgentSessionRepository implements AgentSessionRepository {
+  private readonly sessions = new Map<string, AgentSession>();
+
+  async findById(id: UniqueEntityId): Promise<AgentSession | null> {
+    return this.sessions.get(id.toString()) ?? null;
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<AgentSession[]> {
+    return [...this.sessions.values()].filter((s) => s.workspaceId === workspaceId);
+  }
+
+  async listActiveByAgent(agentId: string): Promise<AgentSession[]> {
+    return [...this.sessions.values()].filter(
+      (s) => s.agentId === agentId && !TERMINAL_STATUSES.includes(s.status),
+    );
+  }
+
+  async listActive(): Promise<AgentSession[]> {
+    return [...this.sessions.values()].filter((s) => !TERMINAL_STATUSES.includes(s.status));
+  }
+
+  async save(session: AgentSession): Promise<void> {
+    this.sessions.set(session.id.toString(), session);
+  }
+}

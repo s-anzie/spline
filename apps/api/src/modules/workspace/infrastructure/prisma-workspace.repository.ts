@@ -33,6 +33,7 @@ export class PrismaWorkspaceRepository implements WorkspaceRepository {
         description: data.description,
         status: data.status,
         ruleset: data.ruleset,
+        rootPath: data.rootPath,
         updatedAt: data.updatedAt,
       },
     });

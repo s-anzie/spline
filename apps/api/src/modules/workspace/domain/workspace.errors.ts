@@ -11,3 +11,9 @@ export class WorkspaceArchivedError extends DomainError {
     super("WORKSPACE_ARCHIVED", `Workspace "${workspaceId}" is archived and cannot be modified`);
   }
 }
+
+export class EmptyWorkspaceRootPathError extends DomainError {
+  constructor() {
+    super("EMPTY_WORKSPACE_ROOT_PATH", "Workspace root path cannot be empty");
+  }
+}

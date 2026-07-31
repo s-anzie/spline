@@ -9,6 +9,7 @@ export interface WorkspacePersistenceData {
   description: string | null;
   status: PrismaWorkspace["status"];
   ruleset: Prisma.InputJsonValue;
+  rootPath: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ export class WorkspaceMapper {
         description: record.description ?? undefined,
         status: record.status,
         ruleset: record.ruleset as Record<string, unknown>,
+        rootPath: record.rootPath ?? undefined,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
       },
@@ -35,6 +37,7 @@ export class WorkspaceMapper {
       description: workspace.description ?? null,
       status: workspace.status,
       ruleset: workspace.ruleset as Prisma.InputJsonValue,
+      rootPath: workspace.rootPath ?? null,
       createdAt: workspace.createdAt,
       updatedAt: workspace.updatedAt,
     };
