@@ -1,0 +1,11 @@
+{
+  "extends": "@repo/typescript-config/node-library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "strictNullChecks": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "dist"]
+}
