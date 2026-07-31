@@ -22,6 +22,7 @@ import {
   AgentAlreadyHasActiveSessionError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
+  WorkspaceRootPathNotConfiguredError,
 } from "./runtime-application.errors";
 
 export interface StartAgentSessionInput {
@@ -33,6 +34,7 @@ export interface StartAgentSessionInput {
 
 export type StartAgentSessionError =
   | WorkspaceNotFoundError
+  | WorkspaceRootPathNotConfiguredError
   | AgentNotFoundError
   | MachineNotFoundError
   | MachineNotLinkedToWorkspaceError
@@ -56,6 +58,9 @@ export class StartAgentSessionUseCase {
       return Result.fail(workspaceResult.error);
     }
     const workspace = workspaceResult.value;
+    if (!workspace.rootPath) {
+      return Result.fail(new WorkspaceRootPathNotConfiguredError(input.workspaceId));
+    }
 
     const agentResult = await this.getAgent.execute(input.agentId);
     if (agentResult.isFailure || agentResult.value.workspaceId !== input.workspaceId) {
@@ -104,6 +109,7 @@ export class StartAgentSessionUseCase {
           provider: agent.provider,
           prompt,
           taskId: input.taskId,
+          cwd: workspace.rootPath,
         },
       },
       now,

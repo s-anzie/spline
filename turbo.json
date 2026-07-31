@@ -7,7 +7,12 @@
     "SHADOW_DATABASE_URL",
     "JWT_SECRET",
     "JWT_EXPIRES_IN",
-    "PORT"
+    "PORT",
+    "PATH",
+    "HOME",
+    "HUB_URL",
+    "MACHINE_TOKEN",
+    "HEARTBEAT_INTERVAL_MS"
   ],
   "tasks": {
     "build": {

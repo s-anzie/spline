@@ -3,10 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "strictNullChecks": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "types": ["node", "jest", "express"]
   },
-  "include": ["src", "test"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }

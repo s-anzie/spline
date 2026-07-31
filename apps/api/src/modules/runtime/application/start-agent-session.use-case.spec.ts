@@ -14,6 +14,7 @@ import {
   AgentAlreadyHasActiveSessionError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
+  WorkspaceRootPathNotConfiguredError,
 } from "./runtime-application.errors";
 import { InMemoryAgentSessionRepository } from "./testing/in-memory-agent-session.repository";
 import { InMemoryLocalMachineRepository } from "./testing/in-memory-local-machine.repository";
@@ -31,6 +32,7 @@ async function setup() {
   const eventPublisher = new FakeEventPublisher();
 
   const workspace = Workspace.create({ name: "My Project" });
+  workspace.setRootPath("/home/bradley/spline");
   await workspaces.save(workspace);
 
   const agent = Agent.create({ workspaceId: workspace.id.toString(), provider: "claude", displayName: "Worker" });
@@ -50,7 +52,7 @@ async function setup() {
     eventPublisher,
   );
 
-  return { workspace, agent, machine, machines, sessions, commands, useCase };
+  return { workspace, workspaces, agent, machine, machines, sessions, commands, useCase };
 }
 
 describe("StartAgentSessionUseCase", () => {
@@ -70,9 +72,25 @@ describe("StartAgentSessionUseCase", () => {
     const pending = await commands.listPendingByMachine(machine.id.toString());
     expect(pending).toHaveLength(1);
     expect(pending[0]?.type).toBe(RuntimeCommandType.START_SESSION);
-    const payload = pending[0]?.payload as { prompt: string; sessionId: string };
+    const payload = pending[0]?.payload as { prompt: string; sessionId: string; cwd: string };
     expect(payload.prompt).toContain("claude");
     expect(payload.sessionId).toBe(result.value.id.toString());
+    expect(payload.cwd).toBe("/home/bradley/spline");
+  });
+
+  it("fails when the workspace has no root path configured", async () => {
+    const { workspaces, agent, machine, useCase } = await setup();
+    const bareWorkspace = Workspace.create({ name: "No root" });
+    await workspaces.save(bareWorkspace);
+
+    const result = await useCase.execute({
+      workspaceId: bareWorkspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(WorkspaceRootPathNotConfiguredError);
   });
 
   it("fails when the machine does not exist", async () => {

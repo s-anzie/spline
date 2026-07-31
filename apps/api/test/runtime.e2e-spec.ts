@@ -191,6 +191,11 @@ describe("Runtime (e2e)", () => {
     async () => {
       const { token, workspaceId } = await registerLoginAndCreateWorkspace("runtime-session@example.com");
       const { machineId, machineToken } = await registerAndLinkMachine(token, workspaceId);
+      await request(app.getHttpServer())
+        .patch(`/workspaces/${workspaceId}/root-path`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ rootPath: "/home/bradley/dev-apps/spline" })
+        .expect(200);
 
       const agent = await request(app.getHttpServer())
         .post(`/workspaces/${workspaceId}/agents`)
