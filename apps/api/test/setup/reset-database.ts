@@ -2,6 +2,7 @@ import type { PrismaClient } from "@repo/db";
 
 const TABLES = [
   "notifications",
+  "event_receipts",
   "events",
   "decisions",
   "artifacts",

@@ -7,6 +7,7 @@ import { HealthModule } from "./health/health.module";
 import { AgentModule } from "./modules/agent/agent.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { DecisionModule } from "./modules/decision/decision.module";
+import { EventModule } from "./modules/event/event.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { ResourceLockModule } from "./modules/resource-lock/resource-lock.module";
@@ -36,6 +37,7 @@ import { RealtimeModule } from "./realtime/realtime.module";
     TaskModule,
     ArtifactModule,
     DecisionModule,
+    EventModule,
   ],
 })
 export class AppModule {}

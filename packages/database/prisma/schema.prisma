@@ -505,10 +505,37 @@ model Event {
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   notifications Notification[]
+  receipts      EventReceipt[]
 
   @@index([workspaceId])
   @@index([type])
   @@map("events")
+}
+
+/// An actor's acknowledgement of an Event — kept separate so Event itself
+/// never grows a read-state field (spec 3.3). No workspaceId of its own:
+/// it's reached only through its parent Event.
+enum EventReceiptStatus {
+  SEEN
+  ACKNOWLEDGED
+  ACTED
+}
+
+model EventReceipt {
+  id             String             @id @default(uuid())
+  eventId        String
+  actorType      ActorType
+  actorId        String
+  status         EventReceiptStatus
+  seenAt         DateTime?
+  acknowledgedAt DateTime?
+  actedAt        DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, actorType, actorId])
+  @@index([eventId])
+  @@map("event_receipts")
 }
 
 // ---------------------------------------------------------------------------
