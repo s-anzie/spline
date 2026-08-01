@@ -10,6 +10,7 @@ import { DecisionModule } from "./modules/decision/decision.module";
 import { EventModule } from "./modules/event/event.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { NotificationModule } from "./modules/notification/notification.module";
 import { ResourceLockModule } from "./modules/resource-lock/resource-lock.module";
 import { RuntimeModule } from "./modules/runtime/runtime.module";
 import { TaskModule } from "./modules/task/task.module";
@@ -38,6 +39,7 @@ import { RealtimeModule } from "./realtime/realtime.module";
     ArtifactModule,
     DecisionModule,
     EventModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}

@@ -539,34 +539,79 @@ model EventReceipt {
 }
 
 // ---------------------------------------------------------------------------
-// Notification
+// Notification — unifies chat message and system alert (spec 13.1, "Option A").
+// Notification is the broadcast/message itself; NotificationRecipient is one
+// row PER ACTUAL RECIPIENT, resolved immediately at creation (never a to:all
+// string reinterpreted at read time — that was the exact failure mode this
+// design is meant to avoid, per the agent-chat v2 collaboration).
 // ---------------------------------------------------------------------------
 
-enum NotificationChannel {
-  IN_APP
-  WEBSOCKET
-  EMAIL
-  PUSH
+enum NotificationKind {
+  CHAT_MESSAGE
+  SYSTEM_ALERT
+}
+
+enum NotificationScope {
+  DIRECT
+  BROADCAST
 }
 
 model Notification {
-  id            String              @id @default(uuid())
+  id            String            @id @default(uuid())
   workspaceId   String
-  recipientType ActorType
-  recipientId   String
-  channel       NotificationChannel @default(IN_APP)
-  type          String
-  message       String
+  kind          NotificationKind
+  scope         NotificationScope
+  taskId        String?
+  title         String?
+  body          String
+  payload       Json              @default("{}")
   linkedEventId String?
-  readAt        DateTime?
-  createdAt     DateTime            @default(now())
+  /// {type, id} — broader than the strict ActorType enum, same precedent as
+  /// Event.actor: a system_alert can be raised by the system itself.
+  createdBy     Json
+  createdAt     DateTime          @default(now())
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  linkedEvent Event?    @relation(fields: [linkedEventId], references: [id], onDelete: SetNull)
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  linkedEvent Event?                 @relation(fields: [linkedEventId], references: [id], onDelete: SetNull)
+  recipients  NotificationRecipient[]
 
   @@index([workspaceId])
-  @@index([recipientType, recipientId])
   @@map("notifications")
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  DELIVERED
+  SEEN
+  ACKNOWLEDGED
+  ACTED_ON
+  FAILED
+}
+
+model NotificationRecipient {
+  id             String                     @id @default(uuid())
+  notificationId String
+  recipientType  ActorType
+  recipientId    String
+  deliveryStatus NotificationDeliveryStatus @default(PENDING)
+  deliveredAt    DateTime?
+  /// Set once, at the FIRST transition to SEEN — never overwritten afterward.
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+  actionTakenAt  DateTime?
+  /// Updated on every (re-)view, even after readAt is already set —
+  /// distinct from readAt which only ever records the first one.
+  lastSeenAt     DateTime?
+  failureReason  String?
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, recipientType, recipientId])
+  @@index([notificationId])
+  /// Backs the cross-workspace "unread" query (spec 13.2): filter by
+  /// recipient, readAt IS NULL — no workspaceId in this table by design.
+  @@index([recipientType, recipientId, readAt])
+  @@map("notification_recipients")
 }
 
 // ---------------------------------------------------------------------------
