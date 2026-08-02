@@ -91,7 +91,7 @@ export class SendNotificationUseCase {
   private async resolveRecipients(input: SendNotificationInput): Promise<Recipient[]> {
     if (input.scope === "BROADCAST") {
       const agents = await this.listAgentsByWorkspace.execute(input.workspaceId);
-      return agents.map((agent) => ({ type: "AGENT" as const, id: agent.id.toString() }));
+      return agents.filter((agent) => !agent.isDisabled).map((agent) => ({ type: "AGENT" as const, id: agent.id.toString() }));
     }
     return input.recipients ?? [];
   }

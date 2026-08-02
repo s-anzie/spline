@@ -10,6 +10,7 @@ import { InMemoryWorkspaceRepository } from "../../workspace/application/testing
 import { Workspace } from "../../workspace/domain/workspace";
 import { LocalMachine } from "../domain/local-machine";
 import { StartAgentSessionUseCase } from "./start-agent-session.use-case";
+import { AgentNotEligibleError } from "../../agent/application/agent-application.errors";
 import {
   AgentAlreadyHasActiveSessionError,
   MachineNotFoundError,
@@ -137,5 +138,19 @@ describe("StartAgentSessionUseCase", () => {
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toBeInstanceOf(AgentAlreadyHasActiveSessionError);
+  });
+
+  it("fails when the agent is disabled", async () => {
+    const { workspace, agent, machine, useCase } = await setup();
+    agent.disable();
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(AgentNotEligibleError);
   });
 });

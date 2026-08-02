@@ -172,6 +172,60 @@ describe("Agent", () => {
     });
   });
 
+  describe("disable / enable", () => {
+    it("is not disabled by default", () => {
+      const agent = registerAgent();
+
+      expect(agent.isDisabled).toBe(false);
+      expect(agent.disabledAt).toBeUndefined();
+    });
+
+    it("disables an agent and records AgentDisabled", () => {
+      const agent = registerAgent();
+      agent.clearEvents();
+      const at = new Date("2026-07-31T10:00:00Z");
+
+      agent.disable(at);
+
+      expect(agent.isDisabled).toBe(true);
+      expect(agent.disabledAt).toEqual(at);
+      expect(agent.domainEvents.map((e) => e.eventName)).toEqual(["agent.disabled"]);
+    });
+
+    it("is a no-op (no event, no timestamp change) when disabling an already-disabled agent", () => {
+      const agent = registerAgent();
+      const firstAt = new Date("2026-07-31T10:00:00Z");
+      agent.disable(firstAt);
+      agent.clearEvents();
+
+      agent.disable(new Date("2026-07-31T11:00:00Z"));
+
+      expect(agent.disabledAt).toEqual(firstAt);
+      expect(agent.domainEvents).toEqual([]);
+    });
+
+    it("re-enables a disabled agent and records AgentEnabled", () => {
+      const agent = registerAgent();
+      agent.disable();
+      agent.clearEvents();
+
+      agent.enable();
+
+      expect(agent.isDisabled).toBe(false);
+      expect(agent.disabledAt).toBeUndefined();
+      expect(agent.domainEvents.map((e) => e.eventName)).toEqual(["agent.enabled"]);
+    });
+
+    it("is a no-op (no event) when enabling an agent that isn't disabled", () => {
+      const agent = registerAgent();
+      agent.clearEvents();
+
+      agent.enable();
+
+      expect(agent.domainEvents).toEqual([]);
+    });
+  });
+
   it("recordHeartbeat updates lastSeenAt without changing status or recording an event", () => {
     const agent = registerAgent();
     agent.changeStatus(AgentStatus.ONLINE);

@@ -1,6 +1,8 @@
 import { Inject, Module, OnModuleInit } from "@nestjs/common";
 
 import { WorkspaceModule } from "../workspace/workspace.module";
+import { DisableAgentUseCase } from "./application/disable-agent.use-case";
+import { EnableAgentUseCase } from "./application/enable-agent.use-case";
 import { ForceAgentOfflineUseCase } from "./application/force-agent-offline.use-case";
 import { GetAgentUseCase } from "./application/get-agent.use-case";
 import { ListAgentsByWorkspaceUseCase } from "./application/list-agents-by-workspace.use-case";
@@ -34,6 +36,8 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
     UpdateAgentPresenceUseCase,
     ForceAgentOfflineUseCase,
     ListProviderProfilesUseCase,
+    DisableAgentUseCase,
+    EnableAgentUseCase,
     { provide: AGENT_REPOSITORY, useClass: PrismaAgentRepository },
     { provide: PROVIDER_PROFILE_REPOSITORY, useClass: PrismaProviderProfileRepository },
   ],

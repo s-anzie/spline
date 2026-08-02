@@ -51,4 +51,9 @@ export class AgentCredential extends Entity<AgentCredentialProps> {
   revoke(now: Date): void {
     this.props.revokedAt = now;
   }
+
+  rotate(tokenHash: string): void {
+    this.props.tokenHash = tokenHash;
+    this.props.revokedAt = undefined;
+  }
 }

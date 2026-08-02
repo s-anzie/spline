@@ -15,6 +15,7 @@ export interface AgentPersistenceData {
   promptProfile: Prisma.InputJsonValue;
   permissions: Prisma.InputJsonValue;
   healthState: PrismaAgent["healthState"];
+  disabledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +34,7 @@ export class AgentMapper {
         promptProfile: record.promptProfile as Record<string, unknown>,
         permissions: record.permissions as string[],
         healthState: record.healthState,
+        disabledAt: record.disabledAt ?? undefined,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
       },
@@ -53,6 +55,7 @@ export class AgentMapper {
       promptProfile: agent.promptProfile as unknown as Prisma.InputJsonValue,
       permissions: agent.permissions as unknown as Prisma.InputJsonValue,
       healthState: agent.healthState,
+      disabledAt: agent.disabledAt ?? null,
       createdAt: agent.createdAt,
       updatedAt: agent.updatedAt,
     };

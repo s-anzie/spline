@@ -120,6 +120,73 @@ describe("Agent (e2e)", () => {
       .expect(200);
   });
 
+  it("decommissions an agent (excluded from listings' eligibility, credential revoked, reversible)", async () => {
+    const { token, workspaceId } = await registerLoginAndCreateWorkspace("agent-disable@example.com");
+    const registered = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/agents`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ provider: "claude", displayName: "Worker" })
+      .expect(201);
+    const agentId = registered.body.id as string;
+    const originalToken = registered.body.token as string;
+
+    const disabled = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/agents/${agentId}/disable`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+    expect(disabled.body.disabledAt).not.toBeNull();
+
+    // The original token is permanently revoked — the agent can no longer authenticate at all.
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/agents`)
+      .set("Authorization", `Bearer ${originalToken}`)
+      .expect(401);
+
+    // Still listed (visible for management), just marked disabled — not hidden entirely.
+    const listedWhileDisabled = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/agents`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(listedWhileDisabled.body.find((a: { id: string }) => a.id === agentId).disabledAt).not.toBeNull();
+
+    // Assigning a task to it is refused while disabled.
+    const goal = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/goals`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Some goal" })
+      .expect(201);
+    const task = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/tasks`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ goalId: goal.body.id, title: "Do something" })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/tasks/${task.body.id}/assign`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assigneeType: "AGENT", assigneeId: agentId })
+      .expect(409);
+
+    // Re-enabling issues a fresh token and makes it eligible again.
+    const enabled = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/agents/${agentId}/enable`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+    expect(enabled.body.disabledAt).toBeNull();
+    const newAgentToken = enabled.body.token as string;
+    expect(newAgentToken).not.toBe(originalToken);
+
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/agents`)
+      .set("Authorization", `Bearer ${newAgentToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/tasks/${task.body.id}/assign`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assigneeType: "AGENT", assigneeId: agentId })
+      .expect(201);
+  });
+
   it("exposes the seeded provider profile catalog", async () => {
     const { token } = await registerLoginAndCreateWorkspace("agent-providers@example.com");
 

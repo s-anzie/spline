@@ -251,6 +251,10 @@ model Agent {
   promptProfile  Json              @default("{}")
   permissions    Json              @default("[]")
   healthState    AgentHealthState  @default(UNKNOWN)
+  /// Decommissioned: excluded from broadcasts/assignment/session eligibility,
+  /// credential revoked. Independent of `status` (live connectivity) — null
+  /// means active, a timestamp means disabled.
+  disabledAt     DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

@@ -4,6 +4,8 @@ import { AggregateRoot } from "../../../kernel/domain/aggregate-root";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import {
   AgentAssignedToTask,
+  AgentDisabled,
+  AgentEnabled,
   AgentHealthChanged,
   AgentRegistered,
   AgentStatusChanged,
@@ -33,6 +35,8 @@ export interface AgentProps {
   promptProfile: Record<string, unknown>;
   permissions: string[];
   healthState: AgentHealthState;
+  /** Decommissioned: excluded from broadcasts/assignment/session eligibility, credential revoked. Independent of `status` (live connectivity). */
+  disabledAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -143,6 +147,14 @@ export class Agent extends AggregateRoot<AgentProps> {
     return this.props.updatedAt;
   }
 
+  get disabledAt(): Date | undefined {
+    return this.props.disabledAt;
+  }
+
+  get isDisabled(): boolean {
+    return this.props.disabledAt !== undefined;
+  }
+
   updateDetails(props: UpdateAgentDetailsProps): void {
     if (props.displayName !== undefined) {
       this.props.displayName = normalizeDisplayName(props.displayName);
@@ -213,5 +225,24 @@ export class Agent extends AggregateRoot<AgentProps> {
   recordHeartbeat(at: Date = new Date()): void {
     this.props.lastSeenAt = at;
     this.props.updatedAt = at;
+  }
+
+  /** Idempotent, unlike changeStatus — a manager retrying "decommission this agent" should never error. */
+  disable(at: Date = new Date()): void {
+    if (this.isDisabled) {
+      return;
+    }
+    this.props.disabledAt = at;
+    this.props.updatedAt = at;
+    this.record(new AgentDisabled(this.props.workspaceId, this.id.toString()));
+  }
+
+  enable(at: Date = new Date()): void {
+    if (!this.isDisabled) {
+      return;
+    }
+    this.props.disabledAt = undefined;
+    this.props.updatedAt = at;
+    this.record(new AgentEnabled(this.props.workspaceId, this.id.toString()));
   }
 }

@@ -72,3 +72,29 @@ export class AgentUnassignedFromTask extends DomainEvent {
     return "agent.unassigned_from_task";
   }
 }
+
+export class AgentDisabled extends DomainEvent {
+  constructor(
+    workspaceId: string,
+    public readonly agentId: string,
+  ) {
+    super(workspaceId);
+  }
+
+  get eventName(): string {
+    return "agent.disabled";
+  }
+}
+
+export class AgentEnabled extends DomainEvent {
+  constructor(
+    workspaceId: string,
+    public readonly agentId: string,
+  ) {
+    super(workspaceId);
+  }
+
+  get eventName(): string {
+    return "agent.enabled";
+  }
+}

@@ -8,6 +8,12 @@ export class AgentNotFoundError extends DomainError {
   }
 }
 
+export class AgentNotEligibleError extends DomainError {
+  constructor(agentId: string) {
+    super("AGENT_NOT_ELIGIBLE", `Agent "${agentId}" is disabled and cannot be used`);
+  }
+}
+
 export class InvalidAgentWorkspaceRoleError extends DomainError {
   constructor(role: WorkspaceRole) {
     super(

@@ -37,6 +37,7 @@ export class PrismaAgentRepository implements AgentRepository {
         promptProfile: data.promptProfile,
         permissions: data.permissions,
         healthState: data.healthState,
+        disabledAt: data.disabledAt,
         updatedAt: data.updatedAt,
       },
     });

@@ -6,7 +6,7 @@ import { EVENT_PUBLISHER, EventPublisher } from "../../../kernel/domain/ports/ev
 import { Result } from "../../../kernel/domain/result";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { GetAgentUseCase } from "../../agent/application/get-agent.use-case";
-import { AgentNotFoundError } from "../../agent/application/agent-application.errors";
+import { AgentNotEligibleError, AgentNotFoundError } from "../../agent/application/agent-application.errors";
 import { GetWorkspaceUseCase } from "../../workspace/application/get-workspace.use-case";
 import { WorkspaceNotFoundError } from "../../workspace/application/workspace-application.errors";
 import { AgentSession } from "../domain/agent-session";
@@ -36,6 +36,7 @@ export type StartAgentSessionError =
   | WorkspaceNotFoundError
   | WorkspaceRootPathNotConfiguredError
   | AgentNotFoundError
+  | AgentNotEligibleError
   | MachineNotFoundError
   | MachineNotLinkedToWorkspaceError
   | AgentAlreadyHasActiveSessionError;
@@ -67,6 +68,9 @@ export class StartAgentSessionUseCase {
       return Result.fail(new AgentNotFoundError(input.agentId));
     }
     const agent = agentResult.value;
+    if (agent.isDisabled) {
+      return Result.fail(new AgentNotEligibleError(input.agentId));
+    }
 
     const machine = await this.machines.findById(UniqueEntityId.create(input.machineId));
     if (!machine) {

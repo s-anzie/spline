@@ -48,6 +48,7 @@ import {
   TaskValidationNotPendingError,
 } from "../domain/task.errors";
 import { GoalNotFoundError } from "../../goal/application/goal-application.errors";
+import { AgentNotEligibleError } from "../../agent/application/agent-application.errors";
 import { AssignTaskDto } from "./dto/assign-task.dto";
 import { ChangeTaskStatusDto } from "./dto/change-task-status.dto";
 import { CreateTaskDto } from "./dto/create-task.dto";
@@ -90,7 +91,8 @@ function toHttpError(error: DomainError): Error {
     error instanceof InvalidTaskStatusTransitionError ||
     error instanceof TaskValidationNotPendingError ||
     error instanceof UnmetTaskDependenciesError ||
-    error instanceof OrphanTaskNotAllowedError
+    error instanceof OrphanTaskNotAllowedError ||
+    error instanceof AgentNotEligibleError
   ) {
     return new ConflictException(error.message);
   }

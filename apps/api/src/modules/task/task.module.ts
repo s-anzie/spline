@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AgentModule } from "../agent/agent.module";
 import { GoalModule } from "../goal/goal.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { AssignTaskUseCase } from "./application/assign-task.use-case";
@@ -18,7 +19,7 @@ import { PrismaTaskRepository } from "./infrastructure/prisma-task.repository";
 import { TaskController } from "./interface/task.controller";
 
 @Module({
-  imports: [WorkspaceModule, GoalModule],
+  imports: [WorkspaceModule, GoalModule, AgentModule],
   controllers: [TaskController],
   providers: [
     CreateTaskUseCase,

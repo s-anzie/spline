@@ -79,4 +79,21 @@ describe("PrismaAgentRepository (integration)", () => {
     expect(found?.currentTaskId).toBe("task-1");
     expect(found?.lastSeenAt).not.toBeNull();
   });
+
+  it("persists disable/enable (disabledAt) changes on save", async () => {
+    const agent = Agent.create({ workspaceId, provider: "claude", displayName: "Worker" });
+    await repository.save(agent);
+
+    agent.disable();
+    await repository.save(agent);
+    const disabled = await repository.findById(agent.id);
+    expect(disabled?.isDisabled).toBe(true);
+    expect(disabled?.disabledAt).not.toBeNull();
+
+    agent.enable();
+    await repository.save(agent);
+    const enabled = await repository.findById(agent.id);
+    expect(enabled?.isDisabled).toBe(false);
+    expect(enabled?.disabledAt).toBeUndefined();
+  });
 });

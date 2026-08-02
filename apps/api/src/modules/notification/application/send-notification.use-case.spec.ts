@@ -51,7 +51,7 @@ async function setup() {
     eventPublisher,
   );
 
-  return { workspace, notifications, recipients, registerAgent, eventPublisher, useCase };
+  return { workspace, notifications, recipients, registerAgent, agents, eventPublisher, useCase };
 }
 
 describe("SendNotificationUseCase", () => {
@@ -118,6 +118,37 @@ describe("SendNotificationUseCase", () => {
     const persisted = await recipients.listByNotification(result.value.notification.id.toString());
     expect(persisted).toHaveLength(2);
     expect(persisted.every((r) => r.deliveryStatus === "PENDING")).toBe(true);
+  });
+
+  it("excludes disabled agents from a BROADCAST notification", async () => {
+    const { workspace, registerAgent, agents, useCase } = await setup();
+    const agent1Result = await registerAgent.execute({
+      workspaceId: workspace.id.toString(),
+      provider: "claude",
+      displayName: "Claude worker",
+    });
+    const agent2Result = await registerAgent.execute({
+      workspaceId: workspace.id.toString(),
+      provider: "codex",
+      displayName: "Codex worker",
+    });
+    if (agent1Result.isFailure || agent2Result.isFailure) {
+      throw new Error("agent registration failed in test setup");
+    }
+    agent2Result.value.agent.disable();
+    await agents.save(agent2Result.value.agent);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      kind: "SYSTEM_ALERT",
+      scope: "BROADCAST",
+      body: "Process crashed",
+      createdBy: { type: "SYSTEM", id: "boot-reconciliation" },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.recipients).toHaveLength(1);
+    expect(result.value.recipients[0]?.recipientId).toBe(agent1Result.value.agent.id.toString());
   });
 
   it("fails when the workspace does not exist", async () => {

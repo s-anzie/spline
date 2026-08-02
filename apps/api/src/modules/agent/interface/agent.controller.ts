@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -14,7 +15,9 @@ import {
 
 import { JwtAuthGuard, PermissionsGuard, RequirePermission } from "../../identity/interface";
 import { DomainError } from "../../../kernel/domain/domain-error";
-import { AgentNotFoundError } from "../application/agent-application.errors";
+import { AgentNotEligibleError, AgentNotFoundError } from "../application/agent-application.errors";
+import { DisableAgentUseCase } from "../application/disable-agent.use-case";
+import { EnableAgentUseCase } from "../application/enable-agent.use-case";
 import { ForceAgentOfflineUseCase } from "../application/force-agent-offline.use-case";
 import { GetAgentUseCase } from "../application/get-agent.use-case";
 import { ListAgentsByWorkspaceUseCase } from "../application/list-agents-by-workspace.use-case";
@@ -39,6 +42,7 @@ function toAgentResponse(agent: Agent) {
     promptProfile: agent.promptProfile,
     permissions: agent.permissions,
     healthState: agent.healthState,
+    disabledAt: agent.disabledAt?.toISOString() ?? null,
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
   };
@@ -47,6 +51,9 @@ function toAgentResponse(agent: Agent) {
 function toHttpError(error: DomainError): Error {
   if (error instanceof AgentNotFoundError) {
     return new NotFoundException(error.message);
+  }
+  if (error instanceof AgentNotEligibleError) {
+    return new ConflictException(error.message);
   }
   return new BadRequestException(error.message);
 }
@@ -61,6 +68,8 @@ export class AgentController {
     private readonly updateAgentDetailsUseCase: UpdateAgentDetailsUseCase,
     private readonly updateAgentHealthUseCase: UpdateAgentHealthUseCase,
     private readonly forceAgentOfflineUseCase: ForceAgentOfflineUseCase,
+    private readonly disableAgentUseCase: DisableAgentUseCase,
+    private readonly enableAgentUseCase: EnableAgentUseCase,
   ) {}
 
   @Post()
@@ -121,5 +130,27 @@ export class AgentController {
       throw toHttpError(result.error);
     }
     return toAgentResponse(result.value);
+  }
+
+  @Post(":agentId/disable")
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermission("manage_workspace_rules")
+  async disable(@Param("agentId") agentId: string) {
+    const result = await this.disableAgentUseCase.execute(agentId);
+    if (result.isFailure) {
+      throw toHttpError(result.error);
+    }
+    return toAgentResponse(result.value);
+  }
+
+  @Post(":agentId/enable")
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermission("manage_workspace_rules")
+  async enable(@Param("agentId") agentId: string) {
+    const result = await this.enableAgentUseCase.execute(agentId);
+    if (result.isFailure) {
+      throw toHttpError(result.error);
+    }
+    return { ...toAgentResponse(result.value.agent), token: result.value.token };
   }
 }
