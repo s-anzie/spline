@@ -13,6 +13,7 @@ import type {
   Notification,
   ProviderProfile,
   ResourceLock,
+  RuntimeHealth,
   RuntimeProcess,
   WorkspaceEvent,
 } from "@/lib/api/types";
@@ -32,6 +33,7 @@ type DomainState = {
   decisions: Decision[];
   events: WorkspaceEvent[];
   notifications: Notification[];
+  runtimeHealth: RuntimeHealth | null;
   loading: boolean;
   pendingAction: string | null;
   error: string | null;
@@ -94,6 +96,7 @@ const empty = {
   decisions: [],
   events: [],
   notifications: [],
+  runtimeHealth: null,
   loading: false,
   pendingAction: null,
   error: null,
@@ -120,6 +123,7 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
         decisions,
         events,
         notifications,
+        runtimeHealth,
       ] = await Promise.all([
         domainApi.agents(workspaceId, token),
         domainApi.providers(token),
@@ -132,6 +136,9 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
         domainApi.decisions(workspaceId, token),
         domainApi.events(workspaceId, token),
         domainApi.notifications(workspaceId, token),
+        // Health is diagnostic, not core domain data — never let it fail the
+        // whole workspace load.
+        domainApi.runtimeHealth(workspaceId, token).catch(() => null),
       ]);
       if (get().workspaceId === workspaceId)
         set({
@@ -147,6 +154,7 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
           decisions,
           events,
           notifications,
+          runtimeHealth,
           loading: false,
         });
     } catch (error) {

@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Square,
   Terminal,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
     sessions,
     questions,
     agents,
+    runtimeHealth,
     loading,
     pendingAction,
     error,
@@ -50,6 +52,9 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
   const loadPlan = usePlanningStore((s) => s.load);
   const tasks = usePlanningStore((s) => s.tasks);
   const connected = useRealtimeStore((s) => s.connected);
+  const runtimeIssueCount = runtimeHealth
+    ? runtimeHealth.machines.stale + runtimeHealth.sessions.stale + runtimeHealth.commands.stuck
+    : 0;
   const workingStatuses = ["STARTING", "RUNNING", "AWAITING_APPROVAL"];
   const activeSessionCount = sessions.filter((session) => workingStatuses.includes(session.status)).length;
   const idleSessionCount = sessions.filter((session) => session.status === "IDLE").length;
@@ -115,6 +120,16 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                 connected ? "Temps réel connecté" : "Temps réel hors ligne"
               }
             />
+            {runtimeHealth && (
+              <LiveIndicator
+                tone={runtimeIssueCount > 0 ? "warning" : "healthy"}
+                label={
+                  runtimeIssueCount > 0
+                    ? `${runtimeIssueCount} anomalie${runtimeIssueCount > 1 ? "s" : ""} runtime`
+                    : "Runtime sain"
+                }
+              />
+            )}
             <LoadingButton
               loading={loading}
               onClick={() => void load(workspaceId, true)}
@@ -139,6 +154,42 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
           <TabsTrigger value="locks">Tous les locks</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions">
+          {runtimeIssueCount > 0 && (
+            <div className="mb-3 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3">
+              <div className="flex items-center gap-2 text-[10px] text-amber-200">
+                <TriangleAlert className="size-4" />
+                <strong>Le runtime signale une ou plusieurs anomalies</strong>
+              </div>
+              <ul className="mt-2 grid gap-1 text-[9px] text-amber-100/80">
+                {!!runtimeHealth?.machines.stale && (
+                  <li>
+                    {runtimeHealth.machines.stale} machine
+                    {runtimeHealth.machines.stale > 1 ? "s" : ""} indiquée
+                    {runtimeHealth.machines.stale > 1 ? "s" : ""} en ligne
+                    mais sans heartbeat récent — probablement déconnectée
+                    {runtimeHealth.machines.stale > 1 ? "s" : ""}.
+                  </li>
+                )}
+                {!!runtimeHealth?.sessions.stale && (
+                  <li>
+                    {runtimeHealth.sessions.stale} session
+                    {runtimeHealth.sessions.stale > 1 ? "s" : ""} active
+                    {runtimeHealth.sessions.stale > 1 ? "s" : ""} sans
+                    heartbeat récent.
+                  </li>
+                )}
+                {!!runtimeHealth?.commands.stuck && (
+                  <li>
+                    {runtimeHealth.commands.stuck} commande
+                    {runtimeHealth.commands.stuck > 1 ? "s" : ""} runtime
+                    bloquée
+                    {runtimeHealth.commands.stuck > 1 ? "s" : ""} sans
+                    réponse de la machine cible.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
           {questions.some((question) => question.status === "OPEN") && (
             <div className="mb-3 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3">
               <div className="flex items-center gap-2 text-[10px] text-amber-200">

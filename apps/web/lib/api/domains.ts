@@ -12,6 +12,7 @@ import type {
   NotificationRecipient,
   ProviderProfile,
   ResourceLock,
+  RuntimeHealth,
   RuntimeProcess,
   SessionOutput,
   WorkspaceEvent,
@@ -92,6 +93,8 @@ export const domainApi = {
     ),
   sessions: (id: string, token: string) =>
     apiRequest<AgentSession[]>(ws(id, "/agent-sessions"), { token }),
+  runtimeHealth: (id: string, token: string) =>
+    apiRequest<RuntimeHealth>(ws(id, "/runtime/health"), { token }),
   session: (id: string, sessionId: string, token: string) =>
     apiRequest<AgentSession>(ws(id, `/agent-sessions/${sessionId}`), { token }),
   sessionOutputs: (id: string, sessionId: string, token: string) =>
