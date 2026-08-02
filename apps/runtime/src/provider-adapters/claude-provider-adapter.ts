@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 import type { ProviderAdapter, ProviderSessionHandle, SpawnFn, StartSessionInput } from "./provider-adapter";
 
@@ -14,7 +15,30 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       ...input.env,
     };
 
-    const child = this.spawnFn("claude", ["--print"], { cwd: input.cwd, env });
+    const providerSessionId = input.resumeSessionId ?? randomUUID();
+    const args = [
+      "--print",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--mcp-config",
+      JSON.stringify({
+        mcpServers: {
+          spline: {
+            command: "/run/spline-node",
+            args: ["/run/spline-toolkit/mcp-server.js"],
+          },
+        },
+      }),
+      "--strict-mcp-config",
+      "--allowedTools",
+      "CronCreate,CronList,CronDelete,mcp__spline__*",
+      ...(input.resumeSessionId
+        ? ["--resume", providerSessionId]
+        : ["--session-id", providerSessionId]),
+    ];
+    const child = this.spawnFn("claude", args, { cwd: input.cwd, env });
+    input.onProviderSessionId?.(providerSessionId);
     child.stdin?.write(input.prompt);
     child.stdin?.end();
 

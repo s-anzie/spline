@@ -1,11 +1,18 @@
 import type { ProviderAdapter, ProviderSessionHandle } from "../provider-adapters/provider-adapter";
 
 /** Mirrors the hub's AgentSessionStatus Prisma enum values without depending on @repo/db. */
-export type AgentSessionStatus = "RUNNING" | "COMPLETED" | "FAILED" | "CRASHED" | "STOPPED";
+export type AgentSessionStatus = "RUNNING" | "IDLE" | "FAILED" | "CRASHED" | "STOPPED";
 
 export interface SessionSupervisorDeps {
   adapters: Map<string, ProviderAdapter>;
   onSessionStatus: (sessionId: string, status: AgentSessionStatus) => void;
+  onSessionOutput?: (
+    sessionId: string,
+    sequence: number,
+    stream: "stdout" | "stderr",
+    content: string,
+  ) => void;
+  onProviderSessionId?: (sessionId: string, providerSessionId: string) => void;
 }
 
 /**
@@ -20,25 +27,87 @@ export class SessionSupervisor {
 
   constructor(private readonly deps: SessionSupervisorDeps) {}
 
-  start(sessionId: string, provider: string, prompt: string, cwd: string, env?: Record<string, string>): void {
+  start(sessionId: string, provider: string, prompt: string, cwd: string, env?: Record<string, string>, resumeSessionId?: string, outputSequenceStart = 0): void {
     const adapter = this.deps.adapters.get(provider);
     if (!adapter) {
       throw new Error(`Unknown provider: "${provider}" — no ProviderAdapter registered for it`);
     }
 
-    const handle = adapter.start({
-      prompt,
-      cwd,
-      env,
-      onOutput: () => {},
-      onExit: (code) => {
-        this.handles.delete(sessionId);
-        const wasStopRequested = this.stopRequested.delete(sessionId);
-        this.deps.onSessionStatus(sessionId, this.resolveExitStatus(wasStopRequested, code));
-      },
-    });
+    let sequence = outputSequenceStart;
+    const secret = env?.["SPLINE_AGENT_TOKEN"];
+    const pendingOutput: Record<"stdout" | "stderr", string> = {
+      stdout: "",
+      stderr: "",
+    };
+    const redact = (content: string) => {
+      let safe = secret ? content.replaceAll(secret, "[REDACTED]") : content;
+      safe = safe.replace(/agent_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[REDACTED]");
+      return safe;
+    };
+    const emitOutput = (content: string, stream: "stdout" | "stderr") => {
+      for (let offset = 0; offset < content.length; offset += 16_384) {
+        const safe = redact(content.slice(offset, offset + 16_384));
+        if (safe)
+          this.deps.onSessionOutput?.(
+            sessionId,
+            sequence++,
+            stream,
+            safe,
+          );
+      }
+    };
+    let handle: ProviderSessionHandle;
+    try {
+      handle = adapter.start({
+        prompt,
+        cwd,
+        env,
+        resumeSessionId,
+        onProviderSessionId: (providerSessionId) =>
+          this.deps.onProviderSessionId?.(sessionId, providerSessionId),
+        onOutput: (chunk, stream) => {
+          const combined = redact(pendingOutput[stream] + chunk);
+          const lastNewline = combined.lastIndexOf("\n");
+          if (lastNewline >= 0) {
+            emitOutput(combined.slice(0, lastNewline + 1), stream);
+            pendingOutput[stream] = combined.slice(lastNewline + 1);
+            return;
+          }
+          const retainedLength = secret ? Math.max(0, secret.length - 1) : 0;
+          const emitLength = Math.max(0, combined.length - retainedLength);
+          emitOutput(combined.slice(0, emitLength), stream);
+          pendingOutput[stream] = combined.slice(emitLength);
+        },
+        onExit: (code) => {
+          emitOutput(pendingOutput.stdout, "stdout");
+          emitOutput(pendingOutput.stderr, "stderr");
+          this.handles.delete(sessionId);
+          const wasStopRequested = this.stopRequested.delete(sessionId);
+          this.deps.onSessionStatus(
+            sessionId,
+            this.resolveExitStatus(wasStopRequested, code),
+          );
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.onSessionOutput?.(
+        sessionId,
+        sequence,
+        "stderr",
+        `[runtime] Impossible de démarrer ${provider}: ${message}\n`,
+      );
+      this.deps.onSessionStatus(sessionId, "FAILED");
+      return;
+    }
 
     this.handles.set(sessionId, handle);
+    this.deps.onSessionOutput?.(
+      sessionId,
+      sequence++,
+      "stdout",
+      `[runtime] ${provider} démarré dans le sandbox.\n`,
+    );
     this.deps.onSessionStatus(sessionId, "RUNNING");
   }
 
@@ -55,12 +124,16 @@ export class SessionSupervisor {
     return this.handles.has(sessionId);
   }
 
+  runningSessionIds(): string[] {
+    return [...this.handles.keys()];
+  }
+
   private resolveExitStatus(wasStopRequested: boolean, code: number | null): AgentSessionStatus {
     if (wasStopRequested) {
       return "STOPPED";
     }
     if (code === 0) {
-      return "COMPLETED";
+      return "IDLE";
     }
     if (code !== null) {
       return "FAILED";

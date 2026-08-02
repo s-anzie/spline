@@ -91,7 +91,10 @@ export class WorkspaceController {
     @Body() dto: CreateWorkspaceDto,
   ) {
     ensureHuman(requester);
-    const result = await this.createWorkspaceUseCase.execute({ ...dto, ownerId: requester.id });
+    const result = await this.createWorkspaceUseCase.execute({
+      ...dto,
+      ownerId: requester.id,
+    });
     if (result.isFailure) {
       throw new BadRequestException(result.error.message);
     }
@@ -100,7 +103,10 @@ export class WorkspaceController {
 
   @Get()
   async list(@CurrentRequester() requester: AuthenticatedRequester) {
-    const workspaces = await this.listWorkspacesUseCase.execute(requester.type, requester.id);
+    const workspaces = await this.listWorkspacesUseCase.execute(
+      requester.type,
+      requester.id,
+    );
     return workspaces.map(toWorkspaceResponse);
   }
 
@@ -116,8 +122,15 @@ export class WorkspaceController {
 
   @Patch(":workspaceId")
   @RequirePermission("manage_workspace_rules")
-  async rename(@Param("workspaceId") workspaceId: string, @Body() dto: RenameWorkspaceDto) {
-    const result = await this.renameWorkspaceUseCase.execute({ workspaceId, newName: dto.name });
+  async rename(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: RenameWorkspaceDto,
+  ) {
+    const result = await this.renameWorkspaceUseCase.execute({
+      workspaceId,
+      newName: dto.name,
+      description: dto.description,
+    });
     if (result.isFailure) {
       throw toHttpError(result.error);
     }

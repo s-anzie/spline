@@ -17,6 +17,7 @@ import { ApproveAgentSessionUseCase } from "../application/approve-agent-session
 import { DenyAgentSessionUseCase } from "../application/deny-agent-session.use-case";
 import { GetAgentSessionUseCase } from "../application/get-agent-session.use-case";
 import { ListAgentSessionsByWorkspaceUseCase } from "../application/list-agent-sessions-by-workspace.use-case";
+import { ListSessionOutputsUseCase } from "../application/list-session-outputs.use-case";
 import { ReportSessionStatusUseCase } from "../application/report-session-status.use-case";
 import {
   AgentSessionNotFoundError,
@@ -33,6 +34,7 @@ import { AgentNotFoundError } from "../../agent/application/agent-application.er
 import { WorkspaceNotFoundError } from "../../workspace/application/workspace-application.errors";
 import { ReportSessionStatusDto } from "./dto/report-session-status.dto";
 import { StartAgentSessionDto } from "./dto/start-agent-session.dto";
+import { AuthenticatedRequester, CurrentRequester } from "../../identity/interface";
 
 function toSessionResponse(session: AgentSession) {
   return {
@@ -47,6 +49,9 @@ function toSessionResponse(session: AgentSession) {
     currentProcessId: session.currentProcessId ?? null,
     currentTaskId: session.currentTaskId ?? null,
     approvalState: session.approvalState,
+    providerSessionId: session.providerSessionId ?? null,
+    resumedFromSessionId: session.resumedFromSessionId ?? null,
+    instruction: session.instruction ?? null,
     endedAt: session.endedAt?.toISOString() ?? null,
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString(),
@@ -77,13 +82,22 @@ export class AgentSessionController {
     private readonly denyAgentSessionUseCase: DenyAgentSessionUseCase,
     private readonly getAgentSessionUseCase: GetAgentSessionUseCase,
     private readonly listAgentSessionsByWorkspaceUseCase: ListAgentSessionsByWorkspaceUseCase,
+    private readonly listSessionOutputsUseCase: ListSessionOutputsUseCase,
   ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("start_process")
-  async start(@Param("workspaceId") workspaceId: string, @Body() dto: StartAgentSessionDto) {
-    const result = await this.startAgentSessionUseCase.execute({ ...dto, workspaceId });
+  async start(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: StartAgentSessionDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    const result = await this.startAgentSessionUseCase.execute({
+      ...dto,
+      workspaceId,
+      requesterType: requester.type,
+    });
     if (result.isFailure) {
       if (result.error instanceof AgentAlreadyHasActiveSessionError) {
         throw new BadRequestException(result.error.message);
@@ -111,6 +125,15 @@ export class AgentSessionController {
       throw toHttpError(result.error);
     }
     return toSessionResponse(result.value);
+  }
+
+  @Get(":sessionId/outputs")
+  @RequirePermission("read_tasks")
+  async outputs(
+    @Param("workspaceId") workspaceId: string,
+    @Param("sessionId") sessionId: string,
+  ) {
+    return this.listSessionOutputsUseCase.execute(workspaceId, sessionId);
   }
 
   @Post(":sessionId/stop")

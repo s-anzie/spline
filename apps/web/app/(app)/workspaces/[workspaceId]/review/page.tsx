@@ -1,0 +1,1 @@
+import { ReviewView } from "@/features/planning/review-view";export default async function ReviewPage({params}:{params:Promise<{workspaceId:string}>}){const{workspaceId}=await params;return <ReviewView workspaceId={workspaceId}/>}

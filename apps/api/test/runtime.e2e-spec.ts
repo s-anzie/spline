@@ -187,6 +187,59 @@ describe("Runtime (e2e)", () => {
   );
 
   it(
+    "routes contributor questions exclusively through the manager lifecycle",
+    async () => {
+      const { token, workspaceId } = await registerLoginAndCreateWorkspace(
+        "runtime-questions@example.com",
+      );
+      const manager = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agents`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ provider: "codex", displayName: "Manager", role: "AGENT_MANAGER" })
+        .expect(201);
+      const contributor = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agents`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ provider: "codex", displayName: "Contributor", role: "AGENT_CONTRIBUTOR" })
+        .expect(201);
+
+      const asked = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agent-questions`)
+        .set("Authorization", `Bearer ${contributor.body.token}`)
+        .send({
+          question: "Which compatibility target should I use?",
+          context: "The task does not specify a runtime version.",
+          options: ["Node 20", "Node 22"],
+          recommendation: "Node 22",
+          blocking: true,
+        })
+        .expect(201);
+      expect(asked.body.managerAgentId).toBe(manager.body.id);
+      expect(asked.body.status).toBe("OPEN");
+
+      const answered = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agent-questions/${asked.body.id}/answer`)
+        .set("Authorization", `Bearer ${manager.body.token}`)
+        .send({ answer: "Use Node 22 and record it in validation evidence." })
+        .expect(201);
+      expect(answered.body.status).toBe("ANSWERED");
+
+      await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agent-questions/${asked.body.id}/acknowledge`)
+        .set("Authorization", `Bearer ${contributor.body.token}`)
+        .expect(201)
+        .expect((response) => expect(response.body.status).toBe("ACKNOWLEDGED"));
+
+      await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/agent-questions/${asked.body.id}/close`)
+        .set("Authorization", `Bearer ${manager.body.token}`)
+        .expect(201)
+        .expect((response) => expect(response.body.status).toBe("CLOSED"));
+    },
+    15000,
+  );
+
+  it(
     "runs an agent session lifecycle through a simulated machine daemon",
     async () => {
       const { token, workspaceId } = await registerLoginAndCreateWorkspace("runtime-session@example.com");
@@ -200,7 +253,11 @@ describe("Runtime (e2e)", () => {
       const agent = await request(app.getHttpServer())
         .post(`/workspaces/${workspaceId}/agents`)
         .set("Authorization", `Bearer ${token}`)
-        .send({ provider: "claude", displayName: "Claude worker" })
+        .send({
+          provider: "claude",
+          displayName: "Claude manager",
+          role: "AGENT_MANAGER",
+        })
         .expect(201);
 
       const machineSocket = connectMachine(machineToken);
@@ -213,7 +270,11 @@ describe("Runtime (e2e)", () => {
       const started = await request(app.getHttpServer())
         .post(`/workspaces/${workspaceId}/agent-sessions`)
         .set("Authorization", `Bearer ${token}`)
-        .send({ agentId: agent.body.id, machineId })
+        .send({
+          agentId: agent.body.id,
+          machineId,
+          instruction: "Inspect the workspace and report the current state.",
+        })
         .expect(201);
       expect(started.body.status).toBe("STARTING");
       const sessionId = started.body.id as string;

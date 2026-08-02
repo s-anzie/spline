@@ -18,6 +18,15 @@ export class AgentSessionNotFoundError extends DomainError {
   }
 }
 
+export class AgentSessionNotResumableError extends DomainError {
+  constructor(sessionId: string) {
+    super(
+      "AGENT_SESSION_NOT_RESUMABLE",
+      `Agent session "${sessionId}" has no recoverable provider conversation`,
+    );
+  }
+}
+
 export class MachineNotLinkedToWorkspaceError extends DomainError {
   constructor(machineId: string, workspaceId: string) {
     super(

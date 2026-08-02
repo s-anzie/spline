@@ -57,6 +57,48 @@ npx turbo check-types --filter=runtime
 npx turbo lint --filter=runtime
 ```
 
+## Service systemd
+
+```sh
+npm run daemon:install -w apps/runtime
+npm run token:set -w apps/runtime
+```
+
+`token:set` masque la saisie, écrit le secret dans `~/.config/spline/runtime.json`
+avec les permissions `0600`, puis le daemon recharge la clé et se reconnecte sans
+redémarrage. Pour changer de hub :
+
+```sh
+npm run hub:set -w apps/runtime -- http://localhost:8765
+npm run daemon:status -w apps/runtime
+npm run daemon:logs -w apps/runtime
+```
+
+Chaque agent possède son propre token API. Après sa création ou une rotation,
+provisionnez-le localement (la saisie est masquée) :
+
+```sh
+npm run agent-token:set -w apps/runtime -- <agent-id>
+```
+
+Le daemon recharge automatiquement le coffre local et injecte le token uniquement
+dans le processus Codex/Claude correspondant. Après révocation :
+
+```sh
+npm run agent-token:remove -w apps/runtime -- <agent-id>
+```
+
+## Isolation des sessions
+
+Les sessions provider sont lancées avec Bubblewrap sans compte utilisateur
+supplémentaire. Le sandbox masque le dossier personnel de l'hôte — notamment
+`~/.config/spline` et les tokens des autres agents —, monte uniquement le workspace
+courant en écriture, recrée `/tmp`, `/run`, `/proc` et `/dev`, isole les espaces PID,
+IPC et UTS, et expose en lecture seule l'authentification du provider sélectionné.
+
+L'installation échoue explicitement si `bwrap` n'est pas disponible : le runtime ne
+revient jamais silencieusement à une exécution non isolée.
+
 `src/provider-adapters/cli-availability.smoke.spec.ts` is a real (unmocked) smoke test:
 it actually invokes `claude --version` / `codex --version` if that binary is present on
 the machine's `PATH`, and skips gracefully if not — proof the daemon can really launch

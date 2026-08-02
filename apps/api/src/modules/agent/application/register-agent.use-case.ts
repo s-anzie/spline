@@ -1,16 +1,26 @@
 import { ActorType, WorkspaceRole } from "@repo/db";
 import { Inject, Injectable } from "@nestjs/common";
 
-import { EVENT_PUBLISHER, EventPublisher } from "../../../kernel/domain/ports/event-publisher.port";
+import {
+  EVENT_PUBLISHER,
+  EventPublisher,
+} from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
 import { AssignWorkspaceRoleUseCase } from "../../identity/application/assign-workspace-role.use-case";
 import { IssueAgentTokenUseCase } from "../../identity/application/issue-agent-token.use-case";
 import { GetWorkspaceUseCase } from "../../workspace/application/get-workspace.use-case";
 import { WorkspaceNotFoundError } from "../../workspace/application/workspace-application.errors";
 import { Agent } from "../domain/agent";
-import { EmptyAgentDisplayNameError, EmptyAgentProviderError } from "../domain/agent.errors";
-import { AGENT_REPOSITORY, AgentRepository } from "../domain/ports/agent.repository.port";
+import {
+  EmptyAgentDisplayNameError,
+  EmptyAgentProviderError,
+} from "../domain/agent.errors";
+import {
+  AGENT_REPOSITORY,
+  AgentRepository,
+} from "../domain/ports/agent.repository.port";
 import { InvalidAgentWorkspaceRoleError } from "./agent-application.errors";
+import { defaultAgentPromptProfile } from "./default-agent-prompt-profiles";
 
 const AGENT_ROLES: WorkspaceRole[] = [
   WorkspaceRole.AGENT_MANAGER,
@@ -49,7 +59,9 @@ export class RegisterAgentUseCase {
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
 
-  async execute(input: RegisterAgentInput): Promise<Result<RegisterAgentOutput, RegisterAgentError>> {
+  async execute(
+    input: RegisterAgentInput,
+  ): Promise<Result<RegisterAgentOutput, RegisterAgentError>> {
     const workspaceResult = await this.getWorkspace.execute(input.workspaceId);
     if (workspaceResult.isFailure) {
       return Result.fail(workspaceResult.error);
@@ -62,9 +74,15 @@ export class RegisterAgentUseCase {
 
     let agent: Agent;
     try {
-      agent = Agent.create(input);
+      agent = Agent.create({
+        ...input,
+        promptProfile: input.promptProfile ?? defaultAgentPromptProfile(role),
+      });
     } catch (error) {
-      if (error instanceof EmptyAgentProviderError || error instanceof EmptyAgentDisplayNameError) {
+      if (
+        error instanceof EmptyAgentProviderError ||
+        error instanceof EmptyAgentDisplayNameError
+      ) {
         return Result.fail(error);
       }
       throw error;
@@ -77,7 +95,9 @@ export class RegisterAgentUseCase {
       actorId: agent.id.toString(),
       role,
     });
-    const { plainTextToken } = await this.issueAgentToken.execute(agent.id.toString());
+    const { plainTextToken } = await this.issueAgentToken.execute(
+      agent.id.toString(),
+    );
     this.eventPublisher.publishAll(agent.domainEvents);
     agent.clearEvents();
 

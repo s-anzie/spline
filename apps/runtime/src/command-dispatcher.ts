@@ -6,7 +6,7 @@ export interface ProcessSupervisorLike {
 }
 
 export interface SessionSupervisorLike {
-  start(sessionId: string, provider: string, prompt: string, cwd: string, env?: Record<string, string>): void;
+  start(sessionId: string, provider: string, prompt: string, cwd: string, env?: Record<string, string>, resumeSessionId?: string, outputSequenceStart?: number): void;
   stop(sessionId: string, signal?: NodeJS.Signals): void;
 }
 
@@ -14,6 +14,10 @@ export interface CommandDispatcherDeps {
   processSupervisor: ProcessSupervisorLike;
   sessionSupervisor: SessionSupervisorLike;
   onError?: (error: Error, command: CommandMessage) => void;
+  resolveAgentEnvironment?: (
+    agentId: string,
+    workspaceId: string,
+  ) => Record<string, string>;
 }
 
 interface StartProcessPayload {
@@ -29,10 +33,13 @@ interface StopProcessPayload {
 
 interface StartSessionPayload {
   sessionId: string;
+  agentId: string;
   provider: string;
   prompt: string;
   cwd: string;
   env?: Record<string, string>;
+  resumeProviderSessionId?: string;
+  outputSequenceStart?: number;
 }
 
 interface StopSessionPayload {
@@ -64,8 +71,24 @@ export class CommandDispatcher {
         return;
       }
       case "START_SESSION": {
-        const { sessionId, provider, prompt, cwd, env } = command.payload as StartSessionPayload;
-        this.deps.sessionSupervisor.start(sessionId, provider, prompt, cwd, env);
+        const { sessionId, agentId, provider, prompt, cwd, env, resumeProviderSessionId, outputSequenceStart } = command.payload as StartSessionPayload;
+        const agentEnvironment = this.deps.resolveAgentEnvironment?.(
+          agentId,
+          command.workspaceId,
+        );
+        const sessionEnvironment =
+          env || agentEnvironment
+            ? { ...env, ...agentEnvironment }
+            : undefined;
+        this.deps.sessionSupervisor.start(
+          sessionId,
+          provider,
+          prompt,
+          cwd,
+          sessionEnvironment,
+          resumeProviderSessionId,
+          outputSequenceStart,
+        );
         return;
       }
       case "STOP_SESSION": {

@@ -49,7 +49,35 @@ describe("SessionSupervisor", () => {
     expect(() => supervisor.start("sess-1", "unknown-provider", "hi", "/tmp")).toThrow(/unknown provider/i);
   });
 
-  it("reports COMPLETED when the session process exits with code 0 and no stop was requested", () => {
+  it("reports startup failures to the console and terminates the session", () => {
+    const adapter: ProviderAdapter = {
+      provider: "codex",
+      start: jest.fn(() => {
+        throw new Error("Provider executable not found on PATH: codex");
+      }),
+    };
+    const onSessionStatus = jest.fn();
+    const onSessionOutput = jest.fn();
+    const supervisor = new SessionSupervisor({
+      adapters: new Map([["codex", adapter]]),
+      onSessionStatus,
+      onSessionOutput,
+    });
+
+    expect(() =>
+      supervisor.start("sess-1", "codex", "work", "/tmp"),
+    ).not.toThrow();
+    expect(onSessionOutput).toHaveBeenCalledWith(
+      "sess-1",
+      0,
+      "stderr",
+      expect.stringContaining("Provider executable not found"),
+    );
+    expect(onSessionStatus).toHaveBeenCalledWith("sess-1", "FAILED");
+    expect(supervisor.isRunning("sess-1")).toBe(false);
+  });
+
+  it("reports IDLE when a provider turn exits cleanly", () => {
     const claude = createFakeAdapter("claude");
     const onSessionStatus = jest.fn();
     const supervisor = new SessionSupervisor({ adapters: new Map([["claude", claude]]), onSessionStatus });
@@ -57,7 +85,7 @@ describe("SessionSupervisor", () => {
     supervisor.start("sess-1", "claude", "do the thing", "/tmp");
     claude.triggerExit("do the thing", 0);
 
-    expect(onSessionStatus).toHaveBeenCalledWith("sess-1", "COMPLETED");
+    expect(onSessionStatus).toHaveBeenCalledWith("sess-1", "IDLE");
     expect(supervisor.isRunning("sess-1")).toBe(false);
   });
 

@@ -34,9 +34,36 @@ describe("ClaudeProviderAdapter", () => {
     expect(spawn).toHaveBeenCalledTimes(1);
     const [command, args, options] = spawn.mock.calls[0] as [string, string[], Record<string, unknown>];
     expect(command).toBe("claude");
-    expect(args).toEqual(["--print"]);
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--session-id",
+      ]),
+    );
     expect(options["shell"]).not.toBe(true);
     expect(options["cwd"]).toBe("/home/bradley/spline/apps/web");
+  });
+
+  it("resumes the exact native Claude session", () => {
+    const child = createFakeChildProcess();
+    const spawn = jest.fn().mockReturnValue(child);
+    const adapter = new ClaudeProviderAdapter(spawn);
+    adapter.start({
+      prompt: "Continue",
+      cwd: "/tmp",
+      resumeSessionId: "550e8400-e29b-41d4-a716-446655440000",
+      onOutput: jest.fn(),
+      onExit: jest.fn(),
+    });
+    expect(spawn.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        "--resume",
+        "550e8400-e29b-41d4-a716-446655440000",
+      ]),
+    );
   });
 
   it("writes the prompt to the child's stdin and closes it, instead of passing it via argv (ARG_MAX safety for large prompts)", () => {

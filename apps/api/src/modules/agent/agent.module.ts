@@ -1,12 +1,14 @@
 import { Inject, Module, OnModuleInit } from "@nestjs/common";
 
 import { WorkspaceModule } from "../workspace/workspace.module";
+import { BackfillAgentPromptProfilesUseCase } from "./application/backfill-agent-prompt-profiles.use-case";
 import { DisableAgentUseCase } from "./application/disable-agent.use-case";
 import { EnableAgentUseCase } from "./application/enable-agent.use-case";
 import { ForceAgentOfflineUseCase } from "./application/force-agent-offline.use-case";
 import { GetAgentUseCase } from "./application/get-agent.use-case";
 import { ListAgentsByWorkspaceUseCase } from "./application/list-agents-by-workspace.use-case";
 import { ListProviderProfilesUseCase } from "./application/list-provider-profiles.use-case";
+import { ManageAgentCredentialUseCase } from "./application/manage-agent-credential.use-case";
 import { RegisterAgentUseCase } from "./application/register-agent.use-case";
 import { UpdateAgentDetailsUseCase } from "./application/update-agent-details.use-case";
 import { UpdateAgentHealthUseCase } from "./application/update-agent-health.use-case";
@@ -29,6 +31,7 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
   controllers: [AgentController, ProviderProfileController],
   providers: [
     RegisterAgentUseCase,
+    BackfillAgentPromptProfilesUseCase,
     GetAgentUseCase,
     ListAgentsByWorkspaceUseCase,
     UpdateAgentDetailsUseCase,
@@ -36,16 +39,25 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
     UpdateAgentPresenceUseCase,
     ForceAgentOfflineUseCase,
     ListProviderProfilesUseCase,
+    ManageAgentCredentialUseCase,
     DisableAgentUseCase,
     EnableAgentUseCase,
     { provide: AGENT_REPOSITORY, useClass: PrismaAgentRepository },
-    { provide: PROVIDER_PROFILE_REPOSITORY, useClass: PrismaProviderProfileRepository },
+    {
+      provide: PROVIDER_PROFILE_REPOSITORY,
+      useClass: PrismaProviderProfileRepository,
+    },
   ],
-  exports: [UpdateAgentPresenceUseCase, GetAgentUseCase, ListAgentsByWorkspaceUseCase],
+  exports: [
+    UpdateAgentPresenceUseCase,
+    GetAgentUseCase,
+    ListAgentsByWorkspaceUseCase,
+  ],
 })
 export class AgentModule implements OnModuleInit {
   constructor(
-    @Inject(PROVIDER_PROFILE_REPOSITORY) private readonly providerProfiles: ProviderProfileRepository,
+    @Inject(PROVIDER_PROFILE_REPOSITORY)
+    private readonly providerProfiles: ProviderProfileRepository,
   ) {}
 
   /** Idempotent: seeds the global provider catalog once, on every boot. */

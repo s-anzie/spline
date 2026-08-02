@@ -101,6 +101,13 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
     this.props.updatedAt = new Date();
   }
 
+  updateDescription(description: string): void {
+    this.ensureNotArchived();
+    const trimmed = description.trim();
+    this.props.description = trimmed || undefined;
+    this.props.updatedAt = new Date();
+  }
+
   updateRuleset(ruleset: Record<string, unknown>): void {
     this.ensureNotArchived();
     this.props.ruleset = ruleset;

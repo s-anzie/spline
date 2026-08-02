@@ -26,6 +26,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
+    // Both gateways intentionally share one Socket.IO server. Never apply
+    // human/agent JWT authentication to the dedicated machine namespace.
+    if (client.nsp?.name && client.nsp.name !== "/") return;
+
     const token = client.handshake.auth?.["token"] as string | undefined;
     const requester = token ? await this.requesterResolver.resolve(token) : null;
 
@@ -48,6 +52,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
+    if (client.nsp?.name && client.nsp.name !== "/") return;
+
     // socket.io automatically removes the socket from every room it was in.
     const requester = client.data?.requester as { type: ActorType; id: string } | undefined;
     if (requester?.type === ActorType.AGENT) {

@@ -16,7 +16,10 @@ export interface CreateMachineCredentialProps {
 }
 
 export class MachineCredential extends Entity<MachineCredentialProps> {
-  static create(props: CreateMachineCredentialProps, id?: UniqueEntityId): MachineCredential {
+  static create(
+    props: CreateMachineCredentialProps,
+    id?: UniqueEntityId,
+  ): MachineCredential {
     return new MachineCredential(
       {
         machineId: props.machineId,
@@ -50,5 +53,10 @@ export class MachineCredential extends Entity<MachineCredentialProps> {
 
   revoke(now: Date): void {
     this.props.revokedAt = now;
+  }
+
+  rotate(tokenHash: string): void {
+    this.props.tokenHash = tokenHash;
+    this.props.revokedAt = undefined;
   }
 }

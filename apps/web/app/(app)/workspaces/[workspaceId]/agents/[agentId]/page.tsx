@@ -1,0 +1,1 @@
+import { AgentDetail } from "@/features/runtime/agent-detail";export default async function AgentPage({params}:{params:Promise<{workspaceId:string;agentId:string}>}){const{workspaceId,agentId}=await params;return <AgentDetail workspaceId={workspaceId} agentId={agentId}/>}

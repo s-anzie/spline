@@ -49,7 +49,9 @@ describe("RegisterAgentUseCase", () => {
 
     expect(result.isSuccess).toBe(true);
     expect(result.value.agent.workspaceId).toBe(workspace.id.toString());
-    expect(result.value.plainTextToken.startsWith(AGENT_TOKEN_PREFIX)).toBe(true);
+    expect(result.value.plainTextToken.startsWith(AGENT_TOKEN_PREFIX)).toBe(
+      true,
+    );
   });
 
   it("publishes AgentRegistered", async () => {
@@ -63,7 +65,9 @@ describe("RegisterAgentUseCase", () => {
       displayName: "Claude worker #1",
     });
 
-    expect(eventPublisher.published.map((e) => e.eventName)).toEqual(["agent.registered"]);
+    expect(eventPublisher.published.map((e) => e.eventName)).toEqual([
+      "agent.registered",
+    ]);
   });
 
   it("fails when the workspace does not exist", async () => {
@@ -116,6 +120,41 @@ describe("RegisterAgentUseCase", () => {
       result.value.agent.id.toString(),
     );
     expect(membership?.role).toBe(WorkspaceRole.READ_ONLY_AGENT);
+    expect(result.value.agent.promptProfile["role"]).toBe("observer");
+    expect(result.value.agent.promptProfile["systemPrompt"]).toContain(
+      "read-only analysis agent",
+    );
+  });
+
+  it("assigns the contributor prompt profile by default", async () => {
+    const { workspaces, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      provider: "codex",
+      displayName: "Worker",
+    });
+    expect(result.value.agent.promptProfile["role"]).toBe("contributor");
+    expect(result.value.agent.promptProfile["systemPrompt"]).toContain(
+      "implementation agent",
+    );
+  });
+
+  it("preserves an explicitly supplied prompt profile", async () => {
+    const { workspaces, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      provider: "codex",
+      displayName: "Worker",
+      role: WorkspaceRole.AGENT_MANAGER,
+      promptProfile: { systemPrompt: "Custom" },
+    });
+    expect(result.value.agent.promptProfile).toEqual({
+      systemPrompt: "Custom",
+    });
   });
 
   it("rejects a non-agent role (e.g. OWNER)", async () => {

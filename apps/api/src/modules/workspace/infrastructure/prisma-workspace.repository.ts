@@ -11,13 +11,22 @@ export class PrismaWorkspaceRepository implements WorkspaceRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: UniqueEntityId): Promise<Workspace | null> {
-    const record = await this.prisma.workspace.findUnique({ where: { id: id.toString() } });
+    const record = await this.prisma.workspace.findUnique({
+      where: { id: id.toString() },
+    });
     return record ? WorkspaceMapper.toDomain(record) : null;
   }
 
   async findByIds(ids: string[]): Promise<Workspace[]> {
     const records = await this.prisma.workspace.findMany({
       where: { id: { in: ids } },
+      orderBy: { createdAt: "asc" },
+    });
+    return records.map(WorkspaceMapper.toDomain);
+  }
+
+  async listAll(): Promise<Workspace[]> {
+    const records = await this.prisma.workspace.findMany({
       orderBy: { createdAt: "asc" },
     });
     return records.map(WorkspaceMapper.toDomain);

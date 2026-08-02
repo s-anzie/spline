@@ -1,8 +1,10 @@
+import { ActorType } from "@repo/db";
 import {
   BadRequestException,
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -13,14 +15,22 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { JwtAuthGuard, PermissionsGuard, RequirePermission } from "../../identity/interface";
+import {
+  AuthenticatedRequester,
+  CurrentRequester,
+  JwtAuthGuard,
+  PermissionsGuard,
+  RequirePermission,
+} from "../../identity/interface";
 import { DomainError } from "../../../kernel/domain/domain-error";
 import { AgentNotEligibleError, AgentNotFoundError } from "../application/agent-application.errors";
+import { BackfillAgentPromptProfilesUseCase } from "../application/backfill-agent-prompt-profiles.use-case";
 import { DisableAgentUseCase } from "../application/disable-agent.use-case";
 import { EnableAgentUseCase } from "../application/enable-agent.use-case";
 import { ForceAgentOfflineUseCase } from "../application/force-agent-offline.use-case";
 import { GetAgentUseCase } from "../application/get-agent.use-case";
 import { ListAgentsByWorkspaceUseCase } from "../application/list-agents-by-workspace.use-case";
+import { ManageAgentCredentialUseCase } from "../application/manage-agent-credential.use-case";
 import { RegisterAgentUseCase } from "../application/register-agent.use-case";
 import { UpdateAgentDetailsUseCase } from "../application/update-agent-details.use-case";
 import { UpdateAgentHealthUseCase } from "../application/update-agent-health.use-case";
@@ -58,6 +68,14 @@ function toHttpError(error: DomainError): Error {
   return new BadRequestException(error.message);
 }
 
+function ensureHuman(requester: AuthenticatedRequester): void {
+  if (requester.type !== ActorType.HUMAN) {
+    throw new ForbiddenException(
+      "Only human users can create or manage agent credentials",
+    );
+  }
+}
+
 @Controller("workspaces/:workspaceId/agents")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AgentController {
@@ -68,6 +86,8 @@ export class AgentController {
     private readonly updateAgentDetailsUseCase: UpdateAgentDetailsUseCase,
     private readonly updateAgentHealthUseCase: UpdateAgentHealthUseCase,
     private readonly forceAgentOfflineUseCase: ForceAgentOfflineUseCase,
+    private readonly backfillAgentPromptProfilesUseCase: BackfillAgentPromptProfilesUseCase,
+    private readonly manageAgentCredentialUseCase: ManageAgentCredentialUseCase,
     private readonly disableAgentUseCase: DisableAgentUseCase,
     private readonly enableAgentUseCase: EnableAgentUseCase,
   ) {}
@@ -75,12 +95,32 @@ export class AgentController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("invite_agent")
-  async register(@Param("workspaceId") workspaceId: string, @Body() dto: RegisterAgentDto) {
-    const result = await this.registerAgentUseCase.execute({ ...dto, workspaceId });
+  async register(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: RegisterAgentDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    ensureHuman(requester);
+    const result = await this.registerAgentUseCase.execute({
+      ...dto,
+      workspaceId,
+    });
     if (result.isFailure) {
       throw toHttpError(result.error);
     }
-    return { ...toAgentResponse(result.value.agent), token: result.value.plainTextToken };
+    return {
+      ...toAgentResponse(result.value.agent),
+      token: result.value.plainTextToken,
+    };
+  }
+
+  @Post("prompt-profiles/backfill")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("manage_workspace_rules")
+  async backfillPromptProfiles(@Param("workspaceId") workspaceId: string) {
+    const agents =
+      await this.backfillAgentPromptProfilesUseCase.execute(workspaceId);
+    return { updated: agents.map(toAgentResponse), count: agents.length };
   }
 
   @Get()
@@ -102,8 +142,14 @@ export class AgentController {
 
   @Patch(":agentId")
   @RequirePermission("create_task")
-  async updateDetails(@Param("agentId") agentId: string, @Body() dto: UpdateAgentDetailsDto) {
-    const result = await this.updateAgentDetailsUseCase.execute({ agentId, ...dto });
+  async updateDetails(
+    @Param("agentId") agentId: string,
+    @Body() dto: UpdateAgentDetailsDto,
+  ) {
+    const result = await this.updateAgentDetailsUseCase.execute({
+      agentId,
+      ...dto,
+    });
     if (result.isFailure) {
       throw toHttpError(result.error);
     }
@@ -113,8 +159,14 @@ export class AgentController {
   @Post(":agentId/health")
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("create_task")
-  async updateHealth(@Param("agentId") agentId: string, @Body() dto: UpdateAgentHealthDto) {
-    const result = await this.updateAgentHealthUseCase.execute({ agentId, healthState: dto.healthState });
+  async updateHealth(
+    @Param("agentId") agentId: string,
+    @Body() dto: UpdateAgentHealthDto,
+  ) {
+    const result = await this.updateAgentHealthUseCase.execute({
+      agentId,
+      healthState: dto.healthState,
+    });
     if (result.isFailure) {
       throw toHttpError(result.error);
     }
@@ -135,7 +187,11 @@ export class AgentController {
   @Post(":agentId/disable")
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("manage_workspace_rules")
-  async disable(@Param("agentId") agentId: string) {
+  async disable(
+    @Param("agentId") agentId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    ensureHuman(requester);
     const result = await this.disableAgentUseCase.execute(agentId);
     if (result.isFailure) {
       throw toHttpError(result.error);
@@ -146,11 +202,47 @@ export class AgentController {
   @Post(":agentId/enable")
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("manage_workspace_rules")
-  async enable(@Param("agentId") agentId: string) {
+  async enable(
+    @Param("agentId") agentId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    ensureHuman(requester);
     const result = await this.enableAgentUseCase.execute(agentId);
     if (result.isFailure) {
       throw toHttpError(result.error);
     }
-    return { ...toAgentResponse(result.value.agent), token: result.value.token };
+    return {
+      ...toAgentResponse(result.value.agent),
+      token: result.value.token,
+    };
+  }
+
+  @Post(":agentId/token/rotate")
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermission("manage_workspace_rules")
+  async rotateToken(
+    @Param("workspaceId") workspaceId: string,
+    @Param("agentId") agentId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    ensureHuman(requester);
+    return {
+      token: await this.manageAgentCredentialUseCase.rotate(
+        workspaceId,
+        agentId,
+      ),
+    };
+  }
+
+  @Post(":agentId/token/revoke")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission("manage_workspace_rules")
+  async revokeToken(
+    @Param("workspaceId") workspaceId: string,
+    @Param("agentId") agentId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ): Promise<void> {
+    ensureHuman(requester);
+    await this.manageAgentCredentialUseCase.revoke(workspaceId, agentId);
   }
 }

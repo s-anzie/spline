@@ -13,6 +13,8 @@ export interface StartSessionInput {
   cwd: string;
   /** Caller-specified env only — never the daemon's own full process.env (would leak secrets to the session). */
   env?: Record<string, string>;
+  resumeSessionId?: string;
+  onProviderSessionId?: (providerSessionId: string) => void;
   onOutput: (chunk: string, stream: OutputStream) => void;
   onExit: (code: number | null, signal: NodeJS.Signals | null) => void;
 }

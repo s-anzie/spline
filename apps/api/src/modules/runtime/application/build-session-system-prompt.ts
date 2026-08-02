@@ -5,6 +5,10 @@ export interface SessionPromptWorkspace {
 
 export interface SessionPromptProvider {
   provider: string;
+  displayName?: string;
+  capabilities?: string[];
+  permissions?: string[];
+  promptProfile?: Record<string, unknown>;
 }
 
 /**
@@ -18,9 +22,105 @@ export function buildSessionSystemPrompt(
   provider: SessionPromptProvider,
 ): string {
   const rulesetJson = JSON.stringify(workspace.ruleset, null, 2);
+  const profilePrompt =
+    typeof provider.promptProfile?.["systemPrompt"] === "string"
+      ? provider.promptProfile["systemPrompt"]
+      : "No role-specific operating profile was configured.";
+  const profileJson = JSON.stringify(provider.promptProfile ?? {}, null, 2);
+  const role = provider.promptProfile?.["role"];
+  const collaboration =
+    workspace.ruleset["collaboration"] &&
+    typeof workspace.ruleset["collaboration"] === "object"
+      ? (workspace.ruleset["collaboration"] as Record<string, unknown>)
+      : {};
+  const configuredWakeMinutes =
+    role === "manager"
+      ? collaboration["managerWakeIntervalMinutes"]
+      : collaboration["contributorWakeIntervalMinutes"];
+  const wakeMinutes =
+    typeof configuredWakeMinutes === "number" && configuredWakeMinutes >= 1
+      ? Math.floor(configuredWakeMinutes)
+      : typeof collaboration["wakeIntervalMinutes"] === "number" &&
+          collaboration["wakeIntervalMinutes"] >= 1
+        ? Math.floor(collaboration["wakeIntervalMinutes"])
+        : 2;
+  const communicationProtocol =
+    role === "manager"
+      ? [
+          "Communication hierarchy:",
+          "- You are the only agent allowed to communicate decisions or questions to the human user.",
+          "- Contributors report questions through the persistent Spline question inbox.",
+          "- Before planning or answering the user, call spline_list_questions and resolve OPEN questions.",
+          "- Answer collaborators with spline_answer_question; close only after their acknowledgement.",
+          "- Escalate to the human only when you cannot resolve the question from workspace context or delegated authority.",
+          "- When human input is truly required, call spline_ask_human with the current sessionId, context, options, and your recommendation. Do not rely on plain console text alone.",
+          "- If no human objective has ever been supplied, ask the human what outcome they want before inventing work.",
+          "- Once an objective exists, decompose it into goals/tasks, assign one owner per task, launch or resume contributors when needed, monitor evidence, and validate before reporting completion.",
+        ]
+      : role === "contributor"
+        ? [
+            "Communication hierarchy:",
+            "- Never ask the human user directly. Your sole escalation contact is the workspace manager.",
+            "- When blocked by missing information, call spline_ask_manager.",
+            "- Include question, context, options, recommendation, blocking, and sessionId.",
+            "- On later wake-ups, call spline_list_questions and acknowledge consumed answers with spline_acknowledge_answer.",
+            "- After publishing a blocking question, report that you are awaiting the manager and stop the current turn cleanly.",
+          ]
+        : [
+            "Communication hierarchy:",
+            "- Route questions and recommendations to the workspace manager; never contact the human directly.",
+          ];
+  const providerWakeProtocol =
+    provider.provider === "claude"
+      ? [
+          "Provider wake-up protocol (Claude):",
+          `- At the beginning of the session, configure a recurring CronCreate job every ${wakeMinutes} minute(s) when the CronCreate tool is available.`,
+          "- The cron instruction must tell you to sync Spline state, check assigned work/questions/answers/locks/processes, act only on authorized work, report, release locks, and end cleanly when idle.",
+          "- Do not create duplicate cron jobs: list existing jobs first and reuse the matching Spline collaboration wake-up job.",
+          "- Native cron complements the Spline daemon scheduler; it does not replace Spline events, tasks, locks, or status reporting.",
+        ]
+      : provider.provider === "codex"
+        ? [
+            "Provider wake-up protocol (Codex):",
+            `- Codex exec is turn-based and has no persistent CronCreate tool. Never busy-wait or keep stdin open. Spline will resume this thread approximately every ${wakeMinutes} minute(s).`,
+            "- On every resumed wake-up, immediately run the role-specific sync/check/claim/act/report/release cycle, then exit cleanly.",
+          ]
+        : [
+            `Provider wake-up protocol: Spline will resume this agent approximately every ${wakeMinutes} minute(s); never busy-wait between turns.`,
+          ];
+  const splineToolProtocol = [
+    "Spline collaboration toolkit protocol:",
+    "- A typed MCP server named spline is attached to this provider. Prefer its spline_* tools over ad-hoc HTTP calls.",
+    "- Start every turn with spline_sync_workspace; it returns the authoritative collaboration snapshot in one call.",
+    "- The runtime provides SPLINE_API_URL, SPLINE_WORKSPACE_ID, SPLINE_AGENT_ID, and SPLINE_AGENT_TOKEN. Never print or expose the token.",
+    "- Authenticate HTTP calls with: Authorization: Bearer $SPLINE_AGENT_TOKEN.",
+    "- Sync tasks with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/tasks.",
+    "- Sync goals with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/goals.",
+    "- Discover the manager and collaborators with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/agents; identify roles from promptProfile.role.",
+    "- Sync coordination messages with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/events.",
+    "- Sync resource ownership with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/locks.",
+    "- Sync runtime state with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/processes.",
+    "- Managers may launch an assigned contributor with POST $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/agent-sessions using agentId, machineId, taskId, and a concrete instruction with acceptance criteria.",
+    "- Use spline_ask_manager, spline_answer_question, spline_acknowledge_answer, and spline_close_question for the durable question lifecycle.",
+    "- Use spline_delegate_task for coherent create/assign/launch; do not manually split delegation unless recovery requires it.",
+    "- Use task and lock endpoints as the source of truth; chat text alone never transfers ownership.",
+  ];
 
   return [
-    `You are ${provider.provider}, operating inside the Spline workspace "${workspace.name}".`,
+    `You are ${provider.displayName ?? provider.provider}, running through ${provider.provider} inside the Spline workspace "${workspace.name}".`,
+    "",
+    "Role-specific operating instructions:",
+    profilePrompt,
+    "",
+    `Declared capabilities: ${(provider.capabilities ?? []).join(", ") || "none"}.`,
+    `Additional permissions: ${(provider.permissions ?? []).join(", ") || "none"}.`,
+    "Never act outside these declared capabilities and permissions.",
+    "",
+    ...communicationProtocol,
+    "",
+    ...providerWakeProtocol,
+    "",
+    ...splineToolProtocol,
     "",
     "You must follow this work cycle for every task:",
     "1. Sync — fetch the current workspace state before acting.",
@@ -43,5 +143,8 @@ export function buildSessionSystemPrompt(
     "",
     "Workspace ruleset (must be respected):",
     rulesetJson,
+    "",
+    "Complete agent profile (use as operating guidance and output contract):",
+    profileJson,
   ].join("\n");
 }

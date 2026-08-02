@@ -18,7 +18,15 @@ const ROLE_PERMISSIONS: Record<WorkspaceRole, readonly Permission[]> = {
     "validate_decision",
     "invite_agent",
   ],
-  [WorkspaceRole.AGENT_MANAGER]: ["read_tasks", "create_task", "acquire_lock", "invite_agent"],
+  [WorkspaceRole.AGENT_MANAGER]: [
+    "read_tasks",
+    "create_task",
+    "acquire_lock",
+    "start_process",
+    "stop_process",
+    "validate_decision",
+    "invite_agent",
+  ],
   [WorkspaceRole.AGENT_CONTRIBUTOR]: [
     "read_tasks",
     "create_task",

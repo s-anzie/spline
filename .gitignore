@@ -41,3 +41,4 @@ yarn-error.log*
 *.pem
 
 specs/*.md
+machine.txt

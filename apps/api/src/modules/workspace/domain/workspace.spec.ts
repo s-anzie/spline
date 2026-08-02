@@ -24,7 +24,9 @@ describe("Workspace", () => {
   });
 
   it("rejects an empty or whitespace-only name", () => {
-    expect(() => Workspace.create({ name: "   " })).toThrow(EmptyWorkspaceNameError);
+    expect(() => Workspace.create({ name: "   " })).toThrow(
+      EmptyWorkspaceNameError,
+    );
   });
 
   it("renames the workspace and bumps updatedAt", () => {
@@ -34,7 +36,19 @@ describe("Workspace", () => {
     workspace.rename("New Name");
 
     expect(workspace.name).toBe("New Name");
-    expect(workspace.updatedAt.getTime()).toBeGreaterThanOrEqual(previousUpdatedAt.getTime());
+    expect(workspace.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      previousUpdatedAt.getTime(),
+    );
+  });
+
+  it("updates and normalizes the description", () => {
+    const workspace = Workspace.create({ name: "Project", description: "Old" });
+
+    workspace.updateDescription("  New description  ");
+    expect(workspace.description).toBe("New description");
+
+    workspace.updateDescription("   ");
+    expect(workspace.description).toBeUndefined();
   });
 
   it("updates the ruleset", () => {
@@ -57,7 +71,9 @@ describe("Workspace", () => {
   it("rejects an empty root path", () => {
     const workspace = Workspace.create({ name: "My Project" });
 
-    expect(() => workspace.setRootPath("   ")).toThrow(EmptyWorkspaceRootPathError);
+    expect(() => workspace.setRootPath("   ")).toThrow(
+      EmptyWorkspaceRootPathError,
+    );
   });
 
   it("archives the workspace and records a domain event", () => {
@@ -67,7 +83,9 @@ describe("Workspace", () => {
     workspace.archive();
 
     expect(workspace.status).toBe(WorkspaceStatus.ARCHIVED);
-    expect(workspace.domainEvents.map((e) => e.eventName)).toEqual(["workspace.archived"]);
+    expect(workspace.domainEvents.map((e) => e.eventName)).toEqual([
+      "workspace.archived",
+    ]);
   });
 
   it("cannot be archived twice", () => {

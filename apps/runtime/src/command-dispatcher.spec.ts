@@ -69,6 +69,51 @@ describe("CommandDispatcher", () => {
       "do the thing",
       "/home/bradley/spline",
       undefined,
+      undefined,
+      undefined,
+    );
+  });
+
+  it("injects the locally resolved agent credentials and protects them from command overrides", () => {
+    const processSupervisor = createFakeProcessSupervisor();
+    const sessionSupervisor = createFakeSessionSupervisor();
+    const resolveAgentEnvironment = jest.fn(() => ({
+      SPLINE_AGENT_TOKEN: "agent_safe.token",
+      SPLINE_WORKSPACE_ID: "ws-1",
+    }));
+    const dispatcher = new CommandDispatcher({
+      processSupervisor,
+      sessionSupervisor,
+      resolveAgentEnvironment,
+    });
+
+    dispatcher.dispatch({
+      id: "cmd-credentials",
+      type: "START_SESSION",
+      workspaceId: "ws-1",
+      payload: {
+        sessionId: "sess-1",
+        agentId: "agent-1",
+        provider: "codex",
+        prompt: "work",
+        cwd: "/workspace",
+        env: { SPLINE_AGENT_TOKEN: "untrusted", EXTRA: "value" },
+      },
+    });
+
+    expect(resolveAgentEnvironment).toHaveBeenCalledWith("agent-1", "ws-1");
+    expect(sessionSupervisor.start).toHaveBeenCalledWith(
+      "sess-1",
+      "codex",
+      "work",
+      "/workspace",
+      {
+        EXTRA: "value",
+        SPLINE_AGENT_TOKEN: "agent_safe.token",
+        SPLINE_WORKSPACE_ID: "ws-1",
+      },
+      undefined,
+      undefined,
     );
   });
 

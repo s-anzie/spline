@@ -11,7 +11,13 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   async findByIds(ids: string[]): Promise<Workspace[]> {
     const idSet = new Set(ids);
-    return [...this.workspaces.values()].filter((w) => idSet.has(w.id.toString()));
+    return [...this.workspaces.values()].filter((w) =>
+      idSet.has(w.id.toString()),
+    );
+  }
+
+  async listAll(): Promise<Workspace[]> {
+    return [...this.workspaces.values()];
   }
 
   async save(workspace: Workspace): Promise<void> {

@@ -38,9 +38,33 @@ export class PrismaAgentSessionRepository implements AgentSessionRepository {
     return records.map(AgentSessionMapper.toDomain);
   }
 
+  async listActiveByMachine(machineId: string): Promise<AgentSession[]> {
+    const records = await this.prisma.agentSession.findMany({
+      where: {
+        machineId,
+        status: {
+          in: [
+            AgentSessionStatus.STARTING,
+            AgentSessionStatus.RUNNING,
+            AgentSessionStatus.AWAITING_APPROVAL,
+          ],
+        },
+      },
+    });
+    return records.map(AgentSessionMapper.toDomain);
+  }
+
   async listActive(): Promise<AgentSession[]> {
     const records = await this.prisma.agentSession.findMany({
-      where: { status: { notIn: TERMINAL_STATUSES } },
+      where: {
+        status: {
+          in: [
+            AgentSessionStatus.STARTING,
+            AgentSessionStatus.RUNNING,
+            AgentSessionStatus.AWAITING_APPROVAL,
+          ],
+        },
+      },
     });
     return records.map(AgentSessionMapper.toDomain);
   }
@@ -56,6 +80,8 @@ export class PrismaAgentSessionRepository implements AgentSessionRepository {
         currentProcessId: data.currentProcessId,
         currentTaskId: data.currentTaskId,
         approvalState: data.approvalState,
+        providerSessionId: data.providerSessionId,
+        resumedFromSessionId: data.resumedFromSessionId,
         endedAt: data.endedAt,
         updatedAt: data.updatedAt,
       },

@@ -1,0 +1,1 @@
+import { ProcessDetail } from "@/features/runtime/process-detail";export default async function ProcessPage({params}:{params:Promise<{workspaceId:string;processId:string}>}){const{workspaceId,processId}=await params;return <ProcessDetail workspaceId={workspaceId} processId={processId}/>}

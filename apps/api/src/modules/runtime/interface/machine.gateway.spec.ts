@@ -22,6 +22,9 @@ function makeCollaborators() {
     reportProcessExited: { execute: jest.fn() },
     reportSessionStatus: { execute: jest.fn() },
     sendSessionHeartbeat: { execute: jest.fn() },
+    appendSessionOutput: { execute: jest.fn() },
+    reportProviderSessionId: { execute: jest.fn() },
+    reconcileMachineSessions: { execute: jest.fn() },
   };
 }
 
@@ -34,6 +37,9 @@ function makeGateway(collaborators: ReturnType<typeof makeCollaborators>) {
     collaborators.reportProcessExited as never,
     collaborators.reportSessionStatus as never,
     collaborators.sendSessionHeartbeat as never,
+    collaborators.appendSessionOutput as never,
+    collaborators.reportProviderSessionId as never,
+    collaborators.reconcileMachineSessions as never,
   );
 }
 
@@ -60,7 +66,7 @@ describe("MachineGateway", () => {
     expect(socket.disconnect).toHaveBeenCalledWith(true);
   });
 
-  it("marks the machine online and delivers pending commands on connect", async () => {
+  it("marks the machine online and waits for the client-ready heartbeat before delivery", async () => {
     const collaborators = makeCollaborators();
     collaborators.verifyMachineToken.execute.mockResolvedValue({ machineId: "machine-1" });
     const command = RuntimeCommand.enqueue(
@@ -79,13 +85,8 @@ describe("MachineGateway", () => {
       machineId: "machine-1",
       connected: true,
     });
-    expect(socket.emit).toHaveBeenCalledWith(
-      "command",
-      expect.objectContaining({ type: RuntimeCommandType.START_PROCESS, payload: { a: 1 } }),
-    );
-    expect(collaborators.commands.save).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "SENT" }),
-    );
+    expect(socket.emit).not.toHaveBeenCalledWith("command", expect.anything());
+    expect(collaborators.commands.save).not.toHaveBeenCalled();
   });
 
   it("marks the machine offline on disconnect", async () => {

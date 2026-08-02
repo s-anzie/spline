@@ -23,11 +23,18 @@ const ALLOWED_TRANSITIONS: Record<AgentSessionStatus, AgentSessionStatus[]> = {
     AgentSessionStatus.CRASHED,
   ],
   [AgentSessionStatus.RUNNING]: [
+    AgentSessionStatus.IDLE,
     AgentSessionStatus.AWAITING_APPROVAL,
     AgentSessionStatus.COMPLETED,
     AgentSessionStatus.FAILED,
     AgentSessionStatus.CRASHED,
     AgentSessionStatus.STOPPED,
+  ],
+  [AgentSessionStatus.IDLE]: [
+    AgentSessionStatus.STARTING,
+    AgentSessionStatus.COMPLETED,
+    AgentSessionStatus.STOPPED,
+    AgentSessionStatus.CRASHED,
   ],
   [AgentSessionStatus.AWAITING_APPROVAL]: [
     AgentSessionStatus.RUNNING,
@@ -35,8 +42,8 @@ const ALLOWED_TRANSITIONS: Record<AgentSessionStatus, AgentSessionStatus[]> = {
     AgentSessionStatus.CRASHED,
   ],
   [AgentSessionStatus.COMPLETED]: [],
-  [AgentSessionStatus.FAILED]: [],
-  [AgentSessionStatus.CRASHED]: [],
+  [AgentSessionStatus.FAILED]: [AgentSessionStatus.STARTING],
+  [AgentSessionStatus.CRASHED]: [AgentSessionStatus.STARTING],
   [AgentSessionStatus.STOPPED]: [],
 };
 
@@ -51,6 +58,9 @@ export interface AgentSessionProps {
   currentProcessId?: string;
   currentTaskId?: string;
   approvalState: ApprovalState;
+  providerSessionId?: string;
+  resumedFromSessionId?: string;
+  instruction?: string;
   endedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -62,6 +72,9 @@ export interface StartAgentSessionProps {
   workspaceId: string;
   machineId: string;
   currentTaskId?: string;
+  providerSessionId?: string;
+  resumedFromSessionId?: string;
+  instruction?: string;
 }
 
 export class AgentSession extends AggregateRoot<AgentSessionProps> {
@@ -76,6 +89,9 @@ export class AgentSession extends AggregateRoot<AgentSessionProps> {
         startedAt: at,
         currentTaskId: props.currentTaskId,
         approvalState: ApprovalState.NOT_REQUIRED,
+        providerSessionId: props.providerSessionId,
+        resumedFromSessionId: props.resumedFromSessionId,
+        instruction: props.instruction,
         createdAt: at,
         updatedAt: at,
       },
@@ -136,6 +152,23 @@ export class AgentSession extends AggregateRoot<AgentSessionProps> {
     return this.props.approvalState;
   }
 
+  get providerSessionId(): string | undefined {
+    return this.props.providerSessionId;
+  }
+
+  get resumedFromSessionId(): string | undefined {
+    return this.props.resumedFromSessionId;
+  }
+
+  get instruction(): string | undefined {
+    return this.props.instruction;
+  }
+
+  assignProviderSessionId(providerSessionId: string, at: Date = new Date()): void {
+    this.props.providerSessionId = providerSessionId;
+    this.props.updatedAt = at;
+  }
+
   get endedAt(): Date | undefined {
     return this.props.endedAt;
   }
@@ -161,8 +194,14 @@ export class AgentSession extends AggregateRoot<AgentSessionProps> {
     this.props.updatedAt = at;
     if (TERMINAL_STATUSES.includes(next)) {
       this.props.endedAt = at;
+    } else {
+      this.props.endedAt = undefined;
     }
     this.record(new AgentSessionStatusChanged(this.props.workspaceId, this.id.toString(), current, next));
+  }
+
+  prepareWake(at: Date = new Date()): void {
+    this.changeStatus(AgentSessionStatus.STARTING, at);
   }
 
   setApprovalState(next: ApprovalState, at: Date = new Date()): void {

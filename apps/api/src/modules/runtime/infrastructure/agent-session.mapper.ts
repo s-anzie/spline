@@ -15,6 +15,9 @@ export interface AgentSessionPersistenceData {
   currentProcessId: string | null;
   currentTaskId: string | null;
   approvalState: PrismaAgentSession["approvalState"];
+  providerSessionId: string | null;
+  resumedFromSessionId: string | null;
+  instruction: string | null;
   endedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +37,9 @@ export class AgentSessionMapper {
         currentProcessId: record.currentProcessId ?? undefined,
         currentTaskId: record.currentTaskId ?? undefined,
         approvalState: record.approvalState,
+        providerSessionId: record.providerSessionId ?? undefined,
+        resumedFromSessionId: record.resumedFromSessionId ?? undefined,
+        instruction: record.instruction ?? undefined,
         endedAt: record.endedAt ?? undefined,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -55,6 +61,9 @@ export class AgentSessionMapper {
       currentProcessId: session.currentProcessId ?? null,
       currentTaskId: session.currentTaskId ?? null,
       approvalState: session.approvalState,
+      providerSessionId: session.providerSessionId ?? null,
+      resumedFromSessionId: session.resumedFromSessionId ?? null,
+      instruction: session.instruction ?? null,
       endedAt: session.endedAt ?? null,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,

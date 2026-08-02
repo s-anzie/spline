@@ -8,6 +8,7 @@ export interface AgentSessionRepository {
   listByWorkspace(workspaceId: string): Promise<AgentSession[]>;
   /** Every non-terminal session for this agent — used to enforce "one active session per agent". */
   listActiveByAgent(agentId: string): Promise<AgentSession[]>;
+  listActiveByMachine(machineId: string): Promise<AgentSession[]>;
   /** Every non-terminal session — used by boot-time reconciliation. */
   listActive(): Promise<AgentSession[]>;
   save(session: AgentSession): Promise<void>;

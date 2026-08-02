@@ -11,4 +11,12 @@ export class StartAgentSessionDto {
   @IsOptional()
   @IsUUID()
   taskId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  resumeFromSessionId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  instruction!: string;
 }

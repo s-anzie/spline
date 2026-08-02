@@ -1,0 +1,1 @@
+import { RecordsView } from "@/features/records/records-view";export default async function DecisionsPage({params}:{params:Promise<{workspaceId:string}>}){const{workspaceId}=await params;return <RecordsView workspaceId={workspaceId} mode="decisions"/>}

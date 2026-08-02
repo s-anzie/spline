@@ -28,6 +28,14 @@ export class InMemoryAgentSessionRepository implements AgentSessionRepository {
     );
   }
 
+  async listActiveByMachine(machineId: string): Promise<AgentSession[]> {
+    return [...this.sessions.values()].filter(
+      (session) =>
+        session.machineId === machineId &&
+        !TERMINAL_STATUSES.includes(session.status),
+    );
+  }
+
   async listActive(): Promise<AgentSession[]> {
     return [...this.sessions.values()].filter((s) => !TERMINAL_STATUSES.includes(s.status));
   }

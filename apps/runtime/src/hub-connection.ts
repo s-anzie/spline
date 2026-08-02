@@ -20,6 +20,7 @@ const RECONNECTION_DELAY_MAX_MS = 15000;
 export class HubConnection {
   private socket: Socket | null = null;
   private commandHandler: ((command: CommandMessage) => void) | null = null;
+  private connectHandler: (() => void) | null = null;
 
   constructor(
     private readonly hubUrl: string,
@@ -39,6 +40,20 @@ export class HubConnection {
     socket.on("command", (command: CommandMessage) => {
       this.commandHandler?.(command);
     });
+    socket.on("connect", () => this.connectHandler?.());
+    socket.on("disconnect", (reason) => {
+      console.warn(`[runtime] disconnected from hub: ${reason}`);
+      // Socket.IO deliberately disables automatic reconnection when the
+      // server closes a namespace connection. A backend hot reload or a
+      // transient server-side rejection must not leave the daemon alive but
+      // permanently detached.
+      if (reason === "io server disconnect") {
+        setTimeout(() => socket.connect(), RECONNECTION_DELAY_MS);
+      }
+    });
+    socket.on("connect_error", (error) => {
+      console.error(`[runtime] hub connection failed: ${error.message}`);
+    });
 
     this.socket = socket;
     socket.connect();
@@ -50,6 +65,14 @@ export class HubConnection {
 
   onCommand(handler: (command: CommandMessage) => void): void {
     this.commandHandler = handler;
+  }
+
+  onConnect(handler: () => void): void {
+    this.connectHandler = handler;
+  }
+
+  reportRuntimeInventory(runningSessionIds: string[]): void {
+    this.requireSocket().emit("runtime_inventory", { runningSessionIds });
   }
 
   sendMachineHeartbeat(): void {
@@ -66,6 +89,27 @@ export class HubConnection {
 
   reportSessionStatus(sessionId: string, status: string): void {
     this.requireSocket().emit("session_status", { sessionId, status });
+  }
+
+  reportSessionOutput(
+    sessionId: string,
+    sequence: number,
+    stream: "stdout" | "stderr",
+    content: string,
+  ): void {
+    this.requireSocket().emit("session_output", {
+      sessionId,
+      sequence,
+      stream,
+      content,
+    });
+  }
+
+  reportProviderSessionId(sessionId: string, providerSessionId: string): void {
+    this.requireSocket().emit("provider_session", {
+      sessionId,
+      providerSessionId,
+    });
   }
 
   sendSessionHeartbeat(sessionId: string): void {

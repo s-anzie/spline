@@ -114,6 +114,7 @@ model Workspace {
   notifications  Notification[]
   artifacts      Artifact[]
   runtimeCommands RuntimeCommand[]
+  agentQuestions AgentQuestion[]
 
   @@map("workspaces")
 }
@@ -330,6 +331,7 @@ model LocalMachine {
 enum AgentSessionStatus {
   STARTING
   RUNNING
+  IDLE
   AWAITING_APPROVAL
   COMPLETED
   FAILED
@@ -356,6 +358,9 @@ model AgentSession {
   currentProcessId String?
   currentTaskId    String?
   approvalState    ApprovalState       @default(NOT_REQUIRED)
+  providerSessionId String?
+  resumedFromSessionId String?
+  instruction      String?
   endedAt          DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
@@ -364,11 +369,71 @@ model AgentSession {
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   machine   LocalMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
   processes Process[]
+  outputs   AgentSessionOutput[]
+  resumedFrom AgentSession? @relation("SessionResumptions", fields: [resumedFromSessionId], references: [id], onDelete: SetNull)
+  resumptions AgentSession[] @relation("SessionResumptions")
 
   @@index([workspaceId])
   @@index([agentId])
   @@index([machineId])
+  @@index([providerSessionId])
+  @@index([resumedFromSessionId])
   @@map("agent_sessions")
+}
+
+enum SessionOutputStream {
+  STDOUT
+  STDERR
+}
+
+model AgentSessionOutput {
+  id        String              @id @default(uuid())
+  sessionId String
+  sequence  Int
+  stream    SessionOutputStream
+  content   String
+  createdAt DateTime            @default(now())
+
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, createdAt])
+  @@map("agent_session_outputs")
+}
+
+enum AgentQuestionStatus {
+  OPEN
+  ANSWERED
+  ACKNOWLEDGED
+  CLOSED
+}
+
+model AgentQuestion {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  askerAgentId       String
+  managerAgentId     String
+  sessionId          String?
+  question           String
+  context            String
+  options             Json                @default("[]")
+  recommendation     String?
+  blocking           Boolean             @default(true)
+  status             AgentQuestionStatus @default(OPEN)
+  answer              String?
+  answeredByAgentId  String?
+  answeredAt          DateTime?
+  acknowledgedAt      DateTime?
+  closedAt            DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([askerAgentId, status])
+  @@index([managerAgentId, status])
+  @@map("agent_questions")
 }
 
 // ---------------------------------------------------------------------------
