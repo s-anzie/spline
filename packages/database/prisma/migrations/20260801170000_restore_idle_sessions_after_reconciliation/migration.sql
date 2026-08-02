@@ -1,0 +1,16 @@
+-- Intentional no-op.
+--
+-- This migration was scaffolded to restore AgentSession rows that boot-time
+-- reconciliation (RuntimeModule.onModuleInit, see runtime.module.ts) might
+-- incorrectly mark CRASHED when they should remain IDLE across a hub
+-- restart.
+--
+-- That scenario cannot actually occur: PrismaAgentSessionRepository.listActive()
+-- (the query reconciliation runs against) only selects sessions in
+-- STARTING / RUNNING / AWAITING_APPROVAL — IDLE is excluded by construction,
+-- so reconciliation never touches an IDLE session in the first place. There
+-- is nothing to restore.
+--
+-- Left as an explicit empty migration (rather than deleted) so the migration
+-- history stays linear and `prisma migrate deploy` has a real file to apply.
+SELECT 1;

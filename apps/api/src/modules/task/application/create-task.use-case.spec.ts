@@ -1,5 +1,8 @@
+import { GoalStatus } from "@repo/db";
+
 import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher";
 import { GetGoalUseCase } from "../../goal/application/get-goal.use-case";
+import { ListGoalsByWorkspaceUseCase } from "../../goal/application/list-goals-by-workspace.use-case";
 import { InMemoryGoalRepository } from "../../goal/application/testing/in-memory-goal.repository";
 import { Goal } from "../../goal/domain/goal";
 import { GetWorkspaceUseCase } from "../../workspace/application/get-workspace.use-case";
@@ -9,7 +12,11 @@ import { WorkspaceNotFoundError } from "../../workspace/application/workspace-ap
 import { EmptyTaskTitleError } from "../domain/task.errors";
 import { Task } from "../domain/task";
 import { CreateTaskUseCase } from "./create-task.use-case";
-import { DependencyTaskNotFoundError, GoalNotInWorkspaceError } from "./task-application.errors";
+import {
+  DependencyTaskNotFoundError,
+  GoalNotInWorkspaceError,
+  OrphanTaskNotAllowedError,
+} from "./task-application.errors";
 import { InMemoryTaskRepository } from "./testing/in-memory-task.repository";
 import { GoalProgressSyncService } from "./goal-progress-sync.service";
 import { RecalculateGoalProgressUseCase } from "../../goal/application/recalculate-goal-progress.use-case";
@@ -21,12 +28,20 @@ describe("CreateTaskUseCase", () => {
     const goals = new InMemoryGoalRepository();
     const getWorkspace = new GetWorkspaceUseCase(workspaces);
     const getGoal = new GetGoalUseCase(goals);
+    const listGoalsByWorkspace = new ListGoalsByWorkspaceUseCase(goals);
     const eventPublisher = new FakeEventPublisher();
     const goalProgressSync = new GoalProgressSyncService(
       tasks,
       new RecalculateGoalProgressUseCase(goals, eventPublisher),
     );
-    const useCase = new CreateTaskUseCase(tasks, getWorkspace, getGoal, goalProgressSync, eventPublisher);
+    const useCase = new CreateTaskUseCase(
+      tasks,
+      getWorkspace,
+      getGoal,
+      listGoalsByWorkspace,
+      goalProgressSync,
+      eventPublisher,
+    );
     return { tasks, workspaces, goals, eventPublisher, useCase };
   }
 
@@ -69,6 +84,76 @@ describe("CreateTaskUseCase", () => {
     expect(result.isSuccess).toBe(true);
     const reloadedGoal = await goals.findById(goal.id);
     expect(reloadedGoal?.progressPercentage).toBe(0);
+  });
+
+  it("fails to create an orphan task (no goalId) when the workspace has an active goal", async () => {
+    const { workspaces, goals, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const goal = Goal.create({
+      workspaceId: workspace.id.toString(),
+      title: "Ship it",
+      ownerType: "HUMAN",
+      ownerId: "user-1",
+    });
+    goal.changeStatus(GoalStatus.ACTIVE);
+    await goals.save(goal);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      title: "Some floating task",
+      createdByType: "HUMAN",
+      createdById: "user-1",
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(OrphanTaskNotAllowedError);
+  });
+
+  it("still allows an explicitly-linked task when the workspace has an active goal", async () => {
+    const { workspaces, goals, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const goal = Goal.create({
+      workspaceId: workspace.id.toString(),
+      title: "Ship it",
+      ownerType: "HUMAN",
+      ownerId: "user-1",
+    });
+    goal.changeStatus(GoalStatus.ACTIVE);
+    await goals.save(goal);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      goalId: goal.id.toString(),
+      title: "Properly linked task",
+      createdByType: "HUMAN",
+      createdById: "user-1",
+    });
+
+    expect(result.isSuccess).toBe(true);
+  });
+
+  it("allows an orphan task when the workspace has no active goal (e.g. only PLANNED ones)", async () => {
+    const { workspaces, goals, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const goal = Goal.create({
+      workspaceId: workspace.id.toString(),
+      title: "Not started yet",
+      ownerType: "HUMAN",
+      ownerId: "user-1",
+    });
+    await goals.save(goal);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      title: "Fine to be orphan for now",
+      createdByType: "HUMAN",
+      createdById: "user-1",
+    });
+
+    expect(result.isSuccess).toBe(true);
   });
 
   it("fails when the workspace does not exist", async () => {

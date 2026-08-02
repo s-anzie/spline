@@ -33,6 +33,15 @@ export class CircularTaskDependencyError extends DomainError {
   }
 }
 
+export class OrphanTaskNotAllowedError extends DomainError {
+  constructor(workspaceId: string) {
+    super(
+      "ORPHAN_TASK_NOT_ALLOWED",
+      `Workspace "${workspaceId}" has an active goal — new tasks must be linked to a goal`,
+    );
+  }
+}
+
 export class UnmetTaskDependenciesError extends DomainError {
   constructor(taskId: string, unmetDependencyTaskIds: string[]) {
     super(

@@ -7,6 +7,7 @@ import { ChangeTaskStatusUseCase } from "./application/change-task-status.use-ca
 import { CreateTaskUseCase } from "./application/create-task.use-case";
 import { GetTaskUseCase } from "./application/get-task.use-case";
 import { GoalProgressSyncService } from "./application/goal-progress-sync.service";
+import { LinkTaskToGoalUseCase } from "./application/link-task-to-goal.use-case";
 import { ListTasksByWorkspaceUseCase } from "./application/list-tasks-by-workspace.use-case";
 import { RejectTaskUseCase } from "./application/reject-task.use-case";
 import { ReportTaskBlockerUseCase } from "./application/report-task-blocker.use-case";
@@ -24,6 +25,7 @@ import { TaskController } from "./interface/task.controller";
     GetTaskUseCase,
     ListTasksByWorkspaceUseCase,
     UpdateTaskDetailsUseCase,
+    LinkTaskToGoalUseCase,
     AssignTaskUseCase,
     ChangeTaskStatusUseCase,
     ValidateTaskUseCase,

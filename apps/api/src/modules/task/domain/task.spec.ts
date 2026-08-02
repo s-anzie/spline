@@ -3,6 +3,7 @@ import { Priority, TaskStatus, ValidationState } from "@repo/db";
 import { Task } from "./task";
 import {
   EmptyBlockerReasonError,
+  EmptyTaskGoalIdError,
   EmptyTaskTitleError,
   InvalidTaskStatusTransitionError,
   SelfTaskDependencyError,
@@ -118,6 +119,39 @@ describe("Task", () => {
     task.changeStatus(TaskStatus.IN_REVIEW, HUMAN_1);
 
     expect(task.validationState).toBe(ValidationState.PENDING);
+  });
+
+  describe("linkToGoal", () => {
+    it("links an orphan task to a goal and records TaskLinkedToGoal", () => {
+      const task = createTask();
+      expect(task.goalId).toBeUndefined();
+      task.clearEvents();
+
+      task.linkToGoal("goal-1", HUMAN_1);
+
+      expect(task.goalId).toBe("goal-1");
+      expect(task.domainEvents.map((e) => e.eventName)).toEqual(["task.linked_to_goal"]);
+    });
+
+    it("re-links a task already attached to a different goal", () => {
+      const task = Task.create({
+        workspaceId: "workspace-1",
+        goalId: "goal-1",
+        title: "Write the login endpoint",
+        createdByType: "HUMAN",
+        createdById: "user-1",
+      });
+
+      task.linkToGoal("goal-2", HUMAN_1);
+
+      expect(task.goalId).toBe("goal-2");
+    });
+
+    it("rejects an empty goal id", () => {
+      const task = createTask();
+
+      expect(() => task.linkToGoal("   ", HUMAN_1)).toThrow(EmptyTaskGoalIdError);
+    });
   });
 
   describe("reportBlocker", () => {

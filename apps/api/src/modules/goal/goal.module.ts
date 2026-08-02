@@ -29,6 +29,6 @@ import { GoalController } from "./interface/goal.controller";
     ReportGoalBlockerUseCase,
     { provide: GOAL_REPOSITORY, useClass: PrismaGoalRepository },
   ],
-  exports: [GetGoalUseCase, RecalculateGoalProgressUseCase],
+  exports: [GetGoalUseCase, ListGoalsByWorkspaceUseCase, RecalculateGoalProgressUseCase],
 })
 export class GoalModule {}

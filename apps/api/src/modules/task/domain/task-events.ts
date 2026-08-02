@@ -60,6 +60,20 @@ export class TaskAssigned extends DomainEvent {
   }
 }
 
+export class TaskLinkedToGoal extends DomainEvent {
+  constructor(
+    workspaceId: string,
+    public readonly taskId: string,
+    public readonly goalId: string,
+  ) {
+    super(workspaceId);
+  }
+
+  get eventName(): string {
+    return "task.linked_to_goal";
+  }
+}
+
 export class TaskBlocked extends DomainEvent {
   constructor(
     workspaceId: string,

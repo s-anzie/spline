@@ -114,4 +114,15 @@ describe("PrismaTaskRepository (integration)", () => {
     expect(found?.updatedByType).toBe("HUMAN");
     expect(found?.updatedById).toBe("user-1");
   });
+
+  it("persists a goalId change (linking an orphan task) on save", async () => {
+    const task = Task.create({ workspaceId, title: "Orphan task", createdByType: "HUMAN", createdById: "u1" });
+    await repository.save(task);
+
+    task.linkToGoal(goalId, { type: "HUMAN", id: "user-1" });
+    await repository.save(task);
+
+    const found = await repository.findById(task.id);
+    expect(found?.goalId).toBe(goalId);
+  });
 });

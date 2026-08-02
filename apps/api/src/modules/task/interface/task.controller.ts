@@ -26,12 +26,14 @@ import { AssignTaskUseCase } from "../application/assign-task.use-case";
 import { ChangeTaskStatusUseCase } from "../application/change-task-status.use-case";
 import { CreateTaskUseCase } from "../application/create-task.use-case";
 import { GetTaskUseCase } from "../application/get-task.use-case";
+import { LinkTaskToGoalUseCase } from "../application/link-task-to-goal.use-case";
 import { ListTasksByWorkspaceUseCase } from "../application/list-tasks-by-workspace.use-case";
 import { RejectTaskUseCase } from "../application/reject-task.use-case";
 import { ReportTaskBlockerUseCase } from "../application/report-task-blocker.use-case";
 import {
   DependencyTaskNotFoundError,
   GoalNotInWorkspaceError,
+  OrphanTaskNotAllowedError,
   TaskNotFoundError,
   UnmetTaskDependenciesError,
 } from "../application/task-application.errors";
@@ -40,13 +42,16 @@ import { ValidateTaskUseCase } from "../application/validate-task.use-case";
 import { Task } from "../domain/task";
 import {
   EmptyBlockerReasonError,
+  EmptyTaskGoalIdError,
   InvalidTaskStatusTransitionError,
   SelfTaskDependencyError,
   TaskValidationNotPendingError,
 } from "../domain/task.errors";
+import { GoalNotFoundError } from "../../goal/application/goal-application.errors";
 import { AssignTaskDto } from "./dto/assign-task.dto";
 import { ChangeTaskStatusDto } from "./dto/change-task-status.dto";
 import { CreateTaskDto } from "./dto/create-task.dto";
+import { LinkTaskToGoalDto } from "./dto/link-task-to-goal.dto";
 import { ReportTaskBlockerDto } from "./dto/report-task-blocker.dto";
 import { UpdateTaskDetailsDto } from "./dto/update-task-details.dto";
 
@@ -74,20 +79,26 @@ function toTaskResponse(task: Task) {
 }
 
 function toHttpError(error: DomainError): Error {
-  if (error instanceof TaskNotFoundError || error instanceof GoalNotInWorkspaceError) {
+  if (
+    error instanceof TaskNotFoundError ||
+    error instanceof GoalNotInWorkspaceError ||
+    error instanceof GoalNotFoundError
+  ) {
     return new NotFoundException(error.message);
   }
   if (
     error instanceof InvalidTaskStatusTransitionError ||
     error instanceof TaskValidationNotPendingError ||
-    error instanceof UnmetTaskDependenciesError
+    error instanceof UnmetTaskDependenciesError ||
+    error instanceof OrphanTaskNotAllowedError
   ) {
     return new ConflictException(error.message);
   }
   if (
     error instanceof DependencyTaskNotFoundError ||
     error instanceof SelfTaskDependencyError ||
-    error instanceof EmptyBlockerReasonError
+    error instanceof EmptyBlockerReasonError ||
+    error instanceof EmptyTaskGoalIdError
   ) {
     return new BadRequestException(error.message);
   }
@@ -102,6 +113,7 @@ export class TaskController {
     private readonly getTaskUseCase: GetTaskUseCase,
     private readonly listTasksByWorkspaceUseCase: ListTasksByWorkspaceUseCase,
     private readonly updateTaskDetailsUseCase: UpdateTaskDetailsUseCase,
+    private readonly linkTaskToGoalUseCase: LinkTaskToGoalUseCase,
     private readonly assignTaskUseCase: AssignTaskUseCase,
     private readonly changeTaskStatusUseCase: ChangeTaskStatusUseCase,
     private readonly validateTaskUseCase: ValidateTaskUseCase,
@@ -156,6 +168,26 @@ export class TaskController {
     const result = await this.updateTaskDetailsUseCase.execute({
       taskId,
       ...dto,
+      updatedByType: requester.type,
+      updatedById: requester.id,
+    });
+    if (result.isFailure) {
+      throw toHttpError(result.error);
+    }
+    return toTaskResponse(result.value);
+  }
+
+  @Post(":taskId/link-goal")
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermission("create_task")
+  async linkToGoal(
+    @Param("taskId") taskId: string,
+    @Body() dto: LinkTaskToGoalDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    const result = await this.linkTaskToGoalUseCase.execute({
+      taskId,
+      goalId: dto.goalId,
       updatedByType: requester.type,
       updatedById: requester.id,
     });

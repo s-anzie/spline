@@ -34,3 +34,9 @@ export class EmptyBlockerReasonError extends DomainError {
     super("EMPTY_BLOCKER_REASON", "A blocker must have a non-empty reason");
   }
 }
+
+export class EmptyTaskGoalIdError extends DomainError {
+  constructor() {
+    super("EMPTY_TASK_GOAL_ID", "A task cannot be linked to an empty goal id");
+  }
+}

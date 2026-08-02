@@ -2,9 +2,17 @@ import { ActorType, Priority, TaskStatus, ValidationState } from "@repo/db";
 
 import { AggregateRoot } from "../../../kernel/domain/aggregate-root";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
-import { TaskAssigned, TaskBlocked, TaskCompleted, TaskCreated, TaskStatusChanged } from "./task-events";
+import {
+  TaskAssigned,
+  TaskBlocked,
+  TaskCompleted,
+  TaskCreated,
+  TaskLinkedToGoal,
+  TaskStatusChanged,
+} from "./task-events";
 import {
   EmptyBlockerReasonError,
+  EmptyTaskGoalIdError,
   EmptyTaskTitleError,
   InvalidTaskStatusTransitionError,
   SelfTaskDependencyError,
@@ -200,6 +208,16 @@ export class Task extends AggregateRoot<TaskProps> {
       this.props.dependencies = props.dependencies;
     }
     this.touch(updatedBy);
+  }
+
+  linkToGoal(goalId: string, updatedBy: Actor): void {
+    const trimmed = goalId.trim();
+    if (!trimmed) {
+      throw new EmptyTaskGoalIdError();
+    }
+    this.props.goalId = trimmed;
+    this.touch(updatedBy);
+    this.record(new TaskLinkedToGoal(this.props.workspaceId, this.id.toString(), trimmed));
   }
 
   assign(assigneeType: ActorType, assigneeId: string, updatedBy: Actor): void {

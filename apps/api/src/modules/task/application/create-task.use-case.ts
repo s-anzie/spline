@@ -1,16 +1,21 @@
-import { ActorType, Priority } from "@repo/db";
+import { ActorType, GoalStatus, Priority } from "@repo/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { EVENT_PUBLISHER, EventPublisher } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
 import { GetGoalUseCase } from "../../goal/application/get-goal.use-case";
+import { ListGoalsByWorkspaceUseCase } from "../../goal/application/list-goals-by-workspace.use-case";
 import { GetWorkspaceUseCase } from "../../workspace/application/get-workspace.use-case";
 import { WorkspaceNotFoundError } from "../../workspace/application/workspace-application.errors";
 import { TASK_REPOSITORY, TaskRepository } from "../domain/ports/task.repository.port";
 import { Task } from "../domain/task";
 import { EmptyTaskTitleError } from "../domain/task.errors";
 import { GoalProgressSyncService } from "./goal-progress-sync.service";
-import { DependencyTaskNotFoundError, GoalNotInWorkspaceError } from "./task-application.errors";
+import {
+  DependencyTaskNotFoundError,
+  GoalNotInWorkspaceError,
+  OrphanTaskNotAllowedError,
+} from "./task-application.errors";
 
 export interface CreateTaskInput {
   workspaceId: string;
@@ -26,6 +31,7 @@ export interface CreateTaskInput {
 export type CreateTaskError =
   | WorkspaceNotFoundError
   | GoalNotInWorkspaceError
+  | OrphanTaskNotAllowedError
   | DependencyTaskNotFoundError
   | EmptyTaskTitleError;
 
@@ -35,6 +41,7 @@ export class CreateTaskUseCase {
     @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
     private readonly getWorkspace: GetWorkspaceUseCase,
     private readonly getGoal: GetGoalUseCase,
+    private readonly listGoalsByWorkspace: ListGoalsByWorkspaceUseCase,
     private readonly goalProgressSync: GoalProgressSyncService,
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
@@ -52,6 +59,11 @@ export class CreateTaskUseCase {
       }
       if (goalResult.value.workspaceId !== input.workspaceId) {
         return Result.fail(new GoalNotInWorkspaceError(input.goalId, input.workspaceId));
+      }
+    } else {
+      const workspaceGoals = await this.listGoalsByWorkspace.execute(input.workspaceId);
+      if (workspaceGoals.some((goal) => goal.status === GoalStatus.ACTIVE)) {
+        return Result.fail(new OrphanTaskNotAllowedError(input.workspaceId));
       }
     }
 
