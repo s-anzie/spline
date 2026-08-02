@@ -1,5 +1,5 @@
 import { Agent } from "../domain/agent";
-import { EmptyAgentDisplayNameError } from "../domain/agent.errors";
+import { EmptyAgentDisplayNameError, EmptyAgentProviderError } from "../domain/agent.errors";
 import { AgentNotFoundError } from "./agent-application.errors";
 import { UpdateAgentDetailsUseCase } from "./update-agent-details.use-case";
 import { InMemoryAgentRepository } from "./testing/in-memory-agent.repository";
@@ -41,5 +41,29 @@ describe("UpdateAgentDetailsUseCase", () => {
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toBeInstanceOf(EmptyAgentDisplayNameError);
+  });
+
+  it("updates the provider of an existing agent", async () => {
+    const agents = new InMemoryAgentRepository();
+    const agent = Agent.create({ workspaceId: "w1", provider: "claude", displayName: "Worker" });
+    await agents.save(agent);
+    const useCase = new UpdateAgentDetailsUseCase(agents);
+
+    const result = await useCase.execute({ agentId: agent.id.toString(), provider: "codex" });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.provider).toBe("codex");
+  });
+
+  it("fails when updating to an empty provider", async () => {
+    const agents = new InMemoryAgentRepository();
+    const agent = Agent.create({ workspaceId: "w1", provider: "claude", displayName: "Worker" });
+    await agents.save(agent);
+    const useCase = new UpdateAgentDetailsUseCase(agents);
+
+    const result = await useCase.execute({ agentId: agent.id.toString(), provider: "   " });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(EmptyAgentProviderError);
   });
 });

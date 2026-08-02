@@ -64,6 +64,20 @@ describe("Agent", () => {
     expect(() => agent.updateDetails({ displayName: "   " })).toThrow(EmptyAgentDisplayNameError);
   });
 
+  it("updates its provider", () => {
+    const agent = registerAgent();
+
+    agent.updateDetails({ provider: "codex" });
+
+    expect(agent.provider).toBe("codex");
+  });
+
+  it("rejects updating to an empty provider", () => {
+    const agent = registerAgent();
+
+    expect(() => agent.updateDetails({ provider: "   " })).toThrow(EmptyAgentProviderError);
+  });
+
   describe("changeStatus", () => {
     it("goes OFFLINE -> ONLINE and records lastSeenAt", () => {
       const agent = registerAgent();

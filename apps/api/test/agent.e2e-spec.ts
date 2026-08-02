@@ -64,6 +64,19 @@ describe("Agent (e2e)", () => {
       .expect(200);
     expect(updated.body.displayName).toBe("Renamed worker");
 
+    const reprovisioned = await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}/agents/${agentId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ provider: "codex" })
+      .expect(200);
+    expect(reprovisioned.body.provider).toBe("codex");
+
+    await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}/agents/${agentId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ provider: "   " })
+      .expect(400);
+
     const withHealth = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/agents/${agentId}/health`)
       .set("Authorization", `Bearer ${token}`)

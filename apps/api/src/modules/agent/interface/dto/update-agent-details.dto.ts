@@ -4,6 +4,11 @@ export class UpdateAgentDetailsDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  provider?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   displayName?: string;
 
   @IsOptional()

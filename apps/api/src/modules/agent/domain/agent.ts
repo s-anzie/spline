@@ -51,6 +51,7 @@ export interface RegisterAgentProps {
 }
 
 export interface UpdateAgentDetailsProps {
+  provider?: string;
   displayName?: string;
   capabilities?: string[];
   promptProfile?: Record<string, unknown>;
@@ -156,6 +157,9 @@ export class Agent extends AggregateRoot<AgentProps> {
   }
 
   updateDetails(props: UpdateAgentDetailsProps): void {
+    if (props.provider !== undefined) {
+      this.props.provider = normalizeProvider(props.provider);
+    }
     if (props.displayName !== undefined) {
       this.props.displayName = normalizeDisplayName(props.displayName);
     }
