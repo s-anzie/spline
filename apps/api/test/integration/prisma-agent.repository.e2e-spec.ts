@@ -80,6 +80,17 @@ describe("PrismaAgentRepository (integration)", () => {
     expect(found?.lastSeenAt).not.toBeNull();
   });
 
+  it("persists a provider change on save", async () => {
+    const agent = Agent.create({ workspaceId, provider: "claude", displayName: "Worker" });
+    await repository.save(agent);
+
+    agent.updateDetails({ provider: "codex" });
+    await repository.save(agent);
+
+    const found = await repository.findById(agent.id);
+    expect(found?.provider).toBe("codex");
+  });
+
   it("persists disable/enable (disabledAt) changes on save", async () => {
     const agent = Agent.create({ workspaceId, provider: "claude", displayName: "Worker" });
     await repository.save(agent);

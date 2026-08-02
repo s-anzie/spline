@@ -29,6 +29,7 @@ export class PrismaAgentRepository implements AgentRepository {
       where: { id: data.id },
       create: data,
       update: {
+        provider: data.provider,
         displayName: data.displayName,
         capabilities: data.capabilities,
         status: data.status,
