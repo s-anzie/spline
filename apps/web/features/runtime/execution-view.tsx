@@ -216,7 +216,12 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
             {filteredSessions.map((session) => {
               const agent = agents.find((a) => a.id === session.agentId);
               const task = tasks.find((t) => t.id === session.currentTaskId);
-              const canResumeNative = Boolean(session.providerSessionId);
+              // A session started under a provider the agent has since been
+              // switched away from can never be resumed — its providerSessionId
+              // belongs to a different CLI. Offer a fresh start instead.
+              const canResumeNative =
+                Boolean(session.providerSessionId) &&
+                session.provider === agent?.provider;
               return (
                 <Card
                   key={session.id}
@@ -416,6 +421,17 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
               const session = sessions.find((item) => item.id === selectedSessionId);
               if (!session) return null;
               const agent = agents.find((item) => item.id === session.agentId);
+              // Same constraint as canResumeNative above: an IDLE session's
+              // native conversation belongs to whatever provider was active
+              // when it started. If the agent's provider has since changed,
+              // there is nothing left to reply to — only a fresh session can
+              // move this agent forward.
+              const canResumeIdle =
+                Boolean(session.providerSessionId) &&
+                session.provider === agent?.provider;
+              const isIdleManagerTurn =
+                session.status === "IDLE" &&
+                agent?.promptProfile["role"] === "manager";
               return (
                 <SessionConsole
                   workspaceId={workspaceId}
@@ -423,9 +439,11 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                   agentName={agent?.displayName ?? session.agentId}
                   status={session.status}
                   turns={selectedTurns}
-                  canReply={
-                    session.status === "IDLE" &&
-                    agent?.promptProfile["role"] === "manager"
+                  canReply={isIdleManagerTurn && canResumeIdle}
+                  disabledHint={
+                    isIdleManagerTurn && !canResumeIdle
+                      ? "Le provider de cet agent a changé depuis cette conversation — relancez une nouvelle session pour continuer."
+                      : undefined
                   }
                   sending={pendingAction === "session:start"}
                   onSend={async (instruction) => {
@@ -434,7 +452,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                       machineId: session.machineId,
                       taskId: session.currentTaskId ?? undefined,
                       instruction,
-                      ...(session.providerSessionId
+                      ...(canResumeIdle
                         ? { resumeFromSessionId: session.id }
                         : {}),
                     });

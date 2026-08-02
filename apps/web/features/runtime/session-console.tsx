@@ -14,6 +14,7 @@ export function SessionConsole({
   status,
   turns,
   canReply,
+  disabledHint,
   sending,
   onSend,
   onClose,
@@ -24,6 +25,7 @@ export function SessionConsole({
   status: string;
   turns: AgentSession[];
   canReply: boolean;
+  disabledHint?: string;
   sending: boolean;
   onSend: (instruction: string) => Promise<void>;
   onClose: () => void;
@@ -232,7 +234,7 @@ export function SessionConsole({
             placeholder={
               canReply
                 ? "Répondre ou donner une nouvelle instruction au manager…"
-                : "Le manager termine son traitement avant le prochain message…"
+                : (disabledHint ?? "Le manager termine son traitement avant le prochain message…")
             }
             className="min-h-10 flex-1 resize-none bg-transparent px-2 py-1.5 text-[10px] outline-none placeholder:text-muted-foreground"
           />

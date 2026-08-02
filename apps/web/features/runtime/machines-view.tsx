@@ -201,7 +201,7 @@ export function MachinesView() {
           ))}
         </select>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {machines.map((machine) => (
           <Card
             key={machine.id}

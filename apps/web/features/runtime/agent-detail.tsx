@@ -62,6 +62,7 @@ export function AgentDetail({
 }) {
   const {
     agents,
+    providers,
     sessions,
     loading,
     pendingAction,
@@ -73,6 +74,7 @@ export function AgentDetail({
   const agent = agents.find((item) => item.id === agentId);
   const authToken = useAuthStore((state) => state.token);
   const [editing, setEditing] = useState(false);
+  const [provider, setProvider] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [capabilities, setCapabilities] = useState("");
   const [permissions, setPermissions] = useState("");
@@ -89,6 +91,7 @@ export function AgentDetail({
   }, [load, workspaceId]);
   useEffect(() => {
     if (!agent || editing) return;
+    setProvider(agent.provider);
     setDisplayName(agent.displayName);
     setCapabilities(agent.capabilities.join(", "));
     setPermissions(agent.permissions.join(", "));
@@ -107,7 +110,8 @@ export function AgentDetail({
   const nextPermissions = parseList(permissions);
   const dirty =
     !!agent &&
-    (displayName.trim() !== agent.displayName ||
+    (provider !== agent.provider ||
+      displayName.trim() !== agent.displayName ||
       !sameList(nextCapabilities, agent.capabilities) ||
       !sameList(nextPermissions, agent.permissions) ||
       (parsedPrompt !== null &&
@@ -115,6 +119,7 @@ export function AgentDetail({
 
   function cancel() {
     if (!agent) return;
+    setProvider(agent.provider);
     setDisplayName(agent.displayName);
     setCapabilities(agent.capabilities.join(", "));
     setPermissions(agent.permissions.join(", "));
@@ -123,9 +128,11 @@ export function AgentDetail({
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!agent || !displayName.trim() || !parsedPrompt || !dirty) return;
+    if (!agent || !provider || !displayName.trim() || !parsedPrompt || !dirty)
+      return;
     try {
       await updateAgent(agentId, {
+        provider,
         displayName: displayName.trim(),
         capabilities: nextCapabilities,
         permissions: nextPermissions,
@@ -459,15 +466,34 @@ export function AgentDetail({
           <CardContent>
             {editing ? (
               <form onSubmit={submit} className="grid gap-5">
-                <label className="grid gap-2 text-xs">
-                  Nom affiché
-                  <Input
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    autoFocus
-                    required
-                  />
-                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-2 text-xs">
+                    Nom affiché
+                    <Input
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </label>
+                  <label className="grid gap-2 text-xs">
+                    Provider
+                    <select
+                      value={provider}
+                      onChange={(event) => setProvider(event.target.value)}
+                      required
+                      className="h-9 rounded-lg border border-white/10 bg-[#191715] px-3"
+                    >
+                      {!providers.some((item) => item.provider === provider) &&
+                        provider && <option value={provider}>{provider}</option>}
+                      {providers.map((item) => (
+                        <option key={item.id} value={item.provider}>
+                          {item.provider}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <label className="grid gap-2 text-xs">
                   Capacités
                   <Input
@@ -510,7 +536,10 @@ export function AgentDetail({
                     type="submit"
                     loading={pendingAction === `agent:${agent.id}:update`}
                     disabled={
-                      !dirty || !displayName.trim() || parsedPrompt === null
+                      !dirty ||
+                      !provider ||
+                      !displayName.trim() ||
+                      parsedPrompt === null
                     }
                     className="bg-[#f47b64] text-[#241614]"
                   >
