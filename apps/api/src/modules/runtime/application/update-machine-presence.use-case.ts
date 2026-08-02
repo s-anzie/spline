@@ -21,7 +21,10 @@ export class UpdateMachinePresenceUseCase {
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
 
-  async execute(input: UpdateMachinePresenceInput): Promise<Result<LocalMachine, MachineNotFoundError>> {
+  async execute(
+    input: UpdateMachinePresenceInput,
+    at: Date = new Date(),
+  ): Promise<Result<LocalMachine, MachineNotFoundError>> {
     const machine = await this.machines.findById(UniqueEntityId.create(input.machineId));
     if (!machine) {
       return Result.fail(new MachineNotFoundError(input.machineId));
@@ -29,10 +32,12 @@ export class UpdateMachinePresenceUseCase {
 
     if (input.connected) {
       if (machine.runtimeStatus !== LocalMachineRuntimeStatus.ONLINE) {
-        machine.changeRuntimeStatus(LocalMachineRuntimeStatus.ONLINE);
+        machine.changeRuntimeStatus(LocalMachineRuntimeStatus.ONLINE, at);
+      } else {
+        machine.recordHeartbeat(at);
       }
     } else if (machine.runtimeStatus !== LocalMachineRuntimeStatus.OFFLINE) {
-      machine.changeRuntimeStatus(LocalMachineRuntimeStatus.OFFLINE);
+      machine.changeRuntimeStatus(LocalMachineRuntimeStatus.OFFLINE, at);
     }
 
     await this.machines.save(machine);

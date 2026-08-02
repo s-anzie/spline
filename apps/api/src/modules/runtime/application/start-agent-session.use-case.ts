@@ -131,7 +131,8 @@ export class StartAgentSessionUseCase {
       if (
         (!source.isTerminal && !reusableStatus) ||
         (source.isTerminal && !reusableStatus) ||
-        !source.providerSessionId
+        !source.providerSessionId ||
+        source.provider !== agent.provider
       ) {
         return Result.fail(
           new AgentSessionNotResumableError(input.resumeFromSessionId),

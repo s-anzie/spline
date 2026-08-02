@@ -31,6 +31,20 @@ describe("UpdateMachinePresenceUseCase", () => {
     expect(result.isSuccess).toBe(true);
   });
 
+  it("refreshes lastSeenAt on every heartbeat, even while already ONLINE", async () => {
+    const machines = new InMemoryLocalMachineRepository();
+    const machine = LocalMachine.register({ hostname: "bradley-dev", os: "linux" });
+    machine.changeRuntimeStatus(LocalMachineRuntimeStatus.ONLINE, new Date("2026-08-01T00:00:00Z"));
+    await machines.save(machine);
+    const useCase = new UpdateMachinePresenceUseCase(machines, new FakeEventPublisher());
+    const later = new Date("2026-08-02T00:00:00Z");
+
+    await useCase.execute({ machineId: machine.id.toString(), connected: true }, later);
+
+    const found = await machines.findById(machine.id);
+    expect(found?.lastSeenAt).toEqual(later);
+  });
+
   it("marks an ONLINE machine OFFLINE on disconnect", async () => {
     const machines = new InMemoryLocalMachineRepository();
     const machine = LocalMachine.register({ hostname: "bradley-dev", os: "linux" });

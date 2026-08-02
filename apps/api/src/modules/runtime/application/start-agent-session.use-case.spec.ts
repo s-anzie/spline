@@ -11,8 +11,10 @@ import { Workspace } from "../../workspace/domain/workspace";
 import { LocalMachine } from "../domain/local-machine";
 import { StartAgentSessionUseCase } from "./start-agent-session.use-case";
 import { AgentNotEligibleError } from "../../agent/application/agent-application.errors";
+import { AgentSession } from "../domain/agent-session";
 import {
   AgentAlreadyHasActiveSessionError,
+  AgentSessionNotResumableError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
   WorkspaceRootPathNotConfiguredError,
@@ -138,6 +140,64 @@ describe("StartAgentSessionUseCase", () => {
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toBeInstanceOf(AgentAlreadyHasActiveSessionError);
+  });
+
+  it("resumes an idle session recorded under the agent's current provider", async () => {
+    const { workspace, agent, machine, sessions, commands, useCase } = await setup();
+    const source = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: agent.provider,
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        providerSessionId: "claude-session-abc",
+      },
+      NOW,
+    );
+    source.changeStatus(AgentSessionStatus.RUNNING);
+    source.changeStatus(AgentSessionStatus.IDLE);
+    await sessions.save(source);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      resumeFromSessionId: source.id.toString(),
+    });
+
+    expect(result.isSuccess).toBe(true);
+    const pending = await commands.listPendingByMachine(machine.id.toString());
+    const payload = pending[pending.length - 1]?.payload as { resumeProviderSessionId?: string };
+    expect(payload.resumeProviderSessionId).toBe("claude-session-abc");
+  });
+
+  it("refuses to resume a session recorded under a different provider than the agent's current one", async () => {
+    const { workspace, agent, machine, sessions, useCase } = await setup();
+    // The agent was switched from "codex" to "claude" after this session ran —
+    // its providerSessionId is a codex thread id, meaningless to the claude CLI.
+    const source = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: "codex",
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        providerSessionId: "codex-thread-xyz",
+      },
+      NOW,
+    );
+    source.changeStatus(AgentSessionStatus.FAILED);
+    await sessions.save(source);
+    expect(agent.provider).toBe("claude");
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      resumeFromSessionId: source.id.toString(),
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(AgentSessionNotResumableError);
   });
 
   it("fails when the agent is disabled", async () => {

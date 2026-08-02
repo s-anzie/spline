@@ -105,10 +105,12 @@ function main(): void {
   const stopWatching = process.env["MACHINE_TOKEN"]
     ? () => undefined
     : watchRuntimeConfig(applyConfig);
-  const heartbeat = setInterval(
-    () => hub?.sendMachineHeartbeat(),
-    HEARTBEAT_INTERVAL_MS,
-  );
+  const heartbeat = setInterval(() => {
+    hub?.sendMachineHeartbeat();
+    for (const sessionId of sessionSupervisor.runningSessionIds()) {
+      hub?.sendSessionHeartbeat(sessionId);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
   const shutdown = () => {
     clearInterval(heartbeat);
     void stopWatching();
