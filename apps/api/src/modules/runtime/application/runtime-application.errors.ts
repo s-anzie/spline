@@ -36,6 +36,15 @@ export class MachineNotLinkedToWorkspaceError extends DomainError {
   }
 }
 
+export class MachineNotConnectedError extends DomainError {
+  constructor(machineId: string) {
+    super(
+      "MACHINE_NOT_CONNECTED",
+      `Machine "${machineId}" has not sent a heartbeat recently and cannot receive new commands`,
+    );
+  }
+}
+
 export class WorkspaceRootPathNotConfiguredError extends DomainError {
   constructor(workspaceId: string) {
     super(

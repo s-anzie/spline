@@ -1,4 +1,4 @@
-import { AgentSessionStatus, RuntimeCommandType } from "@repo/db";
+import { AgentSessionStatus, LocalMachineRuntimeStatus, RuntimeCommandType } from "@repo/db";
 
 import { FakeClock } from "../../../kernel/testing/fake-clock";
 import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher";
@@ -15,6 +15,7 @@ import { AgentSession } from "../domain/agent-session";
 import {
   AgentAlreadyHasActiveSessionError,
   AgentSessionNotResumableError,
+  MachineNotConnectedError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
   WorkspaceRootPathNotConfiguredError,
@@ -122,6 +123,43 @@ describe("StartAgentSessionUseCase", () => {
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toBeInstanceOf(MachineNotLinkedToWorkspaceError);
+  });
+
+  it("fails when the machine claims to be online but hasn't heartbeated recently", async () => {
+    const { workspace, agent, machine, machines, useCase } = await setup();
+    // Went ONLINE nearly a minute before NOW and never heartbeated again —
+    // its socket is dead even though the DB still says ONLINE.
+    machine.changeRuntimeStatus(
+      LocalMachineRuntimeStatus.ONLINE,
+      new Date(NOW.getTime() - 60_000),
+    );
+    await machines.save(machine);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBeInstanceOf(MachineNotConnectedError);
+  });
+
+  it("allows a machine that heartbeated recently", async () => {
+    const { workspace, agent, machine, machines, useCase } = await setup();
+    machine.changeRuntimeStatus(
+      LocalMachineRuntimeStatus.ONLINE,
+      new Date(NOW.getTime() - 5_000),
+    );
+    await machines.save(machine);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+    });
+
+    expect(result.isSuccess).toBe(true);
   });
 
   it("fails when the agent already has an active session", async () => {

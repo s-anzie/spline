@@ -4,3 +4,4 @@ export { JwtAuthGuard } from "./jwt-auth.guard";
 export { PermissionsGuard } from "./permissions.guard";
 export { RequirePermission } from "./require-permission.decorator";
 export { RequesterResolver } from "./requester-resolver";
+export { SkipResourceCheck } from "./skip-resource-check.decorator";

@@ -36,21 +36,9 @@ export class PrismaProcessRepository implements ProcessRepository {
     await this.prisma.process.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        name: data.name,
-        command: data.command,
-        cwd: data.cwd,
-        env: data.env,
-        status: data.status,
-        ownerAgentId: data.ownerAgentId,
-        ownerSessionId: data.ownerSessionId,
-        machineId: data.machineId,
-        pid: data.pid,
-        ports: data.ports,
-        logsRef: data.logsRef,
-        restartPolicy: data.restartPolicy,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

@@ -24,15 +24,22 @@ export class PrismaRuntimeCommandRepository implements RuntimeCommandRepository 
     return records.map(RuntimeCommandMapper.toDomain);
   }
 
+  async listByWorkspace(workspaceId: string): Promise<RuntimeCommand[]> {
+    const records = await this.prisma.runtimeCommand.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "asc" },
+    });
+    return records.map(RuntimeCommandMapper.toDomain);
+  }
+
   async save(command: RuntimeCommand): Promise<void> {
     const data = RuntimeCommandMapper.toPersistence(command);
     await this.prisma.runtimeCommand.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        status: data.status,
-        completedAt: data.completedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

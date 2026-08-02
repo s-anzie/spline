@@ -30,15 +30,9 @@ export class PrismaProviderProfileRepository implements ProviderProfileRepositor
     await this.prisma.providerProfile.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        capabilities: data.capabilities,
-        promptFormat: data.promptFormat,
-        approvalRules: data.approvalRules,
-        hookSupport: data.hookSupport,
-        sandboxModel: data.sandboxModel,
-        outputSchema: data.outputSchema,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

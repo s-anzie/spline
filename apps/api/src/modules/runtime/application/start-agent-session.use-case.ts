@@ -28,10 +28,12 @@ import {
 } from "../domain/ports/runtime-command.repository.port";
 import { RuntimeCommand } from "../domain/runtime-command";
 import { buildSessionSystemPrompt } from "./build-session-system-prompt";
+import { MACHINE_STALE_TTL_MS } from "../domain/runtime-thresholds";
 import {
   AgentAlreadyHasActiveSessionError,
   AgentSessionNotFoundError,
   AgentSessionNotResumableError,
+  MachineNotConnectedError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
   WorkspaceRootPathNotConfiguredError,
@@ -54,6 +56,7 @@ export type StartAgentSessionError =
   | AgentNotEligibleError
   | MachineNotFoundError
   | MachineNotLinkedToWorkspaceError
+  | MachineNotConnectedError
   | AgentAlreadyHasActiveSessionError
   | AgentSessionNotFoundError
   | AgentSessionNotResumableError;
@@ -142,6 +145,7 @@ export class StartAgentSessionUseCase {
       if (reusableStatus) idleSession = source;
     }
 
+    const now = this.clock.now();
     const machine = await this.machines.findById(
       UniqueEntityId.create(input.machineId),
     );
@@ -156,6 +160,13 @@ export class StartAgentSessionUseCase {
         ),
       );
     }
+    // An OFFLINE machine is fine — the command queues and delivers once it
+    // connects. A machine that CLAIMS to be online but hasn't heartbeated
+    // recently is the actual failure mode: the command would sit "SENT"
+    // forever against a connection that's already dead.
+    if (machine.isStale(now, MACHINE_STALE_TTL_MS)) {
+      return Result.fail(new MachineNotConnectedError(input.machineId));
+    }
 
     const activeSessions = await this.sessions.listActiveByAgent(input.agentId);
     if (
@@ -167,7 +178,6 @@ export class StartAgentSessionUseCase {
     }
 
     const instruction = input.instruction?.trim() || "Synchronize the workspace and report the next required action.";
-    const now = this.clock.now();
     const session = idleSession ?? AgentSession.start(
       {
         agentId: input.agentId,

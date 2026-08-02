@@ -44,7 +44,9 @@ export class PrismaWorkspaceMembershipRepository implements WorkspaceMembershipR
         },
       },
       create: data,
-      update: { role: data.role },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

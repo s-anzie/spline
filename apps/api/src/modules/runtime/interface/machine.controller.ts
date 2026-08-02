@@ -14,6 +14,7 @@ import {
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermission,
+  SkipResourceCheck,
 } from "../../identity/interface";
 import { DomainError } from "../../../kernel/domain/domain-error";
 import { LinkMachineToWorkspaceUseCase } from "../application/link-machine-to-workspace.use-case";
@@ -68,6 +69,10 @@ export class MachineController {
   @Post(":machineId/link")
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("manage_workspace_rules")
+  // The whole point of this route is to establish machineId <-> workspaceId
+  // membership, so the generic "does this resource already belong to the
+  // workspace" guard check must not run here.
+  @SkipResourceCheck()
   async link(
     @Param("workspaceId") workspaceId: string,
     @Param("machineId") machineId: string,

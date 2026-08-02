@@ -41,21 +41,11 @@ export class PrismaTaskRepository implements TaskRepository {
     await this.prisma.task.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        goalId: data.goalId,
-        title: data.title,
-        description: data.description,
-        status: data.status,
-        priority: data.priority,
-        assigneeType: data.assigneeType,
-        assigneeId: data.assigneeId,
-        dependencies: data.dependencies,
-        blockers: data.blockers,
-        validationState: data.validationState,
-        updatedByType: data.updatedByType,
-        updatedById: data.updatedById,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread, not a hand-picked field list: a manually maintained
+      // subset here has twice silently dropped a newly-mutable field
+      // (goalId, then disabledAt on the sibling Agent repository) because
+      // nothing forces this list to stay in sync with the domain entity.
+      update: data,
     });
   }
 }

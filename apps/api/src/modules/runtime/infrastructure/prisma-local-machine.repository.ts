@@ -35,14 +35,9 @@ export class PrismaLocalMachineRepository implements LocalMachineRepository {
     await this.prisma.localMachine.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        hostname: data.hostname,
-        os: data.os,
-        workspaceIds: data.workspaceIds,
-        runtimeStatus: data.runtimeStatus,
-        lastSeenAt: data.lastSeenAt,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

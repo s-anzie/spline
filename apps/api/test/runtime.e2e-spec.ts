@@ -332,4 +332,34 @@ describe("Runtime (e2e)", () => {
     },
     10000,
   );
+
+  it(
+    "reports runtime health: connected machines, offline machines, and the absence of stuck activity",
+    async () => {
+      const { token, workspaceId } = await registerLoginAndCreateWorkspace("runtime-health@example.com");
+      await registerAndLinkMachine(token, workspaceId);
+
+      const beforeConnect = await request(app.getHttpServer())
+        .get(`/workspaces/${workspaceId}/runtime/health`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(beforeConnect.body).toEqual({
+        machines: { total: 1, online: 0, stale: 0, offline: 1 },
+        sessions: { active: 0, stale: 0 },
+        commands: { pending: 0, stuck: 0 },
+        computedAt: expect.any(String),
+      });
+
+      const { machineToken } = await registerAndLinkMachine(token, workspaceId);
+      const socket = connectMachine(machineToken);
+      await waitForConnection(socket);
+
+      const afterConnect = await request(app.getHttpServer())
+        .get(`/workspaces/${workspaceId}/runtime/health`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(afterConnect.body.machines).toEqual({ total: 2, online: 1, stale: 0, offline: 1 });
+    },
+    10000,
+  );
 });

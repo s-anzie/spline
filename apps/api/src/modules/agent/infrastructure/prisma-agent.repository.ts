@@ -28,19 +28,11 @@ export class PrismaAgentRepository implements AgentRepository {
     await this.prisma.agent.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        provider: data.provider,
-        displayName: data.displayName,
-        capabilities: data.capabilities,
-        status: data.status,
-        currentTaskId: data.currentTaskId,
-        lastSeenAt: data.lastSeenAt,
-        promptProfile: data.promptProfile,
-        permissions: data.permissions,
-        healthState: data.healthState,
-        disabledAt: data.disabledAt,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread, not a hand-picked field list: this exact pattern has
+      // twice silently dropped a newly-mutable field (disabledAt, then
+      // provider) because nothing forces a manual list to stay in sync
+      // with the domain entity. See also PrismaTaskRepository.save().
+      update: data,
     });
   }
 }

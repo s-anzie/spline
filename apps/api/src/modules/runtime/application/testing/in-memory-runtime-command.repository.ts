@@ -17,6 +17,12 @@ export class InMemoryRuntimeCommandRepository implements RuntimeCommandRepositor
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
+  async listByWorkspace(workspaceId: string): Promise<RuntimeCommand[]> {
+    return [...this.commands.values()]
+      .filter((c) => c.workspaceId === workspaceId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
   async save(command: RuntimeCommand): Promise<void> {
     this.commands.set(command.id.toString(), command);
   }

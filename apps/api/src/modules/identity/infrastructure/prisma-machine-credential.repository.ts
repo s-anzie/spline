@@ -25,7 +25,9 @@ export class PrismaMachineCredentialRepository implements MachineCredentialRepos
     await this.prisma.machineCredential.upsert({
       where: { id: data.id },
       create: data,
-      update: { tokenHash: data.tokenHash, revokedAt: data.revokedAt },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

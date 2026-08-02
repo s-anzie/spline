@@ -37,14 +37,9 @@ export class PrismaWorkspaceRepository implements WorkspaceRepository {
     await this.prisma.workspace.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        name: data.name,
-        description: data.description,
-        status: data.status,
-        ruleset: data.ruleset,
-        rootPath: data.rootPath,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

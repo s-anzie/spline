@@ -40,9 +40,9 @@ export class PrismaResourceLockRepository implements ResourceLockRepository {
     await this.prisma.resourceLock.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        releasedAt: data.releasedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

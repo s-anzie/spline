@@ -7,5 +7,7 @@ export interface RuntimeCommandRepository {
   findById(id: UniqueEntityId): Promise<RuntimeCommand | null>;
   /** PENDING commands for a machine, oldest first — delivered on connect. */
   listPendingByMachine(machineId: string): Promise<RuntimeCommand[]>;
+  /** Every command for a workspace — used by the runtime health summary. */
+  listByWorkspace(workspaceId: string): Promise<RuntimeCommand[]>;
   save(command: RuntimeCommand): Promise<void>;
 }

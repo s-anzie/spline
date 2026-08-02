@@ -74,17 +74,9 @@ export class PrismaAgentSessionRepository implements AgentSessionRepository {
     await this.prisma.agentSession.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        status: data.status,
-        lastHeartbeatAt: data.lastHeartbeatAt,
-        currentProcessId: data.currentProcessId,
-        currentTaskId: data.currentTaskId,
-        approvalState: data.approvalState,
-        providerSessionId: data.providerSessionId,
-        resumedFromSessionId: data.resumedFromSessionId,
-        endedAt: data.endedAt,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

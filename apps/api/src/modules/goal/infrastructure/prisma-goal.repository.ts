@@ -36,20 +36,9 @@ export class PrismaGoalRepository implements GoalRepository {
     await this.prisma.goal.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        title: data.title,
-        description: data.description,
-        status: data.status,
-        priority: data.priority,
-        successCriteria: data.successCriteria,
-        progressPercentage: data.progressPercentage,
-        startDate: data.startDate,
-        dueDate: data.dueDate,
-        dependencies: data.dependencies,
-        blockers: data.blockers,
-        validationState: data.validationState,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 }

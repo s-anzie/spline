@@ -13,6 +13,7 @@ import { PermissionsService } from "../application/permissions.service";
 import { Permission } from "../domain/permission";
 import { RequestWithRequester } from "./authenticated-requester";
 import { PERMISSION_METADATA_KEY } from "./require-permission.decorator";
+import { SKIP_RESOURCE_CHECK_METADATA_KEY } from "./skip-resource-check.decorator";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -106,7 +107,14 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException(`Missing permission "${permission}"`);
     }
 
-    if (!(await this.resourceBelongsToWorkspace(request.params, workspaceId))) {
+    const skipResourceCheck = this.reflector.get<boolean | undefined>(
+      SKIP_RESOURCE_CHECK_METADATA_KEY,
+      context.getHandler(),
+    );
+    if (
+      !skipResourceCheck &&
+      !(await this.resourceBelongsToWorkspace(request.params, workspaceId))
+    ) {
       // Deliberately indistinguishable from a missing identifier: callers must
       // never learn whether a resource exists in another workspace.
       throw new NotFoundException("Resource not found in workspace");

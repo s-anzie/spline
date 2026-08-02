@@ -34,23 +34,9 @@ export class PrismaArtifactRepository implements ArtifactRepository {
     await this.prisma.artifact.upsert({
       where: { id: data.id },
       create: data,
-      update: {
-        goalId: data.goalId,
-        taskId: data.taskId,
-        decisionId: data.decisionId,
-        processId: data.processId,
-        name: data.name,
-        description: data.description,
-        status: data.status,
-        version: data.version,
-        versions: data.versions,
-        source: data.source,
-        contentRef: data.contentRef,
-        checksum: data.checksum,
-        updatedByType: data.updatedByType,
-        updatedById: data.updatedById,
-        updatedAt: data.updatedAt,
-      },
+      // Full spread — see PrismaTaskRepository.save() for why a hand-picked
+      // field list here is a recurring source of silently-dropped updates.
+      update: data,
     });
   }
 

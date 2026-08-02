@@ -76,6 +76,29 @@ describe("PrismaRuntimeCommandRepository (integration)", () => {
     expect(pending.map((c) => c.type)).toEqual([RuntimeCommandType.START_PROCESS, RuntimeCommandType.STOP_PROCESS]);
   });
 
+  it("lists every command for a workspace regardless of status, oldest first", async () => {
+    const otherWorkspace = await prisma.workspace.create({ data: { name: "Other" } });
+    const first = RuntimeCommand.enqueue(
+      { machineId, workspaceId, type: RuntimeCommandType.START_PROCESS, payload: {} },
+      new Date("2026-07-31T10:00:00Z"),
+    );
+    await repository.save(first);
+    const second = RuntimeCommand.enqueue(
+      { machineId, workspaceId, type: RuntimeCommandType.START_SESSION, payload: {} },
+      new Date("2026-07-31T10:01:00Z"),
+    );
+    second.markSent();
+    await repository.save(second);
+    const elsewhere = RuntimeCommand.enqueue(
+      { machineId, workspaceId: otherWorkspace.id, type: RuntimeCommandType.STOP_PROCESS, payload: {} },
+    );
+    await repository.save(elsewhere);
+
+    const found = await repository.listByWorkspace(workspaceId);
+
+    expect(found.map((c) => c.id.toString())).toEqual([first.id.toString(), second.id.toString()]);
+  });
+
   it("persists status transitions on save", async () => {
     const command = RuntimeCommand.enqueue({
       machineId,

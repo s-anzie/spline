@@ -13,6 +13,7 @@ import { AppendSessionOutputUseCase } from "./application/append-session-output.
 import { DenyAgentSessionUseCase } from "./application/deny-agent-session.use-case";
 import { GetAgentSessionUseCase } from "./application/get-agent-session.use-case";
 import { GetProcessUseCase } from "./application/get-process.use-case";
+import { GetRuntimeHealthUseCase } from "./application/get-runtime-health.use-case";
 import { LinkMachineToWorkspaceUseCase } from "./application/link-machine-to-workspace.use-case";
 import { ListAgentSessionsByWorkspaceUseCase } from "./application/list-agent-sessions-by-workspace.use-case";
 import { ListSessionOutputsUseCase } from "./application/list-session-outputs.use-case";
@@ -57,6 +58,7 @@ import { MachineGateway } from "./interface/machine.gateway";
 import { MachineRegistrationController } from "./interface/machine-registration.controller";
 import { ProcessController } from "./interface/process.controller";
 import { CollaborationController } from "./interface/collaboration.controller";
+import { RuntimeHealthController } from "./interface/runtime-health.controller";
 
 @Module({
   imports: [WorkspaceModule, AgentModule, ResourceLockModule],
@@ -66,6 +68,7 @@ import { CollaborationController } from "./interface/collaboration.controller";
     ProcessController,
     AgentSessionController,
     CollaborationController,
+    RuntimeHealthController,
   ],
   providers: [
     RegisterMachineUseCase,
@@ -93,6 +96,7 @@ import { CollaborationController } from "./interface/collaboration.controller";
     ListSessionOutputsUseCase,
     DenyAgentSessionUseCase,
     GetAgentSessionUseCase,
+    GetRuntimeHealthUseCase,
     ListAgentSessionsByWorkspaceUseCase,
     MachineGateway,
     {
