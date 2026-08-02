@@ -1,6 +1,8 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowRight,
   Ban,
   Check,
   Copy,
@@ -205,9 +207,14 @@ export function MachinesView() {
         {machines.map((machine) => (
           <Card
             key={machine.id}
-            className="border-white/[.075] bg-white/[.018]"
+            className="group relative overflow-hidden border-white/[.075] bg-white/[.018] transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300/20 hover:bg-white/[.026] hover:shadow-[0_18px_45px_rgba(0,0,0,.16)]"
           >
-            <CardContent className="p-5">
+            <Link
+              href={`/infrastructure/${machine.id}?workspaceId=${selected}`}
+              aria-label={`Ouvrir la fiche de ${machine.hostname}`}
+              className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50"
+            />
+            <CardContent className="pointer-events-none relative z-20 p-5">
               <div className="flex items-center gap-3">
                 <span className="grid size-10 place-items-center rounded-lg bg-cyan-400/10 text-cyan-300">
                   <HardDrive />
@@ -219,6 +226,7 @@ export function MachinesView() {
                   </p>
                 </div>
                 <Badge variant="outline">{machine.runtimeStatus}</Badge>
+                <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-300" />
               </div>
               <div className="mt-5 flex justify-between text-[9px] text-muted-foreground">
                 <span>Dernier heartbeat</span>
@@ -228,7 +236,7 @@ export function MachinesView() {
                     : "Jamais"}
                 </strong>
               </div>
-              <div className="mt-4 flex gap-2 border-t border-white/[.055] pt-4">
+              <div className="pointer-events-auto relative z-30 mt-4 flex gap-2 border-t border-white/[.055] pt-4">
                 <Button
                   onClick={() => setConfirmation({ machine, action: "rotate" })}
                   disabled={pendingMachine === machine.id}

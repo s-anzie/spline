@@ -20,10 +20,33 @@ import {
   RuntimeCommandRepository,
 } from "../domain/ports/runtime-command.repository.port";
 
+export interface StaleMachineSummary {
+  id: string;
+  hostname: string;
+  lastSeenAt: Date | null;
+}
+
+export interface StaleSessionSummary {
+  id: string;
+  agentId: string;
+  provider: string;
+  status: string;
+  lastHeartbeatAt: Date | null;
+}
+
+export interface StuckCommandSummary {
+  id: string;
+  machineId: string;
+  hostname: string | null;
+  type: string;
+  status: string;
+  createdAt: Date;
+}
+
 export interface RuntimeHealthSummary {
-  machines: { total: number; online: number; stale: number; offline: number };
-  sessions: { active: number; stale: number };
-  commands: { pending: number; stuck: number };
+  machines: { total: number; online: number; stale: number; offline: number; staleDetails: StaleMachineSummary[] };
+  sessions: { active: number; stale: number; staleDetails: StaleSessionSummary[] };
+  commands: { pending: number; stuck: number; stuckDetails: StuckCommandSummary[] };
   computedAt: Date;
 }
 
@@ -54,13 +77,13 @@ export class GetRuntimeHealthUseCase {
 
     const machineList = await this.machines.listByWorkspace(workspaceId);
     let machinesOnline = 0;
-    let machinesStale = 0;
     let machinesOffline = 0;
+    const staleMachines = [];
     for (const machine of machineList) {
       if (machine.runtimeStatus === LocalMachineRuntimeStatus.OFFLINE) {
         machinesOffline++;
       } else if (machine.isStale(now, MACHINE_STALE_TTL_MS)) {
-        machinesStale++;
+        staleMachines.push(machine);
       } else {
         machinesOnline++;
       }
@@ -77,16 +100,43 @@ export class GetRuntimeHealthUseCase {
     const stuckCommands = commandList.filter(
       (command) => now.getTime() - command.createdAt.getTime() > STUCK_COMMAND_TTL_MS,
     );
+    const hostnameByMachineId = new Map(machineList.map((machine) => [machine.id.toString(), machine.hostname]));
 
     return {
       machines: {
         total: machineList.length,
         online: machinesOnline,
-        stale: machinesStale,
+        stale: staleMachines.length,
         offline: machinesOffline,
+        staleDetails: staleMachines.map((machine) => ({
+          id: machine.id.toString(),
+          hostname: machine.hostname,
+          lastSeenAt: machine.lastSeenAt ?? null,
+        })),
       },
-      sessions: { active: sessionList.length, stale: staleSessions.length },
-      commands: { pending: commandList.length, stuck: stuckCommands.length },
+      sessions: {
+        active: sessionList.length,
+        stale: staleSessions.length,
+        staleDetails: staleSessions.map((session) => ({
+          id: session.id.toString(),
+          agentId: session.agentId,
+          provider: session.provider,
+          status: session.status,
+          lastHeartbeatAt: session.lastHeartbeatAt ?? null,
+        })),
+      },
+      commands: {
+        pending: commandList.length,
+        stuck: stuckCommands.length,
+        stuckDetails: stuckCommands.map((command) => ({
+          id: command.id.toString(),
+          machineId: command.machineId,
+          hostname: hostnameByMachineId.get(command.machineId) ?? null,
+          type: command.type,
+          status: command.status,
+          createdAt: command.createdAt,
+        })),
+      },
       computedAt: now,
     };
   }

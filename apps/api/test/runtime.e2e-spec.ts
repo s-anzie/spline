@@ -344,9 +344,9 @@ describe("Runtime (e2e)", () => {
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
       expect(beforeConnect.body).toEqual({
-        machines: { total: 1, online: 0, stale: 0, offline: 1 },
-        sessions: { active: 0, stale: 0 },
-        commands: { pending: 0, stuck: 0 },
+        machines: { total: 1, online: 0, stale: 0, offline: 1, staleDetails: [] },
+        sessions: { active: 0, stale: 0, staleDetails: [] },
+        commands: { pending: 0, stuck: 0, stuckDetails: [] },
         computedAt: expect.any(String),
       });
 
@@ -358,7 +358,13 @@ describe("Runtime (e2e)", () => {
         .get(`/workspaces/${workspaceId}/runtime/health`)
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
-      expect(afterConnect.body.machines).toEqual({ total: 2, online: 1, stale: 0, offline: 1 });
+      expect(afterConnect.body.machines).toEqual({
+        total: 2,
+        online: 1,
+        stale: 0,
+        offline: 1,
+        staleDetails: [],
+      });
     },
     10000,
   );

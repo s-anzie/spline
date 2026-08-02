@@ -1,5 +1,6 @@
-import { AgentSessionStatus, LocalMachineRuntimeStatus, RuntimeCommandType } from "@repo/db";
+import { AgentSessionStatus, LocalMachineRuntimeStatus, RuntimeCommandStatus, RuntimeCommandType } from "@repo/db";
 
+import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { FakeClock } from "../../../kernel/testing/fake-clock";
 import { AgentSession } from "../domain/agent-session";
 import { LocalMachine } from "../domain/local-machine";
@@ -28,9 +29,9 @@ describe("GetRuntimeHealthUseCase", () => {
     const summary = await useCase.execute(WORKSPACE_ID);
 
     expect(summary).toEqual({
-      machines: { total: 0, online: 0, stale: 0, offline: 0 },
-      sessions: { active: 0, stale: 0 },
-      commands: { pending: 0, stuck: 0 },
+      machines: { total: 0, online: 0, stale: 0, offline: 0, staleDetails: [] },
+      sessions: { active: 0, stale: 0, staleDetails: [] },
+      commands: { pending: 0, stuck: 0, stuckDetails: [] },
       computedAt: NOW,
     });
   });
@@ -51,7 +52,17 @@ describe("GetRuntimeHealthUseCase", () => {
 
     const summary = await useCase.execute(WORKSPACE_ID);
 
-    expect(summary.machines).toEqual({ total: 3, online: 1, stale: 1, offline: 1 });
+    expect(summary.machines.total).toBe(3);
+    expect(summary.machines.online).toBe(1);
+    expect(summary.machines.stale).toBe(1);
+    expect(summary.machines.offline).toBe(1);
+    expect(summary.machines.staleDetails).toEqual([
+      {
+        id: stale.id.toString(),
+        hostname: "dead-socket",
+        lastSeenAt: new Date(NOW.getTime() - 120_000),
+      },
+    ]);
   });
 
   it("classifies non-terminal sessions as active, and flags the ones without a recent heartbeat as stale", async () => {
@@ -77,11 +88,27 @@ describe("GetRuntimeHealthUseCase", () => {
 
     const summary = await useCase.execute(WORKSPACE_ID);
 
-    expect(summary.sessions).toEqual({ active: 2, stale: 1 });
+    expect(summary.sessions.active).toBe(2);
+    expect(summary.sessions.stale).toBe(1);
+    expect(summary.sessions.staleDetails).toEqual([
+      {
+        id: goneQuiet.id.toString(),
+        agentId: "a2",
+        provider: "claude",
+        status: AgentSessionStatus.STARTING,
+        lastHeartbeatAt: null,
+      },
+    ]);
   });
 
-  it("classifies PENDING/SENT commands older than the threshold as stuck", async () => {
-    const { commands, useCase } = setup();
+  it("classifies PENDING/SENT commands older than the threshold as stuck, resolving the target machine's hostname", async () => {
+    const { machines, commands, useCase } = setup();
+    const machine = LocalMachine.register(
+      { hostname: "bradley-workstation", os: "linux" },
+      UniqueEntityId.create("m1"),
+    );
+    machine.linkToWorkspace(WORKSPACE_ID);
+    await machines.save(machine);
     const recent = RuntimeCommand.enqueue(
       { machineId: "m1", workspaceId: WORKSPACE_ID, type: RuntimeCommandType.START_SESSION, payload: {} },
       new Date(NOW.getTime() - 5_000),
@@ -108,6 +135,25 @@ describe("GetRuntimeHealthUseCase", () => {
 
     const summary = await useCase.execute(WORKSPACE_ID);
 
-    expect(summary.commands).toEqual({ pending: 3, stuck: 2 });
+    expect(summary.commands.pending).toBe(3);
+    expect(summary.commands.stuck).toBe(2);
+    expect(summary.commands.stuckDetails).toEqual([
+      {
+        id: stuckPending.id.toString(),
+        machineId: "m1",
+        hostname: "bradley-workstation",
+        type: RuntimeCommandType.START_SESSION,
+        status: RuntimeCommandStatus.PENDING,
+        createdAt: new Date(NOW.getTime() - 90_000),
+      },
+      {
+        id: stuckSent.id.toString(),
+        machineId: "m1",
+        hostname: "bradley-workstation",
+        type: RuntimeCommandType.STOP_PROCESS,
+        status: RuntimeCommandStatus.SENT,
+        createdAt: new Date(NOW.getTime() - 90_000),
+      },
+    ]);
   });
 });

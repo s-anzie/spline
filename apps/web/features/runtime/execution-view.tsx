@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Activity,
+  ArrowRight,
   Bot,
   Check,
   Clock,
@@ -34,6 +36,7 @@ import { QuestionsPanel } from "./questions-panel";
 export function ExecutionView({ workspaceId }: { workspaceId: string }) {
   const requestedSessionId = useSearchParams().get("session");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("sessions");
   const [sessionFilter, setSessionFilter] = useState<
     "working" | "idle" | "history" | "all"
   >("working");
@@ -143,7 +146,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
         }
       />
       {error && <p className="mb-4 text-[10px] text-red-300">{error}</p>}
-      <Tabs defaultValue="sessions">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(String(value))}>
         <TabsList className="mb-4 bg-white/[.035]">
           <TabsTrigger value="sessions">
             <Bot />
@@ -152,43 +155,33 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
           <TabsTrigger value="processes">Process & locks</TabsTrigger>
           <TabsTrigger value="questions"><MessageCircleQuestion /> Questions</TabsTrigger>
           <TabsTrigger value="locks">Tous les locks</TabsTrigger>
+          <TabsTrigger value="health">
+            <TriangleAlert />
+            Santé
+            {runtimeIssueCount > 0 && (
+              <Badge variant="outline" className="border-amber-400/30 text-amber-300">
+                {runtimeIssueCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="sessions">
           {runtimeIssueCount > 0 && (
-            <div className="mb-3 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3">
-              <div className="flex items-center gap-2 text-[10px] text-amber-200">
-                <TriangleAlert className="size-4" />
-                <strong>Le runtime signale une ou plusieurs anomalies</strong>
-              </div>
-              <ul className="mt-2 grid gap-1 text-[9px] text-amber-100/80">
-                {!!runtimeHealth?.machines.stale && (
-                  <li>
-                    {runtimeHealth.machines.stale} machine
-                    {runtimeHealth.machines.stale > 1 ? "s" : ""} indiquée
-                    {runtimeHealth.machines.stale > 1 ? "s" : ""} en ligne
-                    mais sans heartbeat récent — probablement déconnectée
-                    {runtimeHealth.machines.stale > 1 ? "s" : ""}.
-                  </li>
-                )}
-                {!!runtimeHealth?.sessions.stale && (
-                  <li>
-                    {runtimeHealth.sessions.stale} session
-                    {runtimeHealth.sessions.stale > 1 ? "s" : ""} active
-                    {runtimeHealth.sessions.stale > 1 ? "s" : ""} sans
-                    heartbeat récent.
-                  </li>
-                )}
-                {!!runtimeHealth?.commands.stuck && (
-                  <li>
-                    {runtimeHealth.commands.stuck} commande
-                    {runtimeHealth.commands.stuck > 1 ? "s" : ""} runtime
-                    bloquée
-                    {runtimeHealth.commands.stuck > 1 ? "s" : ""} sans
-                    réponse de la machine cible.
-                  </li>
-                )}
-              </ul>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab("health")}
+              className="mb-3 flex w-full items-center gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3 text-left text-[10px] text-amber-200 hover:border-amber-400/25"
+            >
+              <TriangleAlert className="size-4 shrink-0" />
+              <strong className="flex-1">
+                Le runtime signale {runtimeIssueCount} anomalie
+                {runtimeIssueCount > 1 ? "s" : ""}
+              </strong>
+              <span className="flex items-center gap-1 text-amber-100/80">
+                Voir le détail
+                <ArrowRight className="size-3" />
+              </span>
+            </button>
           )}
           {questions.some((question) => question.status === "OPEN") && (
             <div className="mb-3 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3">
@@ -524,6 +517,102 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
         </TabsContent>
         <TabsContent value="locks">
           <LocksPanel />
+        </TabsContent>
+        <TabsContent value="health">
+          {runtimeIssueCount === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="grid min-h-48 place-items-center text-[10px] text-muted-foreground">
+                Aucune anomalie runtime détectée.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {!!runtimeHealth?.machines.staleDetails.length && (
+                <section>
+                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
+                    Machines sans heartbeat récent
+                  </h2>
+                  <div className="grid gap-2">
+                    {runtimeHealth.machines.staleDetails.map((machine) => (
+                      <Link
+                        key={machine.id}
+                        href={`/infrastructure/${machine.id}?workspaceId=${workspaceId}`}
+                        className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-[10px] hover:border-amber-400/30"
+                      >
+                        <span>
+                          <strong>{machine.hostname}</strong>{" "}
+                          <span className="text-muted-foreground">
+                            — dernier heartbeat{" "}
+                            {machine.lastSeenAt
+                              ? new Date(machine.lastSeenAt).toLocaleString("fr-FR")
+                              : "inconnu"}
+                          </span>
+                        </span>
+                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {!!runtimeHealth?.sessions.staleDetails.length && (
+                <section>
+                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
+                    Sessions sans heartbeat récent
+                  </h2>
+                  <div className="grid gap-2">
+                    {runtimeHealth.sessions.staleDetails.map((session) => {
+                      const agent = agents.find((item) => item.id === session.agentId);
+                      return (
+                        <button
+                          key={session.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("sessions");
+                            setSessionFilter("all");
+                            setSelectedSessionId(session.id);
+                          }}
+                          className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-left text-[10px] hover:border-amber-400/30"
+                        >
+                          <span>
+                            <strong>{agent?.displayName ?? session.agentId}</strong>{" "}
+                            <span className="text-muted-foreground">
+                              — {session.status}, {session.provider}
+                            </span>
+                          </span>
+                          <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {!!runtimeHealth?.commands.stuckDetails.length && (
+                <section>
+                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
+                    Commandes bloquées
+                  </h2>
+                  <div className="grid gap-2">
+                    {runtimeHealth.commands.stuckDetails.map((command) => (
+                      <Link
+                        key={command.id}
+                        href={`/infrastructure/${command.machineId}?workspaceId=${workspaceId}`}
+                        className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-[10px] hover:border-amber-400/30"
+                      >
+                        <span>
+                          <strong>{command.type}</strong>{" "}
+                          <span className="text-muted-foreground">
+                            sur {command.hostname ?? command.machineId} — envoyée le{" "}
+                            {new Date(command.createdAt).toLocaleString("fr-FR")} ({command.status})
+                          </span>
+                        </span>
+                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </>

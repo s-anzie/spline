@@ -5,9 +5,32 @@ import { GetRuntimeHealthUseCase, RuntimeHealthSummary } from "../application/ge
 
 function toRuntimeHealthResponse(summary: RuntimeHealthSummary) {
   return {
-    machines: summary.machines,
-    sessions: summary.sessions,
-    commands: summary.commands,
+    machines: {
+      total: summary.machines.total,
+      online: summary.machines.online,
+      stale: summary.machines.stale,
+      offline: summary.machines.offline,
+      staleDetails: summary.machines.staleDetails.map((machine) => ({
+        ...machine,
+        lastSeenAt: machine.lastSeenAt?.toISOString() ?? null,
+      })),
+    },
+    sessions: {
+      active: summary.sessions.active,
+      stale: summary.sessions.stale,
+      staleDetails: summary.sessions.staleDetails.map((session) => ({
+        ...session,
+        lastHeartbeatAt: session.lastHeartbeatAt?.toISOString() ?? null,
+      })),
+    },
+    commands: {
+      pending: summary.commands.pending,
+      stuck: summary.commands.stuck,
+      stuckDetails: summary.commands.stuckDetails.map((command) => ({
+        ...command,
+        createdAt: command.createdAt.toISOString(),
+      })),
+    },
     computedAt: summary.computedAt.toISOString(),
   };
 }
