@@ -2,7 +2,7 @@ import type { ProviderAdapter, StartSessionInput } from "../provider-adapters/pr
 import { SessionSupervisor } from "./session-supervisor";
 
 function createFakeAdapter(provider: string) {
-  const handles = new Map<string, { onExit: (code: number | null, signal: NodeJS.Signals | null) => void }>();
+  const handles = new Map<string, Pick<StartSessionInput, "onExit" | "onOutput">>();
   const kill = jest.fn();
   let nextPid = 2000;
 
@@ -10,7 +10,7 @@ function createFakeAdapter(provider: string) {
     provider,
     start: jest.fn((input: StartSessionInput) => {
       const pid = nextPid++;
-      handles.set(input.prompt, { onExit: input.onExit });
+      handles.set(input.prompt, { onExit: input.onExit, onOutput: input.onOutput });
       return { pid, kill };
     }),
   };
@@ -19,6 +19,9 @@ function createFakeAdapter(provider: string) {
     kill,
     triggerExit(prompt: string, code: number | null, signal: NodeJS.Signals | null = null) {
       handles.get(prompt)?.onExit(code, signal);
+    },
+    triggerOutput(prompt: string, content: string) {
+      handles.get(prompt)?.onOutput(content, "stdout");
     },
   });
 }
@@ -98,6 +101,25 @@ describe("SessionSupervisor", () => {
     claude.triggerExit("do the thing", 1);
 
     expect(onSessionStatus).toHaveBeenCalledWith("sess-1", "FAILED");
+  });
+
+  it("fails and terminates a provider that emits a fatal authentication error", async () => {
+    const claude = createFakeAdapter("claude");
+    const onSessionStatus = jest.fn();
+    const supervisor = new SessionSupervisor({
+      adapters: new Map([["claude", claude]]),
+      onSessionStatus,
+    });
+
+    supervisor.start("sess-1", "claude", "do the thing", "/tmp");
+    claude.triggerOutput(
+      "do the thing",
+      'Failed to authenticate. {"type":"authentication_error"}',
+    );
+    await Promise.resolve();
+
+    expect(onSessionStatus).toHaveBeenLastCalledWith("sess-1", "FAILED");
+    expect(claude.kill).toHaveBeenCalledWith("SIGTERM");
   });
 
   it("reports CRASHED when the session process is killed by a signal with no exit code and no stop was requested", () => {

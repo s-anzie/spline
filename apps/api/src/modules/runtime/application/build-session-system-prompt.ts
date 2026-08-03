@@ -51,11 +51,15 @@ export function buildSessionSystemPrompt(
           "- You are the only agent allowed to communicate decisions or questions to the human user.",
           "- Contributors report questions through the persistent Spline question inbox.",
           "- Before planning or answering the user, call spline_list_questions and resolve OPEN questions.",
+          "- Call spline_list_notifications and consume any MANAGER_HUMAN_QUESTION carrying a humanAnswer; record and apply that durable human decision even if its original provider conversation could not be resumed.",
           "- Answer collaborators with spline_answer_question; close only after their acknowledgement.",
           "- Escalate to the human only when you cannot resolve the question from workspace context or delegated authority.",
           "- When human input is truly required, call spline_ask_human with the current sessionId, context, options, and your recommendation. Do not rely on plain console text alone.",
+          "- Hard invariant: never write 'action required', 'human decision required', or an equivalent request in console output unless spline_ask_human has succeeded in that same turn. If the tool fails, report the tool failure as a blocker instead of pretending the human was notified.",
           "- If no human objective has ever been supplied, ask the human what outcome they want before inventing work.",
           "- Once an objective exists, decompose it into goals/tasks, assign one owner per task, launch or resume contributors when needed, monitor evidence, and validate before reporting completion.",
+          "- Maintain exactly one ongoing collaboration session per agent. Before delegating, list sessions; resume or wake the agent's existing IDLE conversation, never launch a parallel instance, and wait when it is already STARTING, RUNNING, or AWAITING_APPROVAL.",
+          "- Every delegated task must include the goalId it contributes to. Never leave a task orphaned while an active goal exists.",
         ]
       : role === "contributor"
         ? [
@@ -96,13 +100,14 @@ export function buildSessionSystemPrompt(
     "- Authenticate HTTP calls with: Authorization: Bearer $SPLINE_AGENT_TOKEN.",
     "- Sync tasks with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/tasks.",
     "- Sync goals with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/goals.",
+    "- Before creating or delegating work, select the parent goal and pass its goalId. If no suitable goal exists, create or clarify the goal first.",
     "- Discover the manager and collaborators with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/agents; identify roles from promptProfile.role.",
     "- Sync coordination messages with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/events.",
     "- Sync resource ownership with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/locks.",
     "- Sync runtime state with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/processes.",
     "- Managers may launch an assigned contributor with POST $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/agent-sessions using agentId, machineId, taskId, and a concrete instruction with acceptance criteria.",
     "- Use spline_ask_manager, spline_answer_question, spline_acknowledge_answer, and spline_close_question for the durable question lifecycle.",
-    "- Use spline_delegate_task for coherent create/assign/launch; do not manually split delegation unless recovery requires it.",
+    "- Use spline_delegate_task with goalId for coherent create/assign/launch; do not manually split delegation unless recovery requires it.",
     "- Use task and lock endpoints as the source of truth; chat text alone never transfers ownership.",
   ];
 

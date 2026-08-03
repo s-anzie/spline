@@ -64,5 +64,5 @@ export type Notification = { id:string; workspaceId:string; kind:string; scope:s
 export type NotificationRecipient = { id:string; notificationId:string; recipientType:string; recipientId:string; deliveryStatus:string; deliveredAt:string|null; readAt?:string|null; acknowledgedAt?:string|null; actionTakenAt?:string|null; lastSeenAt:string|null; failureReason?:string|null };
 export type StaleMachine = { id:string; hostname:string; lastSeenAt:string|null };
 export type StaleSession = { id:string; agentId:string; provider:string; status:string; lastHeartbeatAt:string|null };
-export type StuckCommand = { id:string; machineId:string; hostname:string|null; type:string; status:string; createdAt:string };
+export type StuckCommand = { id:string; machineId:string; hostname:string|null; type:string; status:string; payload:Record<string,unknown>; createdAt:string };
 export type RuntimeHealth = { machines:{total:number;online:number;stale:number;offline:number;staleDetails:StaleMachine[]}; sessions:{active:number;stale:number;staleDetails:StaleSession[]}; commands:{pending:number;stuck:number;stuckDetails:StuckCommand[]}; computedAt:string };

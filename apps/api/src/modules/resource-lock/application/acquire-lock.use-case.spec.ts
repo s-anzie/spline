@@ -108,6 +108,29 @@ describe("AcquireLockUseCase", () => {
     expect(result.error).toBeInstanceOf(ResourceAlreadyLockedError);
   });
 
+  it("returns the existing lock when the same owner retries acquisition", async () => {
+    const { workspaces, eventPublisher, useCase } = setup();
+    const workspace = Workspace.create({ name: "My Project" });
+    await workspaces.save(workspace);
+    const first = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      resourceType: LockResourceType.TASK,
+      resourceId: "task-1",
+      lockedBy: AGENT_1,
+    });
+
+    const retry = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      resourceType: LockResourceType.TASK,
+      resourceId: "task-1",
+      lockedBy: AGENT_1,
+    });
+
+    expect(retry.isSuccess).toBe(true);
+    expect(retry.value.id.toString()).toBe(first.value.id.toString());
+    expect(eventPublisher.published).toHaveLength(1);
+  });
+
   it("allows acquiring a resource whose previous lock has expired", async () => {
     const { workspaces, clock, useCase } = setup();
     const workspace = Workspace.create({ name: "My Project" });

@@ -5,6 +5,10 @@ import {
 } from "@repo/db";
 import { Inject, Module, OnModuleInit } from "@nestjs/common";
 
+import {
+  EVENT_PUBLISHER,
+  EventPublisher,
+} from "../../kernel/domain/ports/event-publisher.port";
 import { AgentModule } from "../agent/agent.module";
 import { ResourceLockModule } from "../resource-lock/resource-lock.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
@@ -35,6 +39,7 @@ import { StopAgentSessionUseCase } from "./application/stop-agent-session.use-ca
 import { StopProcessUseCase } from "./application/stop-process.use-case";
 import { UpdateMachinePresenceUseCase } from "./application/update-machine-presence.use-case";
 import { CollaborationWakeScheduler } from "./application/collaboration-wake-scheduler";
+import { NotifyManagerOnSessionFailure } from "./application/notify-manager-on-session-failure";
 import {
   AGENT_SESSION_REPOSITORY,
   AgentSessionRepository,
@@ -87,6 +92,7 @@ import { RuntimeHealthController } from "./interface/runtime-health.controller";
     ReportProcessExitedUseCase,
     StartAgentSessionUseCase,
     CollaborationWakeScheduler,
+    NotifyManagerOnSessionFailure,
     StopAgentSessionUseCase,
     SendSessionHeartbeatUseCase,
     ReportSessionStatusUseCase,
@@ -121,6 +127,7 @@ export class RuntimeModule implements OnModuleInit {
     @Inject(PROCESS_REPOSITORY) private readonly processes: ProcessRepository,
     @Inject(AGENT_SESSION_REPOSITORY)
     private readonly sessions: AgentSessionRepository,
+    @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
 
   /**
@@ -147,6 +154,8 @@ export class RuntimeModule implements OnModuleInit {
     for (const session of activeSessions) {
       session.changeStatus(AgentSessionStatus.CRASHED);
       await this.sessions.save(session);
+      this.eventPublisher.publishAll(session.domainEvents);
+      session.clearEvents();
     }
   }
 }

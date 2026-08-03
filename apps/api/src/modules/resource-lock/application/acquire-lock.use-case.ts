@@ -48,7 +48,16 @@ export class AcquireLockUseCase {
       input.resourceType,
       input.resourceId,
     );
-    if (activeLocks.some((lock) => lock.isHeld(now))) {
+    const heldLocks = activeLocks.filter((lock) => lock.isHeld(now));
+    const alreadyOwned = heldLocks.find(
+      (lock) =>
+        lock.lockedByType === input.lockedBy.type &&
+        lock.lockedById === input.lockedBy.id,
+    );
+    // Acquisition is idempotent for the current owner. A provider retry after
+    // a transient crash must not deadlock against the lock it already owns.
+    if (alreadyOwned) return Result.ok(alreadyOwned);
+    if (heldLocks.length > 0) {
       return Result.fail(new ResourceAlreadyLockedError(input.resourceType, input.resourceId));
     }
 

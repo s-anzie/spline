@@ -1,6 +1,7 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { ActorType } from "@repo/db";
+import { Controller, ForbiddenException, Get, Query, UseGuards } from "@nestjs/common";
 
-import { JwtAuthGuard } from "../../identity/interface";
+import { AuthenticatedRequester, CurrentRequester, JwtAuthGuard } from "../../identity/interface";
 import { ListUnreadNotificationsForRecipientUseCase } from "../application/list-unread-notifications-for-recipient.use-case";
 import { ListUnreadNotificationsQueryDto } from "./dto/list-unread-notifications.dto";
 
@@ -16,7 +17,16 @@ export class UnreadNotificationsController {
   constructor(private readonly listUnreadNotificationsForRecipientUseCase: ListUnreadNotificationsForRecipientUseCase) {}
 
   @Get("unread")
-  async listUnread(@Query() query: ListUnreadNotificationsQueryDto) {
+  async listUnread(
+    @Query() query: ListUnreadNotificationsQueryDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    if (
+      requester.type !== ActorType.HUMAN ||
+      query.recipientType !== ActorType.HUMAN ||
+      query.recipientId !== requester.id
+    )
+      throw new ForbiddenException("Unread notifications may only be read by their recipient");
     const unread = await this.listUnreadNotificationsForRecipientUseCase.execute({
       recipientType: query.recipientType,
       recipientId: query.recipientId,

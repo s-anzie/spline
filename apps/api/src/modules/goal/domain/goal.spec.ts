@@ -97,6 +97,17 @@ describe("Goal", () => {
     expect(goal.validationState).toBe(ValidationState.PENDING);
   });
 
+  it("does not leave a pending validation on a goal returned to active work", () => {
+    const goal = createGoal();
+    goal.changeStatus(GoalStatus.ACTIVE);
+    goal.changeStatus(GoalStatus.REVIEW);
+
+    goal.changeStatus(GoalStatus.ACTIVE);
+
+    expect(goal.status).toBe(GoalStatus.ACTIVE);
+    expect(goal.validationState).toBe(ValidationState.REJECTED);
+  });
+
   describe("recalculateProgress", () => {
     it("computes the percentage from completed vs total tasks", () => {
       const goal = createGoal();
@@ -126,6 +137,18 @@ describe("Goal", () => {
 
       expect(goal.progressPercentage).toBe(0);
       expect(goal.status).toBe(GoalStatus.ACTIVE);
+    });
+
+    it("returns a reviewed goal to active when new unfinished work lowers progress", () => {
+      const goal = createGoal();
+      goal.changeStatus(GoalStatus.ACTIVE);
+      goal.recalculateProgress(1, 1);
+
+      goal.recalculateProgress(1, 2);
+
+      expect(goal.progressPercentage).toBe(50);
+      expect(goal.status).toBe(GoalStatus.ACTIVE);
+      expect(goal.validationState).toBe(ValidationState.REJECTED);
     });
   });
 

@@ -5,7 +5,7 @@ import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { InvalidRuntimeCommandStatusTransitionError } from "./runtime-command.errors";
 
 const ALLOWED_TRANSITIONS: Record<RuntimeCommandStatus, RuntimeCommandStatus[]> = {
-  [RuntimeCommandStatus.PENDING]: [RuntimeCommandStatus.SENT],
+  [RuntimeCommandStatus.PENDING]: [RuntimeCommandStatus.SENT, RuntimeCommandStatus.FAILED],
   [RuntimeCommandStatus.SENT]: [
     RuntimeCommandStatus.ACKNOWLEDGED,
     RuntimeCommandStatus.COMPLETED,

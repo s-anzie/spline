@@ -29,6 +29,31 @@ describe("CommandDispatcher", () => {
     );
   });
 
+  it("reports successful dispatch so the hub can complete the persisted command", () => {
+    const onDispatched = jest.fn();
+    const dispatcher = new CommandDispatcher({
+      processSupervisor: createFakeProcessSupervisor(),
+      sessionSupervisor: createFakeSessionSupervisor(),
+      onDispatched,
+    });
+    const command = {
+      id: "cmd-1",
+      type: "START_SESSION",
+      workspaceId: "ws-1",
+      payload: {
+        sessionId: "session-1",
+        agentId: "agent-1",
+        provider: "claude",
+        prompt: "work",
+        cwd: "/workspace",
+      },
+    };
+
+    dispatcher.dispatch(command);
+
+    expect(onDispatched).toHaveBeenCalledWith(command);
+  });
+
   it("routes a STOP_PROCESS command to the process supervisor", () => {
     const processSupervisor = createFakeProcessSupervisor();
     const sessionSupervisor = createFakeSessionSupervisor();

@@ -10,7 +10,6 @@ import {
   Clock,
   History,
   ListFilter,
-  MessageCircleQuestion,
   RefreshCw,
   RotateCcw,
   Square,
@@ -29,20 +28,23 @@ import { LaunchSessionDialog } from "@/features/workspaces/launch-session-dialog
 import { usePlanningStore } from "@/stores/planning-store";
 import { useRealtimeStore } from "@/stores/realtime-store";
 import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
+import { SessionConsole } from "./session-console";
 import { ProcessesView } from "./processes-view";
 import { LocksPanel } from "./locks-panel";
-import { SessionConsole } from "./session-console";
-import { QuestionsPanel } from "./questions-panel";
 export function ExecutionView({ workspaceId }: { workspaceId: string }) {
-  const requestedSessionId = useSearchParams().get("session");
+  const searchParams = useSearchParams();
+  const requestedSessionId = searchParams.get("session");
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") === "processes" ? "processes" : "sessions",
+  );
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("sessions");
   const [sessionFilter, setSessionFilter] = useState<
     "working" | "idle" | "history" | "all"
   >("working");
   const {
     sessions,
     questions,
+    notifications,
     agents,
     runtimeHealth,
     loading,
@@ -59,10 +61,31 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
     ? runtimeHealth.machines.stale + runtimeHealth.sessions.stale + runtimeHealth.commands.stuck
     : 0;
   const workingStatuses = ["STARTING", "RUNNING", "AWAITING_APPROVAL"];
+  const recentSessions = useMemo(
+    () =>
+      [...new Map(sessions.map((session) => [session.id, session])).values()].sort((left, right) => {
+        const leftActivity = Math.max(
+          Date.parse(left.updatedAt),
+          left.lastHeartbeatAt ? Date.parse(left.lastHeartbeatAt) : 0,
+          Date.parse(left.createdAt),
+        );
+        const rightActivity = Math.max(
+          Date.parse(right.updatedAt),
+          right.lastHeartbeatAt ? Date.parse(right.lastHeartbeatAt) : 0,
+          Date.parse(right.createdAt),
+        );
+        return (
+          rightActivity - leftActivity ||
+          Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+          right.id.localeCompare(left.id)
+        );
+      }),
+    [sessions],
+  );
   const activeSessionCount = sessions.filter((session) => workingStatuses.includes(session.status)).length;
   const idleSessionCount = sessions.filter((session) => session.status === "IDLE").length;
   const historicalSessionCount = sessions.filter((session) => Boolean(session.endedAt)).length;
-  const filteredSessions = sessions.filter((session) =>
+  const filteredSessions = recentSessions.filter((session) =>
     sessionFilter === "all"
       ? true
       : sessionFilter === "working"
@@ -113,9 +136,9 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <PageHeader
-        eyebrow="Runtime du workspace"
-        title="Exécution"
-        description="Sessions, approbations et processus pilotés par l’état réel du backend."
+        eyebrow="Collaboration"
+        title="Collaboration"
+        description="Suivre les conversations, les sessions et les ressources d’exécution partagées par le collectif."
         actions={
           <>
             <LiveIndicator
@@ -123,16 +146,6 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                 connected ? "Temps réel connecté" : "Temps réel hors ligne"
               }
             />
-            {runtimeHealth && (
-              <LiveIndicator
-                tone={runtimeIssueCount > 0 ? "warning" : "healthy"}
-                label={
-                  runtimeIssueCount > 0
-                    ? `${runtimeIssueCount} anomalie${runtimeIssueCount > 1 ? "s" : ""} runtime`
-                    : "Runtime sain"
-                }
-              />
-            )}
             <LoadingButton
               loading={loading}
               onClick={() => void load(workspaceId, true)}
@@ -148,68 +161,26 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
       {error && <p className="mb-4 text-[10px] text-red-300">{error}</p>}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(String(value))}>
         <TabsList className="mb-4 bg-white/[.035]">
-          <TabsTrigger value="sessions">
-            <Bot />
-            Sessions
-          </TabsTrigger>
-          <TabsTrigger value="processes">Process & locks</TabsTrigger>
-          <TabsTrigger value="questions"><MessageCircleQuestion /> Questions</TabsTrigger>
-          <TabsTrigger value="locks">Tous les locks</TabsTrigger>
-          <TabsTrigger value="health">
-            <TriangleAlert />
-            Santé
-            {runtimeIssueCount > 0 && (
-              <Badge variant="outline" className="border-amber-400/30 text-amber-300">
-                {runtimeIssueCount}
-              </Badge>
-            )}
-          </TabsTrigger>
+          <TabsTrigger value="sessions"><Bot /> Sessions & conversations</TabsTrigger>
+          <TabsTrigger value="processes">Processus & locks</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions">
-          {runtimeIssueCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("health")}
-              className="mb-3 flex w-full items-center gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3 text-left text-[10px] text-amber-200 hover:border-amber-400/25"
+          {(runtimeIssueCount > 0 || questions.some((question) => question.status === "OPEN")) && (
+            <Button
+              nativeButton={false}
+              render={<Link href={`/workspaces/${workspaceId}/attention`} />}
+              variant="ghost"
+              className="mb-3 h-auto w-full justify-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3 text-left text-[10px] text-amber-200 hover:border-amber-400/25 hover:bg-amber-400/[.065]"
             >
               <TriangleAlert className="size-4 shrink-0" />
               <strong className="flex-1">
-                Le runtime signale {runtimeIssueCount} anomalie
-                {runtimeIssueCount > 1 ? "s" : ""}
+                Des interventions attendent votre attention
               </strong>
               <span className="flex items-center gap-1 text-amber-100/80">
-                Voir le détail
+                Ouvrir le centre
                 <ArrowRight className="size-3" />
               </span>
-            </button>
-          )}
-          {questions.some((question) => question.status === "OPEN") && (
-            <div className="mb-3 rounded-xl border border-amber-400/15 bg-amber-400/[.045] p-3">
-              <div className="flex items-center gap-2 text-[10px] text-amber-200">
-                <MessageCircleQuestion className="size-4" />
-                <strong>
-                  {questions.filter((question) => question.status === "OPEN").length} question(s) de collaborateur en attente du manager
-                </strong>
-              </div>
-              <div className="mt-2 grid gap-1.5">
-                {questions
-                  .filter((question) => question.status === "OPEN")
-                  .slice(0, 3)
-                  .map((question) => {
-                    const asker = agents.find((agent) => agent.id === question.askerAgentId);
-                    return (
-                      <div key={question.id} className="rounded-lg border border-white/[.06] bg-black/15 px-3 py-2 text-[9px]">
-                        <span className="text-muted-foreground">{asker?.displayName ?? question.askerAgentId} · </span>
-                        {question.question}
-                        {question.blocking && <Badge className="ml-2" variant="outline">Bloquante</Badge>}
-                      </div>
-                    );
-                  })}
-              </div>
-              <p className="mt-2 text-[8px] text-muted-foreground">
-                Ces questions sont routées au manager ; l’utilisateur n’a pas à répondre directement aux contributeurs.
-              </p>
-            </div>
+            </Button>
           )}
           <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-white/[.055] bg-white/[.018] p-1.5">
             <span className="mr-1 hidden items-center gap-1.5 px-2 text-[8px] uppercase tracking-[.12em] text-muted-foreground sm:flex">
@@ -256,7 +227,9 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                 : "grid gap-2"
             }
           >
-            <div className={`grid min-w-0 content-start gap-2 ${selectedSessionId ? "xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1" : ""}`}>
+            <div className={selectedSessionId
+              ? "app-scrollbar min-w-0 rounded-xl border border-white/[.055] bg-black/10 p-1.5 [&>*+*]:mt-1.5 xl:h-[calc(100dvh-10rem)] xl:overflow-y-auto xl:overscroll-contain"
+              : "grid min-w-0 content-start gap-1.5"}>
             {filteredSessions.map((session) => {
               const agent = agents.find((a) => a.id === session.agentId);
               const task = tasks.find((t) => t.id === session.currentTaskId);
@@ -271,62 +244,62 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                   key={session.id}
                   className={`overflow-hidden bg-white/[.018] transition-all hover:border-white/[.12] hover:bg-white/[.025] ${selectedSessionId === session.id ? "border-[#f47b64]/35 bg-[#f47b64]/[.025] shadow-[inset_2px_0_0_#f47b64]" : "border-white/[.075]"}`}
                 >
-                  <CardContent className="p-3.5 sm:p-4">
+                  <CardContent className={selectedSessionId ? "p-2.5" : "p-3"}>
                     <div
                       className={
                         selectedSessionId
-                          ? "grid gap-3"
-                          : "grid items-center gap-3 lg:grid-cols-[minmax(12rem,1.2fr)_minmax(18rem,1fr)_auto]"
+                          ? "grid gap-2"
+                          : "grid items-center gap-2.5 lg:grid-cols-[minmax(12rem,1.2fr)_minmax(18rem,1fr)_auto]"
                       }
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-white/[.06] bg-white/[.035]">
-                          <Bot className="size-4 text-[#f47b64]" />
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <div className={`grid shrink-0 place-items-center rounded-lg border border-white/[.06] bg-white/[.035] ${selectedSessionId ? "size-7" : "size-8"}`}>
+                          <Bot className={selectedSessionId ? "size-3.5 text-[#f47b64]" : "size-4 text-[#f47b64]"} />
                         </div>
                         <div className="min-w-0">
-                          <h2 className="truncate text-xs font-medium">
+                          <h2 className="truncate text-[11px] font-medium">
                           {agent?.displayName ?? session.agentId}
                           </h2>
-                          <p className="mt-0.5 truncate text-[9px] text-muted-foreground">
+                          <p className="truncate text-[8px] text-muted-foreground">
                             {session.provider} · {task?.title ?? "Sans tâche"}
                           </p>
                         </div>
                       </div>
                       <div
-                        className={`flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-[8px] text-muted-foreground ${selectedSessionId ? "border-y border-white/[.055] py-2.5" : ""}`}
+                        className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[8px] text-muted-foreground ${selectedSessionId ? "border-y border-white/[.055] py-1.5" : ""}`}
                       >
                         <Badge variant="outline" className="shrink-0">
                           {session.status}
                         </Badge>
                         <span className="flex items-center gap-1.5">
                           <Clock className="size-3" />
-                          Créée · {new Date(session.createdAt).toLocaleString("fr-FR", {
+                          {selectedSessionId ? "Créée" : "Créée ·"} {new Date(session.createdAt).toLocaleString("fr-FR", {
                             dateStyle: "short",
                             timeStyle: "short",
                           })}
                         </span>
                         <span className="flex items-center gap-1.5">
                           <Activity className="size-3" />
-                          Activité · {new Date(session.updatedAt).toLocaleString("fr-FR", {
+                          {selectedSessionId ? "Activité" : "Activité ·"} {new Date(session.updatedAt).toLocaleString("fr-FR", {
                             dateStyle: "short",
                             timeStyle: "medium",
                           })}
                         </span>
                         <span>
-                          Approbation · <strong className="text-foreground/80">{session.approvalState}</strong>
+                          {selectedSessionId ? "Approb." : "Approbation ·"} <strong className="text-foreground/80">{session.approvalState}</strong>
                         </span>
                         <span
                           className="min-w-0 truncate font-mono"
                           title={session.machineId}
                         >
-                          Machine · {session.machineId.slice(0, 8)}
+                          {selectedSessionId ? "Machine" : "Machine ·"} {session.machineId.slice(0, 8)}
                         </span>
                       </div>
                       <div
-                        className={`flex flex-wrap items-center gap-1.5 ${selectedSessionId ? "justify-start" : "justify-end"}`}
+                        className={`flex flex-wrap items-center gap-1 ${selectedSessionId ? "justify-start" : "justify-end"}`}
                       >
                         <Button
-                          size="sm"
+                          size={selectedSessionId ? "xs" : "sm"}
                           variant={selectedSessionId === session.id ? "secondary" : "outline"}
                           onClick={() => setSelectedSessionId(session.id)}
                         >
@@ -367,7 +340,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                               // L’erreur du store reste visible au-dessus de la liste.
                             }
                           }}
-                          size="sm"
+                          size={selectedSessionId ? "xs" : "sm"}
                           className="bg-[#f47b64] text-[#241614]"
                         >
                           <RotateCcw />
@@ -385,7 +358,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                               event.target.value,
                             )
                           }
-                          className="h-8 max-w-28 rounded-lg border border-white/10 bg-[#191715] px-2 text-[9px]"
+                          className="h-7 max-w-25 rounded-md border border-white/10 bg-[#191715] px-1.5 text-[8px]"
                         >
                           <option value="STARTING">Démarrage</option>
                           <option value="RUNNING">Active</option>
@@ -406,7 +379,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                             onClick={() =>
                               void sessionAction(session.id, "deny")
                             }
-                            size="sm"
+                            size={selectedSessionId ? "xs" : "sm"}
                             variant="destructive"
                           >
                             <X />
@@ -419,7 +392,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                             onClick={() =>
                               void sessionAction(session.id, "approve")
                             }
-                            size="sm"
+                            size={selectedSessionId ? "xs" : "sm"}
                             className="bg-emerald-500 text-[#07130c]"
                           >
                             <Check />
@@ -433,12 +406,12 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                             pendingAction === `session:${session.id}:stop`
                           }
                           onClick={() => void sessionAction(session.id, "stop")}
-                          size="sm"
+                          size={selectedSessionId ? "icon-sm" : "sm"}
                           variant="outline"
                           title="Arrêter la session"
                         >
                           <Square />
-                          Arrêter
+                          {!selectedSessionId && "Arrêter"}
                         </LoadingButton>
                       )}
                       </div>
@@ -474,8 +447,13 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                 Boolean(session.providerSessionId) &&
                 session.provider === agent?.provider;
               const isIdleManagerTurn =
-                session.status === "IDLE" &&
+                ["IDLE", "FAILED", "CRASHED"].includes(session.status) &&
                 agent?.promptProfile["role"] === "manager";
+              const isManagerConversation =
+                agent?.promptProfile["role"] === "manager";
+              const latestAgentSession = recentSessions.find(
+                (item) => item.agentId === session.agentId,
+              );
               return (
                 <SessionConsole
                   workspaceId={workspaceId}
@@ -483,23 +461,49 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                   agentName={agent?.displayName ?? session.agentId}
                   status={session.status}
                   turns={selectedTurns}
-                  canReply={isIdleManagerTurn && canResumeIdle}
+                  questions={questions}
+                  notifications={notifications}
+                  agentNames={Object.fromEntries(
+                    agents.map((item) => [item.id, item.displayName]),
+                  )}
+                  isLatestAgentConversation={latestAgentSession?.id === session.id}
+                  showComposer={isManagerConversation}
+                  canReply={isIdleManagerTurn}
                   disabledHint={
                     isIdleManagerTurn && !canResumeIdle
-                      ? "Le provider de cet agent a changé depuis cette conversation — relancez une nouvelle session pour continuer."
+                      ? "La conversation native n’est plus récupérable. Le prochain message ouvrira automatiquement un nouveau fil lié à cet historique."
                       : undefined
                   }
                   sending={pendingAction === "session:start"}
                   onSend={async (instruction) => {
-                    const next = await startSession({
+                    const baseInput = {
                       agentId: session.agentId,
                       machineId: session.machineId,
                       taskId: session.currentTaskId ?? undefined,
                       instruction,
-                      ...(canResumeIdle
-                        ? { resumeFromSessionId: session.id }
-                        : {}),
-                    });
+                    };
+                    let next;
+                    try {
+                      next = await startSession({
+                        ...baseInput,
+                        ...(canResumeIdle
+                          ? { resumeFromSessionId: session.id }
+                          : { lineageFromSessionId: session.id }),
+                      });
+                    } catch (error) {
+                      if (
+                        !canResumeIdle ||
+                        !(error instanceof Error) ||
+                        !/no recoverable provider conversation|not resumable/i.test(
+                          error.message,
+                        )
+                      )
+                        throw error;
+                      next = await startSession({
+                        ...baseInput,
+                        lineageFromSessionId: session.id,
+                      });
+                    }
                     setSessionFilter("working");
                     setSelectedSessionId(next.id);
                   }}
@@ -510,109 +514,10 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
           </div>
         </TabsContent>
         <TabsContent value="processes">
-          <ProcessesView workspaceId={workspaceId} />
-        </TabsContent>
-        <TabsContent value="questions">
-          <QuestionsPanel />
-        </TabsContent>
-        <TabsContent value="locks">
-          <LocksPanel />
-        </TabsContent>
-        <TabsContent value="health">
-          {runtimeIssueCount === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="grid min-h-48 place-items-center text-[10px] text-muted-foreground">
-                Aucune anomalie runtime détectée.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {!!runtimeHealth?.machines.staleDetails.length && (
-                <section>
-                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
-                    Machines sans heartbeat récent
-                  </h2>
-                  <div className="grid gap-2">
-                    {runtimeHealth.machines.staleDetails.map((machine) => (
-                      <Link
-                        key={machine.id}
-                        href={`/infrastructure/${machine.id}?workspaceId=${workspaceId}`}
-                        className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-[10px] hover:border-amber-400/30"
-                      >
-                        <span>
-                          <strong>{machine.hostname}</strong>{" "}
-                          <span className="text-muted-foreground">
-                            — dernier heartbeat{" "}
-                            {machine.lastSeenAt
-                              ? new Date(machine.lastSeenAt).toLocaleString("fr-FR")
-                              : "inconnu"}
-                          </span>
-                        </span>
-                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {!!runtimeHealth?.sessions.staleDetails.length && (
-                <section>
-                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
-                    Sessions sans heartbeat récent
-                  </h2>
-                  <div className="grid gap-2">
-                    {runtimeHealth.sessions.staleDetails.map((session) => {
-                      const agent = agents.find((item) => item.id === session.agentId);
-                      return (
-                        <button
-                          key={session.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveTab("sessions");
-                            setSessionFilter("all");
-                            setSelectedSessionId(session.id);
-                          }}
-                          className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-left text-[10px] hover:border-amber-400/30"
-                        >
-                          <span>
-                            <strong>{agent?.displayName ?? session.agentId}</strong>{" "}
-                            <span className="text-muted-foreground">
-                              — {session.status}, {session.provider}
-                            </span>
-                          </span>
-                          <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-              {!!runtimeHealth?.commands.stuckDetails.length && (
-                <section>
-                  <h2 className="mb-2 text-[9px] font-semibold uppercase tracking-[.12em] text-[#625e5a]">
-                    Commandes bloquées
-                  </h2>
-                  <div className="grid gap-2">
-                    {runtimeHealth.commands.stuckDetails.map((command) => (
-                      <Link
-                        key={command.id}
-                        href={`/infrastructure/${command.machineId}?workspaceId=${workspaceId}`}
-                        className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-400/[.03] px-3 py-2.5 text-[10px] hover:border-amber-400/30"
-                      >
-                        <span>
-                          <strong>{command.type}</strong>{" "}
-                          <span className="text-muted-foreground">
-                            sur {command.hostname ?? command.machineId} — envoyée le{" "}
-                            {new Date(command.createdAt).toLocaleString("fr-FR")} ({command.status})
-                          </span>
-                        </span>
-                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
-          )}
+          <div className="grid gap-4">
+            <ProcessesView workspaceId={workspaceId} embedded />
+            <LocksPanel />
+          </div>
         </TabsContent>
       </Tabs>
     </>

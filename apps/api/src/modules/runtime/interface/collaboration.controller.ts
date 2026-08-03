@@ -12,6 +12,9 @@ import {
 } from "@nestjs/common";
 
 import { PrismaService } from "../../../prisma/prisma.service";
+import { EVENT_PUBLISHER, EventPublisher } from "../../../kernel/domain/ports/event-publisher.port";
+import { Inject } from "@nestjs/common";
+import { NotificationSent } from "../../notification/domain/notification-events";
 import {
   AuthenticatedRequester,
   CurrentRequester,
@@ -21,6 +24,7 @@ import {
 } from "../../identity/interface";
 import {
   AnswerQuestionDto,
+  AnswerHumanQuestionDto,
   AskHumanDto,
   AskManagerDto,
   DelegateTaskDto,
@@ -34,6 +38,7 @@ export class CollaborationController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly startAgentSession: StartAgentSessionUseCase,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   private async role(workspaceId: string, requester: AuthenticatedRequester) {
@@ -44,6 +49,148 @@ export class CollaborationController {
           actorType: requester.type,
           actorId: requester.id,
         },
+      },
+    });
+  }
+
+  @Post("collaboration/human-questions/:notificationId/answer")
+  @RequirePermission("read_tasks")
+  async answerHumanQuestion(
+    @Param("workspaceId") workspaceId: string,
+    @Param("notificationId") notificationId: string,
+    @Body() dto: AnswerHumanQuestionDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    if (requester.type !== ActorType.HUMAN)
+      throw new ForbiddenException("Only a human operator may answer this question");
+    const notification = await this.prisma.notification.findFirst({
+      where: {
+        id: notificationId,
+        workspaceId,
+        recipients: {
+          some: {
+            recipientType: ActorType.HUMAN,
+            recipientId: requester.id,
+          },
+        },
+      },
+      include: { recipients: true },
+    });
+    const payload = notification?.payload as Record<string, unknown> | undefined;
+    if (
+      !notification ||
+      payload?.["collaborationType"] !== "MANAGER_HUMAN_QUESTION"
+    )
+      throw new NotFoundException("Human question not found");
+    if (typeof payload["humanAnswer"] === "string")
+      throw new BadRequestException("This human question has already been answered");
+
+    const sessionId = payload["sessionId"];
+    const managerAgentId = payload["managerAgentId"];
+    if (typeof sessionId !== "string" || typeof managerAgentId !== "string")
+      throw new BadRequestException("Human question has invalid manager context");
+    const session = await this.prisma.agentSession.findFirst({
+      where: { id: sessionId, workspaceId, agentId: managerAgentId },
+    });
+    if (!session) throw new NotFoundException("Manager session not found");
+
+    const answer = dto.answer.trim();
+    const answeredAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.notification.update({
+        where: { id: notification.id },
+        data: {
+          payload: {
+            ...payload,
+            humanAnswer: answer,
+            answeredByHumanId: requester.id,
+            answeredAt: answeredAt.toISOString(),
+          },
+        },
+      }),
+      this.prisma.notificationRecipient.updateMany({
+        where: {
+          notificationId: notification.id,
+          recipientType: ActorType.HUMAN,
+        },
+        data: {
+          deliveryStatus: "ACTED_ON",
+          deliveredAt: answeredAt,
+          readAt: answeredAt,
+          acknowledgedAt: answeredAt,
+          actionTakenAt: answeredAt,
+          lastSeenAt: answeredAt,
+        },
+      }),
+    ]);
+
+    const instruction = `Human decision in response to your question « ${notification.body} »:\n${answer}\nSynchronize the workspace, record and apply this decision, then continue the collaboration.`;
+    let resumed = await this.startAgentSession.execute({
+      workspaceId,
+      agentId: managerAgentId,
+      machineId: session.machineId,
+      taskId: session.currentTaskId ?? undefined,
+      resumeFromSessionId: session.id,
+      requesterType: ActorType.HUMAN,
+      instruction,
+    });
+    if (
+      resumed.isFailure &&
+      resumed.error.code === "AGENT_SESSION_NOT_RESUMABLE"
+    ) {
+      resumed = await this.startAgentSession.execute({
+        workspaceId,
+        agentId: managerAgentId,
+        machineId: session.machineId,
+        taskId: session.currentTaskId ?? undefined,
+        lineageFromSessionId: session.id,
+        requesterType: ActorType.HUMAN,
+        instruction,
+      });
+    }
+    if (resumed.isFailure) {
+      return {
+        sessionId: null,
+        answeredAt,
+        deliveryStatus: "PENDING_WAKE" as const,
+        warning: resumed.error.message,
+      };
+    }
+    await this.prisma.notification.update({
+      where: { id: notification.id },
+      data: {
+        payload: {
+          ...payload,
+          humanAnswer: answer,
+          answeredByHumanId: requester.id,
+          answeredAt: answeredAt.toISOString(),
+          managerDeliverySessionId: resumed.value.id.toString(),
+        },
+      },
+    });
+    return {
+      sessionId: resumed.value.id.toString(),
+      answeredAt,
+      deliveryStatus: "DELIVERED" as const,
+    };
+  }
+
+  private async syncGoalProgress(goalId: string): Promise<void> {
+    const [total, done, goal] = await Promise.all([
+      this.prisma.task.count({ where: { goalId, status: { not: "CANCELLED" } } }),
+      this.prisma.task.count({ where: { goalId, status: "DONE" } }),
+      this.prisma.goal.findUnique({ where: { id: goalId } }),
+    ]);
+    if (!goal) return;
+    const progressPercentage = total > 0 ? Math.round((done / total) * 100) : 0;
+    const leavesReview = goal.status === "REVIEW" && progressPercentage < 100;
+    await this.prisma.goal.update({
+      where: { id: goalId },
+      data: {
+        progressPercentage,
+        ...(leavesReview
+          ? { status: "ACTIVE", validationState: "REJECTED" }
+          : {}),
       },
     });
   }
@@ -216,7 +363,7 @@ export class CollaborationController {
     if (!humans.length)
       throw new NotFoundException("No human operator is configured");
 
-    return this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: {
         workspaceId,
         kind: "CHAT_MESSAGE",
@@ -241,6 +388,15 @@ export class CollaborationController {
       },
       include: { recipients: true },
     });
+    this.events.publish(
+      new NotificationSent(
+        workspaceId,
+        notification.id,
+        notification.kind,
+        notification.scope,
+      ),
+    );
+    return notification;
   }
 
   @Get("agent-questions")
@@ -353,10 +509,16 @@ export class CollaborationController {
     });
     if (contributor?.role !== WorkspaceRole.AGENT_CONTRIBUTOR)
       throw new BadRequestException("Delegation target must be a contributor agent");
+    const goal = await this.prisma.goal.findFirst({
+      where: { id: dto.goalId, workspaceId },
+      select: { id: true },
+    });
+    if (!goal) throw new BadRequestException("Delegation goal must belong to this workspace");
 
     const task = await this.prisma.task.create({
       data: {
         workspaceId,
+        goalId: goal.id,
         title: dto.title.trim(),
         description: dto.description.trim(),
         priority: dto.priority,
@@ -367,6 +529,7 @@ export class CollaborationController {
         createdById: requester.id,
       },
     });
+    await this.syncGoalProgress(goal.id);
     const started = await this.startAgentSession.execute({
       workspaceId,
       agentId: dto.agentId,
@@ -377,6 +540,7 @@ export class CollaborationController {
     });
     if (started.isFailure) {
       await this.prisma.task.delete({ where: { id: task.id } });
+      await this.syncGoalProgress(goal.id);
       throw new BadRequestException(started.error.message);
     }
     return { task, sessionId: started.value.id.toString() };

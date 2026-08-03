@@ -159,11 +159,11 @@ export function GoalDetail({
             <div className="mt-3 grid gap-2">
               {linked.map((task) => (
                 <TaskSheet key={task.id} task={task}>
-                  <button className="group grid w-full gap-3 rounded-xl border border-white/[.06] bg-white/[.012] p-3.5 text-left transition hover:border-white/[.12] hover:bg-white/[.025] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                  <div className="group grid w-full gap-3 rounded-xl border border-white/[.06] bg-white/[.012] p-3.5 text-left transition hover:border-white/[.12] hover:bg-white/[.025] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
                     {task.status === "DONE" ? <CheckCircle2 className="size-4 text-emerald-400"/> : <Circle className="size-4 text-muted-foreground transition group-hover:text-[#f47b64]"/>}
                     <span className="min-w-0"><strong className="block truncate text-[10px] font-medium">{task.title}</strong><span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[8px] text-muted-foreground"><span>{task.priority}</span><span>{task.assigneeId ? `Assignée · ${task.assigneeId}` : "Non assignée"}</span><span>{task.dependencies.length} dépendance(s)</span>{task.blockers.length > 0 && <span className="text-amber-300">{task.blockers.length} blocage(s)</span>}</span></span>
                     <Badge variant="outline">{task.status}</Badge>
-                  </button>
+                  </div>
                 </TaskSheet>
               ))}
               {!linked.length && <div className="grid min-h-28 place-items-center rounded-xl border border-dashed border-white/[.07] text-center"><div><p className="text-[10px]">Aucune tâche ne contribue encore à cet objectif.</p><p className="mt-1 text-[8px] text-muted-foreground">Ajoutez le premier morceau de travail attendu.</p></div></div>}

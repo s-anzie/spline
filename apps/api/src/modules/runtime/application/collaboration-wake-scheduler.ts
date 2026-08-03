@@ -17,7 +17,7 @@ function wakeInstruction(role: WorkspaceRole): string {
   if (role === WorkspaceRole.AGENT_MANAGER) {
     return [
       "Periodic Spline collaboration wake-up.",
-      "Call spline_sync_workspace, then inspect goals, tasks, locks, processes, the persistent question inbox, and collaborator status.",
+      "Call spline_sync_workspace and spline_list_notifications, then inspect goals, tasks, locks, processes, durable human answers, the persistent question inbox, and collaborator status.",
       "Answer contributor questions you can resolve, delegate or unblock actionable work, and validate completed outputs.",
       "If no objective exists and no prior human request is awaiting execution, ask the human user for the next objective in one concise message.",
       "If there is genuinely nothing to do and no question to escalate, publish an idle status and end the turn cleanly.",

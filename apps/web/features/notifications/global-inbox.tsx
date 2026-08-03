@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   Bell,
@@ -17,65 +17,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { domainApi } from "@/lib/api/domains";
-import type {
-  Notification,
-  NotificationRecipient,
-} from "@/lib/api/types";
-import { useAuthStore } from "@/stores/auth-store";
-
-type Item = { notification: Notification; recipient: NotificationRecipient };
+import type { InboxItem } from "@/stores/notification-store";
+import { useNotificationStore } from "@/stores/notification-store";
 
 export function GlobalInbox({ attention = false }: { attention?: boolean }) {
-  const token = useAuthStore((state) => state.token);
-  const user = useAuthStore((state) => state.user);
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { items, loading, error, load, advance: advanceItem } = useNotificationStore();
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!token || !user) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await domainApi.unreadNotifications(user.id, token));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Chargement impossible");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, user]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function advance(item: Item, status: string) {
-    if (!token) return;
+  async function advance(item: InboxItem, status: string) {
     setPending(item.notification.id);
     try {
-      const recipient = await domainApi.advanceNotification(
-        item.notification.workspaceId,
-        item.notification.id,
-        status,
-        token,
-      );
-      if (status === "ACTED_ON") {
-        setItems((current) =>
-          current.filter(({ notification }) => notification.id !== item.notification.id),
-        );
-      } else {
-        setItems((current) =>
-          current.map((currentItem) =>
-            currentItem.notification.id === item.notification.id
-              ? { ...currentItem, recipient }
-              : currentItem,
-          ),
-        );
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Action impossible");
+      await advanceItem(item, status);
+    } catch {
+      // Le store conserve l’erreur de chargement ; l’action reste réessayable.
     } finally {
       setPending(null);
     }
@@ -89,7 +47,7 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
         description={
           attention
             ? "Alertes et demandes qui nécessitent une intervention réelle de votre part."
-            : "Notifications non lues adressées à votre compte sur tous les workspaces."
+            : "Notifications encore à consulter ou à traiter sur tous les workspaces."
         }
         actions={
           <>
@@ -120,6 +78,7 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
             const payload = notification.payload;
             const managerQuestion =
               payload["collaborationType"] === "MANAGER_HUMAN_QUESTION";
+            const sessionFailure = payload["type"] === "agent_session_failure";
             const options = Array.isArray(payload["options"])
               ? payload["options"].filter(
                   (option): option is string => typeof option === "string",
@@ -131,11 +90,6 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
               typeof payload["recommendation"] === "string"
                 ? payload["recommendation"]
                 : null;
-            const sessionId =
-              typeof payload["sessionId"] === "string"
-                ? payload["sessionId"]
-                : null;
-
             return (
               <div
                 key={notification.id}
@@ -193,7 +147,11 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
                       nativeButton={false}
                       render={
                         <Link
-                          href={`/workspaces/${notification.workspaceId}/${managerQuestion ? `execution${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ""}` : "activity"}`}
+                          href={managerQuestion
+                            ? `/workspaces/${notification.workspaceId}/attention`
+                            : sessionFailure && typeof payload["sessionId"] === "string"
+                              ? `/workspaces/${notification.workspaceId}/execution?session=${payload["sessionId"]}`
+                              : `/workspaces/${notification.workspaceId}/activity`}
                         />
                       }
                       size="xs"

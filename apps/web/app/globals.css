@@ -43,6 +43,37 @@ body {
   font-family: var(--font-geist-sans), Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+body.app-shell-active {
+  overflow: hidden !important;
+  padding-right: 0 !important;
+}
+
+.app-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 123, 117, 0.42) transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.app-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(128, 123, 117, 0.42);
+  background-clip: padding-box;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(244, 123, 100, 0.62);
+  background-clip: padding-box;
+}
 ::selection {
   background: #f47b64;
   color: #181311;

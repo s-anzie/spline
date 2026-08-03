@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   Bot,
-  CheckCircle2,
   ChevronDown,
   Clock3,
   RefreshCw,
@@ -178,25 +176,17 @@ export function HistoryTimeline({ workspaceId }: { workspaceId: string }) {
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        {[
-          { label: "Événements", value: events.length, icon: Activity },
-          { label: "Importants", value: events.filter((event) => event.severity !== "DEBUG").length, icon: CheckCircle2 },
-          { label: "Erreurs", value: events.filter((event) => ["ERROR", "CRITICAL"].includes(event.severity)).length, icon: AlertTriangle },
-        ].map(({ label, value, icon: Icon }) => (
-          <Card key={label} className="border-white/[.07] bg-white/[.015]">
-            <CardContent className="flex items-center gap-3 p-4">
-              <Icon className="size-4 text-[#f47b64]" />
-              <div><strong className="text-lg">{value}</strong><p className="text-[8px] text-muted-foreground">{label}</p></div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
       <div className="mb-5 flex gap-1 rounded-xl border border-white/[.055] bg-white/[.018] p-1.5">
         {(["ALL", "IMPORTANT", "ERRORS"] as Filter[]).map((value) => (
           <Button key={value} size="sm" variant={filter === value ? "secondary" : "ghost"} onClick={() => setFilter(value)}>
             {value === "ALL" ? "Tout" : value === "IMPORTANT" ? "Important" : "Erreurs"}
+            <Badge variant="outline">
+              {value === "ALL"
+                ? events.length
+                : value === "IMPORTANT"
+                  ? events.filter((event) => event.severity !== "DEBUG").length
+                  : events.filter((event) => ["ERROR", "CRITICAL"].includes(event.severity)).length}
+            </Badge>
           </Button>
         ))}
       </div>

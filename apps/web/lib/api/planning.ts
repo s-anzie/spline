@@ -92,6 +92,17 @@ export const planningApi = {
       body: input,
       token,
     }),
+  linkTaskToGoal: (
+    workspaceId: string,
+    taskId: string,
+    goalId: string,
+    token: string,
+  ) =>
+    apiRequest<Task>(`/workspaces/${workspaceId}/tasks/${taskId}/link-goal`, {
+      method: "POST",
+      body: { goalId },
+      token,
+    }),
   taskStatus: (
     workspaceId: string,
     taskId: string,

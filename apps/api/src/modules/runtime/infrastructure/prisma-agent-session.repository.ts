@@ -26,9 +26,31 @@ export class PrismaAgentSessionRepository implements AgentSessionRepository {
   async listByWorkspace(workspaceId: string): Promise<AgentSession[]> {
     const records = await this.prisma.agentSession.findMany({
       where: { workspaceId },
-      orderBy: { startedAt: "asc" },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     });
     return records.map(AgentSessionMapper.toDomain);
+  }
+
+  async findLatestReusableByAgent(
+    agentId: string,
+    provider: string,
+  ): Promise<AgentSession | null> {
+    const record = await this.prisma.agentSession.findFirst({
+      where: {
+        agentId,
+        provider,
+        providerSessionId: { not: null },
+        status: {
+          in: [
+            AgentSessionStatus.IDLE,
+            AgentSessionStatus.FAILED,
+            AgentSessionStatus.CRASHED,
+          ],
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    });
+    return record ? AgentSessionMapper.toDomain(record) : null;
   }
 
   async listActiveByAgent(agentId: string): Promise<AgentSession[]> {

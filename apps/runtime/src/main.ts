@@ -47,11 +47,15 @@ function main(): void {
   const dispatcher = new CommandDispatcher({
     processSupervisor,
     sessionSupervisor,
-    onError: (error, command) =>
+    onError: (error, command) => {
+      hub?.reportCommandResult(command.id, false, error.message);
       console.error(
         `[runtime] command ${command.id} (${command.type}) failed:`,
         error,
-      ),
+      );
+    },
+    onDispatched: (command) =>
+      hub?.reportCommandResult(command.id, true),
     resolveAgentEnvironment: (agentId, workspaceId) => {
       const token = currentConfig.agentTokens?.[agentId];
       if (!token) {

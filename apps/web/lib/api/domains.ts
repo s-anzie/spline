@@ -95,6 +95,11 @@ export const domainApi = {
     apiRequest<AgentSession[]>(ws(id, "/agent-sessions"), { token }),
   runtimeHealth: (id: string, token: string) =>
     apiRequest<RuntimeHealth>(ws(id, "/runtime/health"), { token }),
+  cancelRuntimeCommand: (id: string, commandId: string, token: string) =>
+    post<{ id: string; status: string }>(
+      ws(id, `/runtime/commands/${commandId}/cancel`),
+      token,
+    ),
   session: (id: string, sessionId: string, token: string) =>
     apiRequest<AgentSession>(ws(id, `/agent-sessions/${sessionId}`), { token }),
   sessionOutputs: (id: string, sessionId: string, token: string) =>
@@ -108,6 +113,22 @@ export const domainApi = {
     apiRequest<AgentQuestion[]>(ws(id, "/agent-questions"), { token }),
   collaborationSync: (id: string, token: string) =>
     apiRequest<CollaborationSnapshot>(ws(id, "/collaboration/sync"), { token }),
+  answerHumanQuestion: (
+    id: string,
+    notificationId: string,
+    answer: string,
+    token: string,
+  ) =>
+    post<{
+      sessionId: string | null;
+      answeredAt: string;
+      deliveryStatus: "DELIVERED" | "PENDING_WAKE";
+      warning?: string;
+    }>(
+      ws(id, `/collaboration/human-questions/${notificationId}/answer`),
+      token,
+      { answer },
+    ),
   sessionAction: (
     id: string,
     sessionId: string,

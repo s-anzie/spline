@@ -9,10 +9,13 @@ import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useSessionOutputStore } from "@/stores/session-output-store";
 import type { SessionOutput } from "@/lib/api/types";
+import { useNotificationStore } from "@/stores/notification-store";
 
 const SOCKET_URL=process.env.NEXT_PUBLIC_SPLINE_SOCKET_URL??"http://localhost:8765";
 
-export function RealtimeBridge(){
+const SILENT_SYNC_INTERVAL_MS = 6000;
+
+export function RealtimeBridge({ workspaceId }: { workspaceId?: string }){
   const token=useAuthStore((state)=>state.token);
   useEffect(()=>{
     if(!token)return;
@@ -22,6 +25,8 @@ export function RealtimeBridge(){
     socket.on("disconnect",()=>useRealtimeStore.getState().setConnected(false));
     socket.onAny((event:string,payload:{workspaceId?:string;output?:SessionOutput})=>{
       useRealtimeStore.getState().setLastEvent(event);
+      if (event.startsWith("notification."))
+        void useNotificationStore.getState().load(true);
       if(event==="session.output"&&payload?.output){
         useSessionOutputStore.getState().append(payload.output);
         return;
@@ -36,5 +41,41 @@ export function RealtimeBridge(){
     });
     return()=>{window.clearTimeout(refreshTimer);socket.disconnect();useRealtimeStore.getState().setConnected(false);};
   },[token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let syncing = false;
+    let disposed = false;
+    const sync = async () => {
+      if (syncing || disposed || document.visibilityState === "hidden") return;
+      syncing = true;
+      try {
+        if (workspaceId) {
+          await Promise.all([
+            useWorkspaceDomainStore.getState().load(workspaceId, true),
+            usePlanningStore.getState().load(workspaceId, true),
+          ]);
+        } else {
+          await useWorkspaceStore.getState().loadWorkspaces(true);
+        }
+        await useNotificationStore.getState().load(true);
+      } finally {
+        syncing = false;
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void sync();
+    };
+    const interval = window.setInterval(() => void sync(), SILENT_SYNC_INTERVAL_MS);
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", onVisible);
+    void sync();
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [token, workspaceId]);
   return null;
 }

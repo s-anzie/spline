@@ -14,7 +14,6 @@ import { AgentNotEligibleError } from "../../agent/application/agent-application
 import { AgentSession } from "../domain/agent-session";
 import {
   AgentAlreadyHasActiveSessionError,
-  AgentSessionNotResumableError,
   MachineNotConnectedError,
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
@@ -209,8 +208,128 @@ describe("StartAgentSessionUseCase", () => {
     expect(payload.resumeProviderSessionId).toBe("claude-session-abc");
   });
 
-  it("refuses to resume a session recorded under a different provider than the agent's current one", async () => {
+  it("automatically reuses the latest idle provider conversation", async () => {
+    const { workspace, agent, machine, sessions, commands, useCase } = await setup();
+    const source = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: agent.provider,
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        providerSessionId: "claude-session-reusable",
+        currentTaskId: "task-next",
+        instruction: "Previous task",
+      },
+      NOW,
+    );
+    source.changeStatus(AgentSessionStatus.RUNNING);
+    source.changeStatus(AgentSessionStatus.IDLE);
+    await sessions.save(source);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      taskId: "task-next",
+      instruction: "Execute the next delegated task",
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.id.toString()).toBe(source.id.toString());
+    expect(result.value.currentTaskId).toBe("task-next");
+    expect(result.value.instruction).toBe("Execute the next delegated task");
+    const pending = await commands.listPendingByMachine(machine.id.toString());
+    expect(pending[pending.length - 1]?.payload).toEqual(
+      expect.objectContaining({
+        sessionId: source.id.toString(),
+        resumeProviderSessionId: "claude-session-reusable",
+      }),
+    );
+  });
+
+  it("reuses the agent conversation when the assigned task changes", async () => {
     const { workspace, agent, machine, sessions, useCase } = await setup();
+    const previous = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: agent.provider,
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        currentTaskId: "task-old",
+        providerSessionId: "claude-session-old-task",
+      },
+      NOW,
+    );
+    previous.changeStatus(AgentSessionStatus.RUNNING);
+    previous.changeStatus(AgentSessionStatus.IDLE);
+    await sessions.save(previous);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      taskId: "task-new",
+      instruction: "Start unrelated work with clean context",
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.id.toString()).toBe(previous.id.toString());
+    expect(result.value.currentTaskId).toBe("task-new");
+    expect(result.value.instruction).toBe("Start unrelated work with clean context");
+  });
+
+  it("serializes simultaneous starts so only one agent instance is created", async () => {
+    const { workspace, agent, machine, commands, useCase } = await setup();
+
+    const [first, second] = await Promise.all([
+      useCase.execute({
+        workspaceId: workspace.id.toString(),
+        agentId: agent.id.toString(),
+        machineId: machine.id.toString(),
+        instruction: "First launch",
+      }),
+      useCase.execute({
+        workspaceId: workspace.id.toString(),
+        agentId: agent.id.toString(),
+        machineId: machine.id.toString(),
+        instruction: "Duplicate launch",
+      }),
+    ]);
+
+    expect([first, second].filter((result) => result.isSuccess)).toHaveLength(1);
+    expect([first, second].filter((result) => result.isFailure)).toHaveLength(1);
+    expect(await commands.listPendingByMachine(machine.id.toString())).toHaveLength(1);
+  });
+
+  it("automatically recovers the latest crashed provider conversation", async () => {
+    const { workspace, agent, machine, sessions, useCase } = await setup();
+    const source = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: agent.provider,
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        providerSessionId: "claude-session-crashed",
+      },
+      NOW,
+    );
+    source.changeStatus(AgentSessionStatus.CRASHED);
+    await sessions.save(source);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      instruction: "Recover and continue",
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.id.toString()).toBe(source.id.toString());
+    expect(result.value.status).toBe(AgentSessionStatus.STARTING);
+  });
+
+  it("starts a fresh native conversation when the provider changed", async () => {
+    const { workspace, agent, machine, sessions, commands, useCase } = await setup();
     // The agent was switched from "codex" to "claude" after this session ran —
     // its providerSessionId is a codex thread id, meaningless to the claude CLI.
     const source = AgentSession.start(
@@ -234,8 +353,44 @@ describe("StartAgentSessionUseCase", () => {
       resumeFromSessionId: source.id.toString(),
     });
 
-    expect(result.isFailure).toBe(true);
-    expect(result.error).toBeInstanceOf(AgentSessionNotResumableError);
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.provider).toBe("claude");
+    expect(result.value.id.toString()).not.toBe(source.id.toString());
+    const pending = await commands.listPendingByMachine(machine.id.toString());
+    const payload = pending[pending.length - 1]?.payload as {
+      resumeProviderSessionId?: string;
+    };
+    expect(payload.resumeProviderSessionId).toBeUndefined();
+  });
+
+  it("closes an idle conversation from the previous provider before starting fresh", async () => {
+    const { workspace, agent, machine, sessions, useCase } = await setup();
+    const source = AgentSession.start(
+      {
+        agentId: agent.id.toString(),
+        provider: "codex",
+        workspaceId: workspace.id.toString(),
+        machineId: machine.id.toString(),
+        providerSessionId: "codex-thread-old",
+      },
+      NOW,
+    );
+    source.changeStatus(AgentSessionStatus.RUNNING);
+    source.changeStatus(AgentSessionStatus.IDLE);
+    await sessions.save(source);
+
+    const result = await useCase.execute({
+      workspaceId: workspace.id.toString(),
+      agentId: agent.id.toString(),
+      machineId: machine.id.toString(),
+      resumeFromSessionId: source.id.toString(),
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(result.value.id.toString()).not.toBe(source.id.toString());
+    expect((await sessions.findById(source.id))?.status).toBe(
+      AgentSessionStatus.COMPLETED,
+    );
   });
 
   it("fails when the agent is disabled", async () => {

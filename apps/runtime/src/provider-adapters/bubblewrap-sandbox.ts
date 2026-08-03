@@ -60,6 +60,8 @@ export function createBubblewrapSpawn(spawnFn: SpawnFn = nodeSpawn): SpawnFn {
     const agentId = options.env["SPLINE_AGENT_ID"];
     if (!agentId || !/^[A-Za-z0-9_-]+$/.test(agentId))
       throw new Error("A valid SPLINE_AGENT_ID is required for provider isolation");
+    const workspaceMount =
+      options.env["SPLINE_AGENT_ROLE"] === "observer" ? "--ro-bind" : "--bind";
     const args = [
       "--unshare-user",
       "--unshare-pid",
@@ -81,7 +83,7 @@ export function createBubblewrapSpawn(spawnFn: SpawnFn = nodeSpawn): SpawnFn {
       "--dev",
       "/dev",
       ...directoryCreationArgs(workspace),
-      "--bind",
+      workspaceMount,
       workspace,
       workspace,
       ...directoryCreationArgs(sandboxHome),

@@ -54,4 +54,29 @@ describe("createBubblewrapSpawn", () => {
     ).toThrow("Unsafe workspace root");
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  it("mounts the workspace read-only for observer agents regardless of provider flags", () => {
+    const spawn = jest.fn(() => ({}) as ChildProcess);
+    const sandboxedSpawn = createBubblewrapSpawn(spawn);
+
+    sandboxedSpawn("/usr/bin/true", [], {
+      cwd: "/tmp/workspace",
+      env: {
+        PATH: process.env["PATH"] ?? "",
+        SPLINE_AGENT_ID: "observer-1",
+        SPLINE_AGENT_ROLE: "observer",
+      },
+    });
+
+    const calls = spawn.mock.calls as unknown as Array<[string, string[]]>;
+    const args = calls[0]?.[1] ?? [];
+    expect(
+      args.some(
+        (value, index) =>
+          value === "--ro-bind" &&
+          args[index + 1] === "/tmp/workspace" &&
+          args[index + 2] === "/tmp/workspace",
+      ),
+    ).toBe(true);
+  });
 });

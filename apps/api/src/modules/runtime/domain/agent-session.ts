@@ -200,7 +200,13 @@ export class AgentSession extends AggregateRoot<AgentSessionProps> {
     this.record(new AgentSessionStatusChanged(this.props.workspaceId, this.id.toString(), current, next));
   }
 
-  prepareWake(at: Date = new Date()): void {
+  prepareWake(
+    at: Date = new Date(),
+    context?: { taskId?: string; instruction?: string },
+  ): void {
+    if (context?.taskId !== undefined) this.props.currentTaskId = context.taskId;
+    if (context?.instruction !== undefined)
+      this.props.instruction = context.instruction;
     this.changeStatus(AgentSessionStatus.STARTING, at);
   }
 

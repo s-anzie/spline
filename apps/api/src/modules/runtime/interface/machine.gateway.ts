@@ -1,4 +1,4 @@
-import { AgentSessionStatus } from "@repo/db";
+import { AgentSessionStatus, RuntimeCommandStatus } from "@repo/db";
 import { Inject } from "@nestjs/common";
 import {
   ConnectedSocket,
@@ -11,6 +11,7 @@ import {
 } from "@nestjs/websockets";
 import { Namespace, Socket } from "socket.io";
 
+import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { VerifyMachineTokenUseCase } from "../../identity/application/verify-machine-token.use-case";
 import { AppendSessionOutputUseCase } from "../application/append-session-output.use-case";
 import { ReportProcessExitedUseCase } from "../application/report-process-exited.use-case";
@@ -100,6 +101,9 @@ export class MachineGateway
     const machineId = client.data?.machineId as string | undefined;
     if (machineId) {
       await this.updateMachinePresence.execute({ machineId, connected: false });
+      await this.reconcileMachineSessions.execute(machineId, [], {
+        includeStarting: true,
+      });
     }
   }
 
@@ -142,6 +146,36 @@ export class MachineGateway
     }
     await this.updateMachinePresence.execute({ machineId, connected: true });
     await this.deliverPendingCommands(machineId, client);
+  }
+
+  @SubscribeMessage("command_result")
+  async onCommandResult(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: {
+      commandId: string;
+      status: "COMPLETED" | "FAILED";
+      error?: string;
+    },
+  ): Promise<void> {
+    const machineId = client.data?.machineId as string | undefined;
+    if (!machineId) {
+      client.disconnect(true);
+      return;
+    }
+    const command = await this.commands.findById(
+      UniqueEntityId.create(body.commandId),
+    );
+    if (!command || command.machineId !== machineId) return;
+    if (
+      command.status === RuntimeCommandStatus.COMPLETED ||
+      command.status === RuntimeCommandStatus.FAILED
+    )
+      return;
+    if (command.status === RuntimeCommandStatus.PENDING) command.markSent();
+    if (body.status === "COMPLETED") command.markCompleted();
+    else command.markFailed();
+    await this.commands.save(command);
   }
 
   @SubscribeMessage("process_started")

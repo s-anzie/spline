@@ -40,11 +40,59 @@ describe("ClaudeProviderAdapter", () => {
         "--output-format",
         "stream-json",
         "--verbose",
+        "--dangerously-skip-permissions",
+        "--permission-mode",
+        "bypassPermissions",
+        "--setting-sources",
+        "",
+        "--tools",
+        "default",
         "--session-id",
       ]),
     );
+    expect(args).not.toContain("--allowedTools");
     expect(options["shell"]).not.toBe(true);
     expect(options["cwd"]).toBe("/home/bradley/spline/apps/web");
+  });
+
+  it("keeps observer agents technically read-only even with non-interactive approvals", () => {
+    const child = createFakeChildProcess();
+    const spawn = jest.fn().mockReturnValue(child);
+    const adapter = new ClaudeProviderAdapter(spawn);
+
+    adapter.start({
+      prompt: "Audit the workspace",
+      cwd: "/tmp",
+      env: { SPLINE_AGENT_ROLE: "observer" },
+      onOutput: jest.fn(),
+      onExit: jest.fn(),
+    });
+
+    expect(spawn.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        "--disallowedTools",
+        "Bash,Edit,Write,NotebookEdit",
+      ]),
+    );
+  });
+
+  it("does not load interactive host or project settings that can install approval hooks", () => {
+    const child = createFakeChildProcess();
+    const spawn = jest.fn().mockReturnValue(child);
+    const adapter = new ClaudeProviderAdapter(spawn);
+
+    adapter.start({
+      prompt: "Implement the task",
+      cwd: "/tmp",
+      onOutput: jest.fn(),
+      onExit: jest.fn(),
+    });
+
+    const args = spawn.mock.calls[0]?.[1] as string[];
+    const settingSourcesIndex = args.indexOf("--setting-sources");
+    expect(settingSourcesIndex).toBeGreaterThan(-1);
+    expect(args[settingSourcesIndex + 1]).toBe("");
+    expect(args).toContain("--disable-slash-commands");
   });
 
   it("resumes the exact native Claude session", () => {

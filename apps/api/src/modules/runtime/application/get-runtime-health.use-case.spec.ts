@@ -144,6 +144,7 @@ describe("GetRuntimeHealthUseCase", () => {
         hostname: "bradley-workstation",
         type: RuntimeCommandType.START_SESSION,
         status: RuntimeCommandStatus.PENDING,
+        payload: {},
         createdAt: new Date(NOW.getTime() - 90_000),
       },
       {
@@ -152,6 +153,7 @@ describe("GetRuntimeHealthUseCase", () => {
         hostname: "bradley-workstation",
         type: RuntimeCommandType.STOP_PROCESS,
         status: RuntimeCommandStatus.SENT,
+        payload: {},
         createdAt: new Date(NOW.getTime() - 90_000),
       },
     ]);

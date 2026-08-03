@@ -22,6 +22,29 @@ export class InMemoryAgentSessionRepository implements AgentSessionRepository {
     return [...this.sessions.values()].filter((s) => s.workspaceId === workspaceId);
   }
 
+  async findLatestReusableByAgent(
+    agentId: string,
+    provider: string,
+  ): Promise<AgentSession | null> {
+    const reusable: AgentSessionStatus[] = [
+      AgentSessionStatus.IDLE,
+      AgentSessionStatus.FAILED,
+      AgentSessionStatus.CRASHED,
+    ];
+    return (
+      [...this.sessions.values()]
+        .filter(
+          (session) =>
+            session.agentId === agentId &&
+            session.provider === provider &&
+            Boolean(session.providerSessionId) &&
+            reusable.includes(session.status),
+        )
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ??
+      null
+    );
+  }
+
   async listActiveByAgent(agentId: string): Promise<AgentSession[]> {
     return [...this.sessions.values()].filter(
       (s) => s.agentId === agentId && !TERMINAL_STATUSES.includes(s.status),

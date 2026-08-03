@@ -13,6 +13,7 @@ type PlanningState = {
   createTask: (workspaceId: string, input: { title: string; description?: string; goalId?: string; priority?: Priority }) => Promise<Task>;
   updateGoal:(goalId:string,input:unknown)=>Promise<void>;
   updateTask:(taskId:string,input:unknown)=>Promise<void>;
+  linkTaskToGoal:(taskId:string,goalId:string)=>Promise<void>;
   goalAction:(goalId:string,action:"status"|"blocker"|"validate"|"reject",value?:string)=>Promise<void>;
   taskAction:(taskId:string,action:"status"|"blocker"|"validate"|"reject"|"assign",value?:string,actorType?:string)=>Promise<void>;
   reset: () => void;
@@ -55,6 +56,7 @@ export const usePlanningStore = create<PlanningState>((set, get) => ({
   },
   updateGoal:async(goalId,input)=>{const workspaceId=get().workspaceId;if(!workspaceId)return;set({mutating:true,error:null});try{const goal=await planningApi.updateGoal(workspaceId,goalId,input,token());set(state=>({goals:state.goals.map(item=>item.id===goal.id?goal:item),mutating:false}));}catch(error){set({mutating:false,error:error instanceof Error?error.message:"Mise à jour impossible"});throw error;}},
   updateTask:async(taskId,input)=>{const workspaceId=get().workspaceId;if(!workspaceId)return;set({mutating:true,error:null});try{const task=await planningApi.updateTask(workspaceId,taskId,input,token());set(state=>({tasks:state.tasks.map(item=>item.id===task.id?task:item),mutating:false}));}catch(error){set({mutating:false,error:error instanceof Error?error.message:"Mise à jour impossible"});throw error;}},
+  linkTaskToGoal:async(taskId,goalId)=>{const workspaceId=get().workspaceId;if(!workspaceId)return;set({mutating:true,error:null});try{const task=await planningApi.linkTaskToGoal(workspaceId,taskId,goalId,token());const [goals,tasks]=await Promise.all([planningApi.goals(workspaceId,token()),planningApi.tasks(workspaceId,token())]);set({goals,tasks:tasks.map(item=>item.id===task.id?task:item),mutating:false});}catch(error){set({mutating:false,error:error instanceof Error?error.message:"Rattachement impossible"});throw error;}},
   goalAction:async(goalId,action,value)=>{
     const workspaceId=get().workspaceId;if(!workspaceId)return;set({mutating:true,error:null});
     try{let goal:Goal;if(action==="status")goal=await planningApi.goalStatus(workspaceId,goalId,value as GoalStatus,token());else if(action==="blocker")goal=await planningApi.goalBlocker(workspaceId,goalId,value??"",token());else goal=await planningApi.goalReview(workspaceId,goalId,action,token());set(state=>({goals:state.goals.map(item=>item.id===goal.id?goal:item),mutating:false}));}

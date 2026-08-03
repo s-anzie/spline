@@ -223,6 +223,13 @@ export class Goal extends AggregateRoot<GoalProps> {
     this.props.status = next;
     if (next === GoalStatus.REVIEW) {
       this.props.validationState = ValidationState.PENDING;
+    } else if (
+      current === GoalStatus.REVIEW &&
+      this.props.validationState === ValidationState.PENDING
+    ) {
+      // Returning a review candidate to active work is an explicit rejection
+      // of that validation cycle; PENDING must never leak onto an ACTIVE goal.
+      this.props.validationState = ValidationState.REJECTED;
     }
     this.props.updatedAt = new Date();
     this.record(new GoalStatusChanged(this.props.workspaceId, this.id.toString(), current, next));
@@ -263,6 +270,9 @@ export class Goal extends AggregateRoot<GoalProps> {
 
     if (percentage === 100 && totalTaskCount > 0 && this.props.status === GoalStatus.ACTIVE) {
       this.changeStatus(GoalStatus.REVIEW);
+    } else if (percentage < 100 && this.props.status === GoalStatus.REVIEW) {
+      // New or re-opened work invalidates the previous review candidate.
+      this.changeStatus(GoalStatus.ACTIVE);
     }
   }
 

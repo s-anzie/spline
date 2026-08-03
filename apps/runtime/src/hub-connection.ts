@@ -112,6 +112,14 @@ export class HubConnection {
     });
   }
 
+  reportCommandResult(commandId: string, succeeded: boolean, error?: string): void {
+    this.requireSocket().emit("command_result", {
+      commandId,
+      status: succeeded ? "COMPLETED" : "FAILED",
+      ...(error ? { error } : {}),
+    });
+  }
+
   sendSessionHeartbeat(sessionId: string): void {
     this.requireSocket().emit("session_heartbeat", { sessionId });
   }

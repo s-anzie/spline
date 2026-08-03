@@ -45,6 +45,8 @@ export interface StartAgentSessionInput {
   machineId: string;
   taskId?: string;
   resumeFromSessionId?: string;
+  /** Preserve the Spline conversation lineage without resuming provider-native state. */
+  lineageFromSessionId?: string;
   instruction?: string;
   requesterType?: ActorType;
 }
@@ -63,6 +65,8 @@ export type StartAgentSessionError =
 
 @Injectable()
 export class StartAgentSessionUseCase {
+  private readonly agentStartTails = new Map<string, Promise<void>>();
+
   constructor(
     @Inject(AGENT_SESSION_REPOSITORY)
     private readonly sessions: AgentSessionRepository,
@@ -78,6 +82,26 @@ export class StartAgentSessionUseCase {
   ) {}
 
   async execute(
+    input: StartAgentSessionInput,
+  ): Promise<Result<AgentSession, StartAgentSessionError>> {
+    const previous = this.agentStartTails.get(input.agentId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => gate);
+    this.agentStartTails.set(input.agentId, tail);
+    await previous;
+    try {
+      return await this.executeSerialized(input);
+    } finally {
+      release();
+      if (this.agentStartTails.get(input.agentId) === tail)
+        this.agentStartTails.delete(input.agentId);
+    }
+  }
+
+  private async executeSerialized(
     input: StartAgentSessionInput,
   ): Promise<Result<AgentSession, StartAgentSessionError>> {
     const workspaceResult = await this.getWorkspace.execute(input.workspaceId);
@@ -113,9 +137,17 @@ export class StartAgentSessionUseCase {
 
     let resumeProviderSessionId: string | undefined;
     let idleSession: AgentSession | undefined;
-    if (input.resumeFromSessionId) {
+    const automaticSource = input.resumeFromSessionId
+      ? null
+      : await this.sessions.findLatestReusableByAgent(
+          input.agentId,
+          agent.provider,
+        );
+    const sourceSessionId =
+      input.resumeFromSessionId ?? automaticSource?.id.toString();
+    if (sourceSessionId) {
       const source = await this.sessions.findById(
-        UniqueEntityId.create(input.resumeFromSessionId),
+        UniqueEntityId.create(sourceSessionId),
       );
       if (
         !source ||
@@ -123,7 +155,7 @@ export class StartAgentSessionUseCase {
         source.agentId !== input.agentId
       ) {
         return Result.fail(
-          new AgentSessionNotFoundError(input.resumeFromSessionId),
+          new AgentSessionNotFoundError(sourceSessionId),
         );
       }
       const reusableStatus = new Set<AgentSessionStatus>([
@@ -131,18 +163,28 @@ export class StartAgentSessionUseCase {
         AgentSessionStatus.FAILED,
         AgentSessionStatus.CRASHED,
       ]).has(source.status);
-      if (
+      const providerChanged = source.provider !== agent.provider;
+      if (providerChanged && source.status === AgentSessionStatus.IDLE) {
+        // Native conversation ids are provider-specific. Close the old idle
+        // turn so it no longer blocks the agent, then create a fresh provider
+        // conversation while retaining resumedFromSessionId as Spline lineage.
+        source.changeStatus(AgentSessionStatus.COMPLETED);
+        await this.sessions.save(source);
+        this.eventPublisher.publishAll(source.domainEvents);
+        source.clearEvents();
+      } else if (
         (!source.isTerminal && !reusableStatus) ||
         (source.isTerminal && !reusableStatus) ||
-        !source.providerSessionId ||
-        source.provider !== agent.provider
+        (!providerChanged && !source.providerSessionId)
       ) {
         return Result.fail(
-          new AgentSessionNotResumableError(input.resumeFromSessionId),
+          new AgentSessionNotResumableError(sourceSessionId),
         );
       }
-      resumeProviderSessionId = source.providerSessionId;
-      if (reusableStatus) idleSession = source;
+      if (!providerChanged) {
+        resumeProviderSessionId = source.providerSessionId;
+        if (reusableStatus) idleSession = source;
+      }
     }
 
     const now = this.clock.now();
@@ -169,8 +211,25 @@ export class StartAgentSessionUseCase {
     }
 
     const activeSessions = await this.sessions.listActiveByAgent(input.agentId);
+    // There must be one durable collaboration conversation per agent. Any
+    // older orphan IDLE row is closed, while the latest compatible provider
+    // conversation is woken in place even when its assigned task changes.
+    for (const active of activeSessions) {
+      if (
+        active.id.toString() !== idleSession?.id.toString() &&
+        active.status === AgentSessionStatus.IDLE
+      ) {
+        active.changeStatus(AgentSessionStatus.COMPLETED, now);
+        await this.sessions.save(active);
+        this.eventPublisher.publishAll(active.domainEvents);
+        active.clearEvents();
+      }
+    }
+    const remainingActiveSessions = await this.sessions.listActiveByAgent(
+      input.agentId,
+    );
     if (
-      activeSessions.some(
+      remainingActiveSessions.some(
         (active) => active.id.toString() !== idleSession?.id.toString(),
       )
     ) {
@@ -186,12 +245,17 @@ export class StartAgentSessionUseCase {
         machineId: input.machineId,
         currentTaskId: input.taskId,
         providerSessionId: resumeProviderSessionId,
-        resumedFromSessionId: input.resumeFromSessionId,
+        resumedFromSessionId:
+          input.resumeFromSessionId ?? input.lineageFromSessionId,
         instruction,
       },
       now,
     );
-    if (idleSession) idleSession.prepareWake(now);
+    if (idleSession)
+      idleSession.prepareWake(now, {
+        taskId: input.taskId,
+        instruction,
+      });
     await this.sessions.save(session);
     let latestOutput = this.prisma
       ? await this.prisma.agentSessionOutput.findFirst({

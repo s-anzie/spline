@@ -40,6 +40,7 @@ export interface StuckCommandSummary {
   hostname: string | null;
   type: string;
   status: string;
+  payload: Record<string, unknown>;
   createdAt: Date;
 }
 
@@ -134,6 +135,7 @@ export class GetRuntimeHealthUseCase {
           hostname: hostnameByMachineId.get(command.machineId) ?? null,
           type: command.type,
           status: command.status,
+          payload: command.payload,
           createdAt: command.createdAt,
         })),
       },

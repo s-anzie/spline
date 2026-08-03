@@ -17,7 +17,7 @@ function makeCollaborators() {
   return {
     verifyMachineToken: { execute: jest.fn() },
     updateMachinePresence: { execute: jest.fn().mockResolvedValue({ isFailure: false, isSuccess: true }) },
-    commands: { listPendingByMachine: jest.fn().mockResolvedValue([]), save: jest.fn() },
+    commands: { listPendingByMachine: jest.fn().mockResolvedValue([]), findById: jest.fn(), save: jest.fn() },
     reportProcessStarted: { execute: jest.fn() },
     reportProcessExited: { execute: jest.fn() },
     reportSessionStatus: { execute: jest.fn() },
@@ -100,6 +100,11 @@ describe("MachineGateway", () => {
       machineId: "machine-1",
       connected: false,
     });
+    expect(collaborators.reconcileMachineSessions.execute).toHaveBeenCalledWith(
+      "machine-1",
+      [],
+      { includeStarting: true },
+    );
   });
 
   it("does nothing on disconnect for a socket that never authenticated", async () => {
@@ -158,5 +163,27 @@ describe("MachineGateway", () => {
       connected: true,
     });
     expect(collaborators.commands.listPendingByMachine).toHaveBeenCalledWith("machine-1");
+  });
+
+  it("completes a command only when the authenticated machine reports its result", async () => {
+    const collaborators = makeCollaborators();
+    const command = RuntimeCommand.enqueue(
+      { machineId: "machine-1", workspaceId: "w1", type: RuntimeCommandType.START_SESSION, payload: {} },
+      new Date(),
+      UniqueEntityId.create("cmd-1"),
+    );
+    command.markSent();
+    collaborators.commands.findById.mockResolvedValue(command);
+    const gateway = makeGateway(collaborators);
+    const socket = makeSocket({});
+    socket.data.machineId = "machine-1";
+
+    await gateway.onCommandResult(socket as never, {
+      commandId: "cmd-1",
+      status: "COMPLETED",
+    });
+
+    expect(command.status).toBe("COMPLETED");
+    expect(collaborators.commands.save).toHaveBeenCalledWith(command);
   });
 });

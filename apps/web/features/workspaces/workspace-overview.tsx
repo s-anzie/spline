@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { AlertTriangle, ArrowRight, Bot, CheckCircle2, Circle, Clock3, FileCheck2, MessageSquareText, RefreshCw, Target, Users } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Bot, CheckCircle2, Circle, MessageSquareText, RefreshCw, Target, Users } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,22 +18,22 @@ export function WorkspaceOverview({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaceStore((state) => state.workspaces.find((item) => item.id === workspaceId));
   const loadWorkspaces = useWorkspaceStore((state) => state.loadWorkspaces);
   const { goals, tasks, loading: planLoading, load: loadPlan } = usePlanningStore();
-  const { agents, sessions, questions, artifacts, events, loading: domainLoading, load: loadDomains } = useWorkspaceDomainStore();
+  const { agents, sessions, questions, notifications, artifacts, loading: domainLoading, load: loadDomains } = useWorkspaceDomainStore();
   const connected = useRealtimeStore((state) => state.connected);
   useEffect(() => { void loadWorkspaces(); void loadPlan(workspaceId); void loadDomains(workspaceId); }, [loadDomains, loadPlan, loadWorkspaces, workspaceId]);
 
   const primary = goals.find((goal) => goal.status === "ACTIVE") ?? goals[0];
-  const activeSessions = sessions.filter((session) => ["STARTING", "RUNNING", "AWAITING_APPROVAL"].includes(session.status));
   const manager = agents.find((agent) => agent.displayName.toLowerCase().includes("manager") || String(agent.promptProfile.role ?? "").toLowerCase() === "manager");
   const managerSession = sessions.find((session) => session.agentId === manager?.id && !session.endedAt);
   const blocked = tasks.filter((task) => task.status === "BLOCKED");
   const pending = [...goals, ...tasks].filter((item) => item.validationState === "PENDING");
   const orphanTasks = tasks.filter((task) => !task.goalId);
   const openQuestions = questions.filter((question) => question.status === "OPEN");
+  const humanQuestions = notifications.filter((notification) => notification.payload["collaborationType"] === "MANAGER_HUMAN_QUESTION" && typeof notification.payload["humanAnswer"] !== "string");
   const refresh = () => { void loadPlan(workspaceId, true); void loadDomains(workspaceId, true); };
 
-  const next = openQuestions.length
-    ? { title: "Une question attend une réponse", detail: "Le collectif a besoin d’une décision pour continuer.", href: `/workspaces/${workspaceId}/execution`, action: "Répondre" }
+  const next = openQuestions.length || humanQuestions.length
+    ? { title: "Une question attend une réponse", detail: "Le collectif a besoin d’une décision pour continuer.", href: `/workspaces/${workspaceId}/attention`, action: "Répondre" }
     : blocked.length
       ? { title: `${blocked.length} tâche(s) bloquée(s)`, detail: "Le travail ne peut pas avancer sans arbitrage ou réaffectation.", href: `/workspaces/${workspaceId}/tasks`, action: "Résoudre" }
       : pending.length
@@ -67,11 +67,11 @@ export function WorkspaceOverview({ workspaceId }: { workspaceId: string }) {
       <Card className="border-white/[.075] bg-white/[.018]"><CardContent className="p-5"><div className="flex items-center gap-2"><MessageSquareText className="size-4 text-[#f47b64]"/><h2 className="text-sm">Conversation principale</h2></div>{manager ? <div className="mt-5"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-[#f47b64]/10"><Bot className="size-4 text-[#f47b64]"/></span><div><p className="text-xs">{manager.displayName}</p><p className="text-[8px] text-muted-foreground">Votre interlocuteur unique · {managerSession?.status ?? "sans session"}</p></div></div><p className="mt-4 text-[9px] leading-5 text-muted-foreground">Décrivez-lui le résultat attendu. Il planifie, délègue aux contributeurs et revient vers vous lorsqu’une décision humaine est nécessaire.</p><Button nativeButton={false} render={<Link href={managerSession ? `/workspaces/${workspaceId}/execution?session=${managerSession.id}` : `/workspaces/${workspaceId}/execution`}/>} className="mt-4 w-full" variant="outline">Ouvrir la conversation<ArrowRight/></Button></div> : <p className="mt-5 text-[10px] text-muted-foreground">Aucun manager n’est configuré dans cette équipe.</p>}</CardContent></Card>
     </div>
 
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
-      { label:"Équipe", value:`${agents.length} agent(s)`, detail:`${activeSessions.length} au travail`, icon:Users, href:`/workspaces/${workspaceId}/agents` },
-      { label:"À valider", value:`${pending.length} élément(s)`, detail:"Décisions humaines", icon:FileCheck2, href:`/workspaces/${workspaceId}/review` },
-      { label:"Blocages", value:`${blocked.length} tâche(s)`, detail:"Freins déclarés", icon:AlertTriangle, href:`/workspaces/${workspaceId}/tasks` },
-      { label:"Dernière activité", value:events[0] ? new Date(events[0].createdAt).toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"}) : "—", detail:`${artifacts.length} fichier(s) produit(s)`, icon:Clock3, href:`/workspaces/${workspaceId}/activity` },
-    ].map(({label,value,detail,icon:Icon,href}) => <Link key={label} href={href}><Card className="h-full bg-white/[.015] transition hover:-translate-y-0.5 hover:bg-white/[.025]"><CardContent className="flex items-center gap-3 p-4"><Icon className="size-4 text-muted-foreground"/><div className="min-w-0"><p className="text-[8px] text-muted-foreground">{label}</p><strong className="block truncate text-xs">{value}</strong><p className="mt-0.5 text-[8px] text-muted-foreground">{detail}</p></div></CardContent></Card></Link>)}</div>
+    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/[.055] pt-4">
+      <span className="mr-1 text-[8px] uppercase tracking-wider text-muted-foreground">Explorer</span>
+      <Button nativeButton={false} render={<Link href={`/workspaces/${workspaceId}/agents`}/>} size="sm" variant="ghost"><Users/>Équipe · {agents.length}</Button>
+      <Button nativeButton={false} render={<Link href={`/workspaces/${workspaceId}/activity`}/>} size="sm" variant="ghost"><Activity/>Activité récente</Button>
+      <Button nativeButton={false} render={<Link href={`/workspaces/${workspaceId}/artifacts`}/>} size="sm" variant="ghost">Livrables · {artifacts.length}</Button>
+    </div>
   </>;
 }

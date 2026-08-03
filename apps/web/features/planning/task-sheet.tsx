@@ -36,6 +36,8 @@ export function TaskSheet({
 }) {
   const action = usePlanningStore((s) => s.taskAction);
   const update = usePlanningStore((s) => s.updateTask);
+  const linkTaskToGoal = usePlanningStore((s) => s.linkTaskToGoal);
+  const goals = usePlanningStore((s) => s.goals);
   const pending = usePlanningStore((s) => s.mutating);
   const error = usePlanningStore((s) => s.error);
   const agents = useWorkspaceDomainStore((s) => s.agents);
@@ -82,6 +84,19 @@ export function TaskSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="grid gap-5 p-5">
+          <label className="grid gap-2 text-xs">
+            <span>Objectif auquel cette tâche contribue</span>
+            <select
+              disabled={pending || goals.length === 0}
+              value={task.goalId ?? ""}
+              onChange={(event) => event.target.value && void linkTaskToGoal(task.id, event.target.value)}
+              className="h-9 rounded-lg border border-white/10 bg-[#191715] px-3"
+            >
+              <option value="" disabled>{goals.length ? "Choisir un objectif…" : "Aucun objectif disponible"}</option>
+              {goals.map((goal) => <option key={goal.id} value={goal.id}>{goal.title}</option>)}
+            </select>
+            {!task.goalId && <span className="text-[9px] text-amber-300">Cette tâche est orpheline et ne compte dans aucune progression.</span>}
+          </label>
           <form
             onSubmit={edit}
             className="grid gap-3 rounded-lg border border-white/[.06] p-3"

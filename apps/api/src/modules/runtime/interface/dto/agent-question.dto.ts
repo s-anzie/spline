@@ -34,6 +34,12 @@ export class AnswerQuestionDto {
   answer!: string;
 }
 
+export class AnswerHumanQuestionDto {
+  @IsString()
+  @IsNotEmpty()
+  answer!: string;
+}
+
 export class AskHumanDto {
   @IsString()
   @IsNotEmpty()
@@ -57,6 +63,9 @@ export class AskHumanDto {
 }
 
 export class DelegateTaskDto {
+  @IsUUID()
+  goalId!: string;
+
   @IsString()
   @IsNotEmpty()
   title!: string;

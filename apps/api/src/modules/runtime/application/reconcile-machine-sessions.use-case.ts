@@ -18,12 +18,16 @@ export class ReconcileMachineSessionsUseCase {
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
-  async execute(machineId: string, runningSessionIds: string[]): Promise<void> {
+  async execute(
+    machineId: string,
+    runningSessionIds: string[],
+    options: { includeStarting?: boolean } = {},
+  ): Promise<void> {
     const reported = new Set(runningSessionIds);
     const active = await this.sessions.listActiveByMachine(machineId);
     for (const session of active) {
       if (
-        session.status === AgentSessionStatus.STARTING ||
+        (session.status === AgentSessionStatus.STARTING && !options.includeStarting) ||
         reported.has(session.id.toString())
       )
         continue;

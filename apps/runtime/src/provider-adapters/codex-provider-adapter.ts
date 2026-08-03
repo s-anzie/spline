@@ -20,6 +20,12 @@ export class CodexProviderAdapter implements ProviderAdapter {
       // reaching the local Spline API. This flag is explicitly intended for
       // externally sandboxed automation; the outer boundary remains active.
       "--dangerously-bypass-approvals-and-sandbox",
+      // Runtime agents must not inherit a developer's interactive Codex
+      // policy, hooks, MCP servers or exec rules. Authentication still comes
+      // from the isolated CODEX_HOME mounted by Bubblewrap.
+      "--ignore-user-config",
+      "--ignore-rules",
+      "--strict-config",
       "-c",
       'mcp_servers.spline.command="/run/spline-node"',
       "-c",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, FileCheck2, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, FileCheck2, RefreshCw, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,10 @@ import { LoadingButton } from "@/components/ui/loading-button";
 import { usePlanningStore } from "@/stores/planning-store";
 import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
 
-export function ReviewView({ workspaceId }: { workspaceId: string }) {
+export function ReviewView({ workspaceId, initialItemId }: { workspaceId: string; initialItemId?: string }) {
   const { goals, tasks, loading, mutating, error, load, goalAction, taskAction } = usePlanningStore();
   const { artifacts, decisions, load: loadDomain } = useWorkspaceDomainStore();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialItemId ?? null);
   useEffect(() => { void load(workspaceId); void loadDomain(workspaceId); }, [load, loadDomain, workspaceId]);
   const candidates = [
     ...goals.filter((item) => item.validationState === "PENDING").map((item) => ({ ...item, kind: "GOAL" as const })),
@@ -28,11 +28,6 @@ export function ReviewView({ workspaceId }: { workspaceId: string }) {
 
   return <>
     <PageHeader eyebrow="Contrôle humain" title="Revue" description="Examiner le résultat, ses preuves et ses risques avant de l’accepter ou de le renvoyer au collectif." actions={<><Button nativeButton={false} render={<Link href={`/workspaces/${workspaceId}/decisions`}/>} variant="outline">Journal des décisions</Button><LoadingButton loading={loading} onClick={() => { void load(workspaceId, true); void loadDomain(workspaceId, true); }} size="icon-lg" variant="outline"><RefreshCw/></LoadingButton></>}/>
-    <div className="mb-5 grid gap-3 sm:grid-cols-3">{[
-      { label:"En attente", value:candidates.length, icon:ShieldCheck, tone:"text-[#f47b64]" },
-      { label:"Avec preuves", value:candidates.filter((candidate) => artifacts.some((artifact) => candidate.kind === "GOAL" ? artifact.goalId === candidate.id : artifact.taskId === candidate.id)).length, icon:FileCheck2, tone:"text-emerald-400" },
-      { label:"Avec blocages", value:candidates.filter((candidate) => candidate.blockers.length > 0).length, icon:AlertTriangle, tone:"text-amber-300" },
-    ].map(({label,value,icon:Icon,tone}) => <Card key={label} className="bg-white/[.015]"><CardContent className="flex items-center gap-3 p-4"><Icon className={`size-4 ${tone}`}/><div><strong className="text-lg">{value}</strong><p className="text-[9px] text-muted-foreground">{label}</p></div></CardContent></Card>)}</div>
     {error && <p className="mb-4 text-[10px] text-red-300">{error}</p>}
     {current ? <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
       <aside className="grid content-start gap-2">{candidates.map((candidate) => <button key={candidate.id} onClick={() => setSelected(candidate.id)} className={`rounded-xl border p-4 text-left transition ${current.id === candidate.id ? "border-[#f47b64]/30 bg-[#f47b64]/[.065]" : "border-white/[.06] bg-white/[.015] hover:bg-white/[.025]"}`}><div className="flex items-center justify-between gap-2"><Badge variant="outline">{candidate.kind === "GOAL" ? "Objectif" : "Tâche"}</Badge><span className="text-[8px] text-muted-foreground">{candidate.priority}</span></div><h2 className="mt-3 line-clamp-2 text-xs leading-5">{candidate.title}</h2><p className="mt-2 text-[8px] text-muted-foreground">Mis à jour {new Date(candidate.updatedAt).toLocaleString("fr-FR")}</p></button>)}</aside>

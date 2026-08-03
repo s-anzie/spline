@@ -18,6 +18,7 @@ import type {
   WorkspaceEvent,
 } from "@/lib/api/types";
 import { useAuthStore } from "./auth-store";
+import { useNotificationStore } from "./notification-store";
 
 type DomainState = {
   workspaceId: string | null;
@@ -63,6 +64,7 @@ type DomainState = {
     notificationId: string,
     status: string,
   ) => Promise<void>;
+  answerHumanQuestion: (notificationId: string, answer: string) => Promise<void>;
   processAction: (
     processId: string,
     action: "start" | "stop" | "restart",
@@ -82,6 +84,17 @@ function authToken() {
   if (!token) throw new Error("Session requise");
   return token;
 }
+
+function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
+  return [item, ...items.filter((candidate) => candidate.id !== item.id)];
+}
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  return items.filter(
+    (item, index) => items.findIndex((candidate) => candidate.id === item.id) === index,
+  );
+}
+
 const empty = {
   workspaceId: null,
   agents: [],
@@ -146,7 +159,7 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
           providers,
           machines,
           processes,
-          sessions,
+          sessions: uniqueById(sessions),
           questions: collaboration.questions,
           wakeStatus: collaboration.wakeStatus,
           locks,
@@ -278,7 +291,9 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
     try {
       const session = await domainApi.startSession(id, input, authToken());
       set((state) => ({
-        sessions: [session, ...state.sessions],
+        // The backend may resume an IDLE session in place. Treat its response
+        // as an upsert instead of assuming every start creates a new row.
+        sessions: upsertById(state.sessions, session),
         pendingAction: null,
       }));
       return session;
@@ -540,6 +555,28 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
       throw error;
     }
   },
+  answerHumanQuestion: async (notificationId, answer) => {
+    const id = get().workspaceId;
+    if (!id) return;
+    set({ pendingAction: `question:${notificationId}:answer`, error: null });
+    try {
+      await domainApi.answerHumanQuestion(
+        id,
+        notificationId,
+        answer,
+        authToken(),
+      );
+      set({ pendingAction: null });
+      await get().load(id, true);
+      await useNotificationStore.getState().load(true);
+    } catch (error) {
+      set({
+        pendingAction: null,
+        error: error instanceof Error ? error.message : "Réponse impossible",
+      });
+      throw error;
+    }
+  },
   processAction: async (processId, action, machineId) => {
     const workspaceId = get().workspaceId;
     if (!workspaceId) return;
@@ -578,9 +615,7 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
         action === "report" ? { status: value } : undefined,
       );
       set((state) => ({
-        sessions: state.sessions.map((item) =>
-          item.id === session.id ? session : item,
-        ),
+        sessions: upsertById(state.sessions, session),
         pendingAction: null,
       }));
     } catch (error) {

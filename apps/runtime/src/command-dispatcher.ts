@@ -14,6 +14,7 @@ export interface CommandDispatcherDeps {
   processSupervisor: ProcessSupervisorLike;
   sessionSupervisor: SessionSupervisorLike;
   onError?: (error: Error, command: CommandMessage) => void;
+  onDispatched?: (command: CommandMessage) => void;
   resolveAgentEnvironment?: (
     agentId: string,
     workspaceId: string,
@@ -53,6 +54,7 @@ export class CommandDispatcher {
   dispatch(command: CommandMessage): void {
     try {
       this.route(command);
+      this.deps.onDispatched?.(command);
     } catch (error) {
       this.deps.onError?.(error instanceof Error ? error : new Error(String(error)), command);
     }

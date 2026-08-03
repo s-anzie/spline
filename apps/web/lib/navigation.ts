@@ -1,58 +1,60 @@
 import {
   Bell,
   Bot,
+  CircleAlert,
   CircleGauge,
-  ClipboardCheck,
   Files,
   History,
   LayoutDashboard,
   ListTodo,
+  MessagesSquare,
   Network,
-  PlayCircle,
   Settings,
 } from "lucide-react";
 
 export const appNavigation = [
-  { label: "Centre de contrôle", href: "/dashboard", icon: LayoutDashboard },
-  { label: "À traiter", href: "/attention", icon: Bell },
-  { label: "Workspaces", href: "/workspaces", icon: CircleGauge },
-  { label: "Infrastructure", href: "/infrastructure", icon: Network },
+  { section: "Piloter", label: "Centre de contrôle", href: "/dashboard", icon: LayoutDashboard },
+  { section: "Piloter", label: "À traiter", href: "/attention", icon: Bell },
+  { section: "Organiser", label: "Workspaces", href: "/workspaces", icon: CircleGauge },
+  { section: "Organiser", label: "Infrastructure", href: "/infrastructure", icon: Network },
 ];
 
 export const workspaceNavigation = (workspaceId: string) => [
   {
-    label: "Accueil",
+    section: "Piloter",
+    label: "Vue d’ensemble",
     href: `/workspaces/${workspaceId}`,
     icon: LayoutDashboard,
   },
-  { label: "Travail", href: `/workspaces/${workspaceId}/plan`, icon: ListTodo },
+  { section: "Piloter", label: "Plan de travail", href: `/workspaces/${workspaceId}/plan`, icon: ListTodo },
   {
-    label: "Conversations",
-    href: `/workspaces/${workspaceId}/execution`,
-    icon: PlayCircle,
+    section: "Piloter",
+    label: "Interventions",
+    href: `/workspaces/${workspaceId}/attention`,
+    icon: CircleAlert,
   },
-  { label: "Équipe", href: `/workspaces/${workspaceId}/agents`, icon: Bot },
   {
-    label: "Fichiers",
+    section: "Collaborer",
+    label: "Collaboration",
+    href: `/workspaces/${workspaceId}/execution`,
+    icon: MessagesSquare,
+  },
+  {
+    section: "Collaborer",
+    label: "Équipe",
+    href: `/workspaces/${workspaceId}/agents`,
+    icon: Bot,
+  },
+  {
+    section: "Capitaliser",
+    label: "Livrables",
     href: `/workspaces/${workspaceId}/artifacts`,
     icon: Files,
   },
+  { section: "Capitaliser", label: "Activité", href: `/workspaces/${workspaceId}/activity`, icon: Bell },
+  { section: "Capitaliser", label: "Historique", href: `/workspaces/${workspaceId}/history`, icon: History },
   {
-    label: "À valider",
-    href: `/workspaces/${workspaceId}/review`,
-    icon: ClipboardCheck,
-  },
-  {
-    label: "Actualité",
-    href: `/workspaces/${workspaceId}/activity`,
-    icon: Bell,
-  },
-  {
-    label: "Journal",
-    href: `/workspaces/${workspaceId}/history`,
-    icon: History,
-  },
-  {
+    section: "Administrer",
     label: "Paramètres",
     href: `/workspaces/${workspaceId}/settings`,
     icon: Settings,

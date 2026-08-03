@@ -42,6 +42,15 @@ describe("RuntimeCommand", () => {
     expect(command.completedAt).toBeDefined();
   });
 
+  it("can abandon a command before it is delivered", () => {
+    const command = enqueueCommand();
+
+    command.markFailed();
+
+    expect(command.status).toBe(RuntimeCommandStatus.FAILED);
+    expect(command.completedAt).toBeDefined();
+  });
+
   it("rejects an invalid transition (e.g. PENDING -> COMPLETED)", () => {
     const command = enqueueCommand();
 

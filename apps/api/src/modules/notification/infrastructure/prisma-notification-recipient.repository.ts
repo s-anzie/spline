@@ -1,4 +1,4 @@
-import { ActorType } from "@repo/db";
+import { ActorType, NotificationDeliveryStatus } from "@repo/db";
 import { Injectable } from "@nestjs/common";
 
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
@@ -34,7 +34,17 @@ export class PrismaNotificationRecipientRepository implements NotificationRecipi
 
   async listUnreadByRecipient(recipientType: ActorType, recipientId: string): Promise<NotificationRecipient[]> {
     const records = await this.prisma.notificationRecipient.findMany({
-      where: { recipientType, recipientId, readAt: null },
+      where: {
+        recipientType,
+        recipientId,
+        deliveryStatus: {
+          notIn: [
+            NotificationDeliveryStatus.ACTED_ON,
+            NotificationDeliveryStatus.FAILED,
+          ],
+        },
+      },
+      orderBy: { notification: { createdAt: "desc" } },
     });
     return records.map(NotificationRecipientMapper.toDomain);
   }

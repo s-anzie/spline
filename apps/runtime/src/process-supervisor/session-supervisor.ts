@@ -24,6 +24,7 @@ export interface SessionSupervisorDeps {
 export class SessionSupervisor {
   private readonly handles = new Map<string, ProviderSessionHandle>();
   private readonly stopRequested = new Set<string>();
+  private readonly providerFailures = new Set<string>();
 
   constructor(private readonly deps: SessionSupervisorDeps) {}
 
@@ -66,6 +67,18 @@ export class SessionSupervisor {
         onProviderSessionId: (providerSessionId) =>
           this.deps.onProviderSessionId?.(sessionId, providerSessionId),
         onOutput: (chunk, stream) => {
+          if (
+            !this.providerFailures.has(sessionId) &&
+            /authentication_error|failed to authenticate|oauth access token has been revoked/i.test(
+              chunk,
+            )
+          ) {
+            this.providerFailures.add(sessionId);
+            this.deps.onSessionStatus(sessionId, "FAILED");
+            // Some provider CLIs keep their process alive after emitting a
+            // fatal authentication response. Do not leave Spline RUNNING.
+            queueMicrotask(() => this.handles.get(sessionId)?.kill("SIGTERM"));
+          }
           const combined = redact(pendingOutput[stream] + chunk);
           const lastNewline = combined.lastIndexOf("\n");
           if (lastNewline >= 0) {
@@ -83,9 +96,12 @@ export class SessionSupervisor {
           emitOutput(pendingOutput.stderr, "stderr");
           this.handles.delete(sessionId);
           const wasStopRequested = this.stopRequested.delete(sessionId);
+          const providerFailed = this.providerFailures.delete(sessionId);
           this.deps.onSessionStatus(
             sessionId,
-            this.resolveExitStatus(wasStopRequested, code),
+            providerFailed
+              ? "FAILED"
+              : this.resolveExitStatus(wasStopRequested, code),
           );
         },
       });

@@ -1,10 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Send, Terminal, X } from "lucide-react";
+import { CircleHelp, Download, Send, Terminal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { AgentSession } from "@/lib/api/types";
+import type { AgentQuestion, AgentSession, Notification } from "@/lib/api/types";
 import { useSessionOutputStore } from "@/stores/session-output-store";
 
 export function SessionConsole({
@@ -13,6 +13,11 @@ export function SessionConsole({
   agentName,
   status,
   turns,
+  questions,
+  notifications,
+  agentNames,
+  isLatestAgentConversation,
+  showComposer,
   canReply,
   disabledHint,
   sending,
@@ -24,6 +29,11 @@ export function SessionConsole({
   agentName: string;
   status: string;
   turns: AgentSession[];
+  questions: AgentQuestion[];
+  notifications: Notification[];
+  agentNames: Record<string, string>;
+  isLatestAgentConversation: boolean;
+  showComposer: boolean;
   canReply: boolean;
   disabledHint?: string;
   sending: boolean;
@@ -41,9 +51,12 @@ export function SessionConsole({
   const viewport = useRef<HTMLDivElement>(null);
   const shouldFollowOutput = useRef(true);
   const conversation = useMemo(() => {
-    const messages: Array<{ id: string; author: "user" | "agent"; stream: "stdout" | "stderr"; text: string }> = [];
+    const messages: Array<{ id: string; author: "user" | "agent" | "coordination"; stream: "stdout" | "stderr"; text: string; label?: string }> = [];
     for (const turn of turns) {
-      if (turn.instruction)
+      if (
+        turn.instruction &&
+        !turn.instruction.startsWith("Human decision in response to your question")
+      )
         messages.push({ id: `instruction-${turn.id}`, author: "user", stream: "stdout", text: turn.instruction });
       const raw = (bySession[turn.id] ?? []).map((output) => output.content).join("");
       for (const [index, line] of raw.split("\n").entries()) {
@@ -91,9 +104,97 @@ export function SessionConsole({
           messages.push({ id: `runtime-${turn.id}-${index}`, author: "agent", stream: "stdout", text: line });
       }
       }
+      const turnQuestions = questions.filter((question) => {
+        if (question.sessionId === turn.id) return true;
+        if (!showComposer || question.managerAgentId !== turn.agentId) return false;
+        if (question.answeredAt) {
+          const answeredAt = Date.parse(question.answeredAt);
+          const turnStart = Date.parse(turn.startedAt);
+          const turnEnd = turn.endedAt
+            ? Date.parse(turn.endedAt)
+            : Number.POSITIVE_INFINITY;
+          return answeredAt >= turnStart && answeredAt <= turnEnd;
+        }
+        return (
+          isLatestAgentConversation &&
+          turn.id === turns[turns.length - 1]?.id &&
+          question.status === "OPEN"
+        );
+      });
+      for (const question of turnQuestions) {
+        messages.push({
+          id: `question-${question.id}`,
+          author: "coordination",
+          stream: "stdout",
+          label: showComposer
+            ? `Question de ${agentNames[question.askerAgentId] ?? question.askerAgentId}`
+            : "Question envoyée au manager",
+          text: question.question,
+        });
+        if (question.answer) {
+          messages.push({
+            id: `answer-${question.id}`,
+            author: "coordination",
+            stream: "stdout",
+            label: "Réponse du manager",
+            text: question.answer,
+          });
+        }
+      }
+      if (showComposer) {
+        const humanRequests = notifications.filter((notification) => {
+          const payload = notification.payload;
+          if (payload["collaborationType"] !== "MANAGER_HUMAN_QUESTION")
+            return false;
+          const questionSessionId = payload["sessionId"];
+          const deliverySessionId = payload["managerDeliverySessionId"];
+          const hasPendingAnswer =
+            typeof payload["humanAnswer"] === "string" &&
+            typeof deliverySessionId !== "string";
+          return (
+            questionSessionId === turn.id ||
+            deliverySessionId === turn.id ||
+            (hasPendingAnswer &&
+              isLatestAgentConversation &&
+              turn.id === turns[turns.length - 1]?.id)
+          );
+        });
+        for (const request of humanRequests) {
+          const payload = request.payload;
+          if (
+            payload["sessionId"] === turn.id &&
+            !messages.some((message) => message.text === request.body)
+          ) {
+            messages.push({
+              id: `human-question-${request.id}`,
+              author: "coordination",
+              stream: "stdout",
+              label: "Question adressée à vous",
+              text: request.body,
+            });
+          }
+          const humanAnswer = payload["humanAnswer"];
+          const deliverySessionId = payload["managerDeliverySessionId"];
+          if (
+            typeof humanAnswer === "string" &&
+            (deliverySessionId === turn.id ||
+              (typeof deliverySessionId !== "string" &&
+                isLatestAgentConversation &&
+                turn.id === turns[turns.length - 1]?.id))
+          ) {
+            messages.push({
+              id: `human-answer-${request.id}`,
+              author: "user",
+              stream: "stdout",
+              label: "Votre réponse",
+              text: humanAnswer,
+            });
+          }
+        }
+      }
     }
     return messages;
-  }, [bySession, turns]);
+  }, [agentNames, bySession, isLatestAgentConversation, notifications, questions, showComposer, turns]);
 
   useEffect(() => {
     for (const turn of turns) void load(workspaceId, turn.id);
@@ -141,7 +242,7 @@ export function SessionConsole({
   }
 
   return (
-    <aside className="animate-in fade-in slide-in-from-right-3 overflow-hidden rounded-xl border border-white/[.08] bg-[#11100f] xl:sticky xl:top-5 xl:flex xl:h-[calc(100vh-10rem)] xl:flex-col">
+    <aside className="animate-in fade-in slide-in-from-right-3 overflow-hidden rounded-xl border border-white/[.08] bg-[#11100f] xl:sticky xl:top-5 xl:flex xl:h-[calc(100dvh-10rem)] xl:flex-col">
       <header className="flex items-center gap-3 border-b border-white/[.07] px-4 py-3.5">
         <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#f47b64]/10 text-[#f47b64]">
           <Terminal className="size-4" />
@@ -156,6 +257,11 @@ export function SessionConsole({
             {sessionId}
           </p>
         </div>
+        {!showComposer && (
+          <span className="rounded-full border border-white/[.07] px-2 py-1 text-[7px] uppercase tracking-wider text-muted-foreground">
+            Lecture seule
+          </span>
+        )}
         <Button
           size="icon-sm"
           variant="ghost"
@@ -185,13 +291,16 @@ export function SessionConsole({
           <div
             key={item.id}
             className={
-              item.author === "user"
+              item.author === "coordination"
+                ? "max-w-[94%] rounded-xl border border-sky-400/15 bg-sky-400/[.045] px-3.5 py-2.5 text-sky-100"
+                : item.author === "user"
                 ? "ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-[#f47b64] px-3.5 py-2.5 text-[#241614] shadow-lg shadow-[#f47b64]/5"
                 : `max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 ${item.stream === "stderr" ? "border-red-400/15 bg-red-400/[.06] text-red-200" : "border-white/[.07] bg-white/[.035] text-[#d2cec8]"}`
             }
           >
-            <p className={`mb-1 text-[8px] font-semibold uppercase tracking-wider ${item.author === "user" ? "opacity-60" : "text-muted-foreground"}`}>
-              {item.author === "user" ? "Vous" : agentName}
+            <p className={`mb-1 flex items-center gap-1 text-[8px] font-semibold uppercase tracking-wider ${item.author === "user" ? "opacity-60" : item.author === "coordination" ? "text-sky-300" : "text-muted-foreground"}`}>
+              {item.author === "coordination" && <CircleHelp className="size-3"/>}
+              {item.label ?? (item.author === "user" ? "Vous" : agentName)}
             </p>
             <p className="whitespace-pre-wrap">{item.text}</p>
           </div>
@@ -224,7 +333,7 @@ export function SessionConsole({
         )}
         {error && <span className="text-red-300">{error}</span>}
       </div>
-      <form onSubmit={submit} className="border-t border-white/[.07] bg-[#151311] p-3">
+      {showComposer && <form onSubmit={submit} className="border-t border-white/[.07] bg-[#151311] p-3">
         <div className="flex items-end gap-2 rounded-xl border border-white/[.08] bg-black/20 p-1.5 transition focus-within:border-[#f47b64]/35">
           <textarea
             value={message}
@@ -251,7 +360,7 @@ export function SessionConsole({
         <p className="mt-1.5 px-1 text-[8px] text-muted-foreground">
           Les collaborateurs passent par ce manager ; ils ne dialoguent pas directement avec vous.
         </p>
-      </form>
+      </form>}
     </aside>
   );
 }

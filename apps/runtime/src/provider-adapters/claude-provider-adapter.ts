@@ -16,11 +16,29 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     };
 
     const providerSessionId = input.resumeSessionId ?? randomUUID();
+    const readOnly = input.env?.["SPLINE_AGENT_ROLE"] === "observer";
     const args = [
       "--print",
       "--output-format",
       "stream-json",
       "--verbose",
+      // Provider sessions are deliberately non-interactive: stdin carries the
+      // initial prompt and is then closed. Any permission prompt would be
+      // impossible to answer and would strand the task. Bubblewrap is the
+      // actual security boundary (only the workspace is writable), so Claude
+      // can safely bypass its redundant interactive approval layer inside it.
+      "--allow-dangerously-skip-permissions",
+      "--dangerously-skip-permissions",
+      "--permission-mode",
+      "bypassPermissions",
+      // Do not inherit host/project permission rules, hooks or plugins. Those
+      // belong to an interactive developer session and can silently turn a
+      // daemon session back into an approval-gated one.
+      "--setting-sources",
+      "",
+      "--disable-slash-commands",
+      "--tools",
+      "default",
       "--mcp-config",
       JSON.stringify({
         mcpServers: {
@@ -31,8 +49,12 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         },
       }),
       "--strict-mcp-config",
-      "--allowedTools",
-      "CronCreate,CronList,CronDelete,mcp__spline__*",
+      ...(readOnly
+        ? [
+            "--disallowedTools",
+            "Bash,Edit,Write,NotebookEdit",
+          ]
+        : []),
       ...(input.resumeSessionId
         ? ["--resume", providerSessionId]
         : ["--session-id", providerSessionId]),
