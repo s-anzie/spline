@@ -63,7 +63,7 @@ describe("ResourceLock (e2e)", () => {
     expect(released.body.releasedAt).not.toBeNull();
   });
 
-  it("rejects acquiring a lock already held on the same resource (409)", async () => {
+  it("rejects a different actor acquiring a lock already held on the same resource (409)", async () => {
     const { token, workspaceId } = await registerLoginAndCreateWorkspace("lock-conflict@example.com");
     await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/locks`)
@@ -71,11 +71,36 @@ describe("ResourceLock (e2e)", () => {
       .send({ resourceType: "PROCESS", resourceId: "process-1" })
       .expect(201);
 
+    // A different actor (not the current holder) must be rejected.
+    const registeredAgent = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/agents`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ provider: "claude", displayName: "Lock contender" })
+      .expect(201);
+    const agentToken = registeredAgent.body.token as string;
+
     await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/locks`)
+      .set("Authorization", `Bearer ${agentToken}`)
+      .send({ resourceType: "PROCESS", resourceId: "process-1" })
+      .expect(409);
+  });
+
+  it("re-acquiring a lock already held by the same actor is idempotent (not a conflict)", async () => {
+    const { token, workspaceId } = await registerLoginAndCreateWorkspace("lock-idempotent@example.com");
+    const first = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/locks`)
       .set("Authorization", `Bearer ${token}`)
       .send({ resourceType: "PROCESS", resourceId: "process-1" })
-      .expect(409);
+      .expect(201);
+
+    const second = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/locks`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ resourceType: "PROCESS", resourceId: "process-1" })
+      .expect(201);
+
+    expect(second.body.id).toBe(first.body.id);
   });
 
   it("lists locks scoped to the workspace", async () => {
