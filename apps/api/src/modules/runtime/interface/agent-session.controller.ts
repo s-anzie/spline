@@ -142,6 +142,9 @@ export class AgentSessionController {
   async stop(@Param("sessionId") sessionId: string) {
     const result = await this.stopAgentSessionUseCase.execute({ sessionId });
     if (result.isFailure) {
+      if (result.error instanceof InvalidAgentSessionStatusTransitionError) {
+        throw new BadRequestException(result.error.message);
+      }
       throw toHttpError(result.error);
     }
     return toSessionResponse(result.value);

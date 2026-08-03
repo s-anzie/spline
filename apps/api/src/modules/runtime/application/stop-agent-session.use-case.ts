@@ -6,6 +6,7 @@ import { EVENT_PUBLISHER, EventPublisher } from "../../../kernel/domain/ports/ev
 import { Result } from "../../../kernel/domain/result";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { AgentSession } from "../domain/agent-session";
+import { InvalidAgentSessionStatusTransitionError } from "../domain/agent-session.errors";
 import {
   AGENT_SESSION_REPOSITORY,
   AgentSessionRepository,
@@ -18,6 +19,8 @@ export interface StopAgentSessionInput {
   sessionId: string;
 }
 
+export type StopAgentSessionError = AgentSessionNotFoundError | InvalidAgentSessionStatusTransitionError;
+
 @Injectable()
 export class StopAgentSessionUseCase {
   constructor(
@@ -27,14 +30,21 @@ export class StopAgentSessionUseCase {
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
 
-  async execute(input: StopAgentSessionInput): Promise<Result<AgentSession, AgentSessionNotFoundError>> {
+  async execute(input: StopAgentSessionInput): Promise<Result<AgentSession, StopAgentSessionError>> {
     const session = await this.sessions.findById(UniqueEntityId.create(input.sessionId));
     if (!session) {
       return Result.fail(new AgentSessionNotFoundError(input.sessionId));
     }
 
     const now = this.clock.now();
-    session.changeStatus(AgentSessionStatus.STOPPED, now);
+    try {
+      session.changeStatus(AgentSessionStatus.STOPPED, now);
+    } catch (error) {
+      if (error instanceof InvalidAgentSessionStatusTransitionError) {
+        return Result.fail(error);
+      }
+      throw error;
+    }
     await this.sessions.save(session);
 
     await this.commands.save(
