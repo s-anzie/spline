@@ -4,6 +4,16 @@
   "compilerOptions": {
     "module": "CommonJS",
     "moduleResolution": "node",
+    // TS 6.0 deprecates "node" (a.k.a. node10) resolution. The real fix —
+    // NodeNext — requires converting every type-only import used in a
+    // decorated constructor to `import type` across the codebase (NestJS's
+    // emitDecoratorMetadata + isolatedModules combination enforces this
+    // under Node16/NodeNext, ~60+ sites in apps/api alone). Silencing the
+    // warning is TypeScript's own documented escape hatch for staying on
+    // CommonJS/node10 resolution deliberately; see https://aka.ms/ts6.
+    // The installed compiler (5.9.2) only accepts up to "5.0" for this flag
+    // even though the IDE's newer language server suggests "6.0".
+    "ignoreDeprecations": "5.0",
     "lib": ["ES2022"],
     "declaration": true,
     "declarationMap": true
