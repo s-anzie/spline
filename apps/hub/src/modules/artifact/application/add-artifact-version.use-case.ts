@@ -57,7 +57,7 @@ export class AddArtifactVersionUseCase
     input: AddArtifactVersionInput,
   ): Promise<Result<{ version: number }, AddArtifactVersionError>> {
     const artifact = await this.artifacts.findById(input.artifactId);
-    if (!artifact || (input.workspaceId && artifact.workspaceId !== input.workspaceId)) {
+    if (!artifact || artifact.workspaceId !== input.workspaceId) {
       return Result.fail(new ArtifactNotFoundError(input.artifactId));
     }
     const createdBy = ActorRef.create(input.createdByType, input.createdById);

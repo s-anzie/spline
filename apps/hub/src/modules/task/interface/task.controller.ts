@@ -1,5 +1,6 @@
 import {
   Body,
+  Inject,
   Controller,
   Delete,
   Get,
@@ -21,6 +22,7 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { AssignTaskUseCase } from "../application/assign-task.use-case";
+import { TASK_PROOF, TaskProofPort } from "../domain/ports/task-proof.port";
 import { ChangeTaskStatusUseCase } from "../application/change-task-status.use-case";
 import { CompleteTaskUseCase } from "../application/complete-task.use-case";
 import { CreateTaskUseCase } from "../application/create-task.use-case";
@@ -38,6 +40,7 @@ import {
   ManageTaskDependencyDto,
   ReportBlockerDto,
   ResolveBlockerDto,
+  SubmitTaskDto,
   UpdateTaskDto,
 } from "./dto/task.dtos";
 
@@ -118,6 +121,7 @@ export class TaskController {
     private readonly reportBlocker: ReportBlockerUseCase,
     private readonly resolveBlocker: ResolveBlockerUseCase,
     private readonly manageDependency: ManageTaskDependencyUseCase,
+    @Inject(TASK_PROOF) private readonly proof: TaskProofPort,
   ) {}
 
   @Post()
@@ -217,17 +221,37 @@ export class TaskController {
     );
   }
 
-  /** Submitting for validation — an agent never validates its own work (§10.9). */
+  /**
+   * Submitting for validation — an agent never validates its own work (§10.9).
+   * Submitting *is* asking for proof: the caller names the kinds it expects
+   * and they are recorded, where before the route moved the status and left
+   * no trace of what there was to review.
+   */
   @Post(":taskId/submit")
   @HttpCode(200)
   @RequirePermission("request_validation")
   async submit(
     @Param("workspaceId") workspaceId: string,
     @Param("taskId") taskId: string,
+    @CurrentActor() actor: ActorIdentity,
+    @Body() dto: SubmitTaskDto,
   ): Promise<{ ok: true }> {
-    return this.unwrap(
-      await this.changeStatus.execute({ taskId, workspaceId, status: "VALIDATING" }),
-    );
+    const moved = await this.changeStatus.execute({
+      taskId,
+      workspaceId,
+      status: "VALIDATING",
+    });
+    if (moved.isFailure) {
+      return this.unwrap(moved);
+    }
+    await this.proof.requestOnSubmit({
+      workspaceId,
+      taskId,
+      requestedByType: actor.actorType,
+      requestedById: actor.actorId,
+      types: dto.validations ?? [],
+    });
+    return { ok: true };
   }
 
   /** Completion is an approval, reserved to humans by the matrix (§11). */
@@ -238,7 +262,13 @@ export class TaskController {
     @Param("workspaceId") workspaceId: string,
     @Param("taskId") taskId: string,
   ): Promise<{ ok: true }> {
-    return this.unwrap(await this.completeTask.execute({ taskId, workspaceId }));
+    const result = await this.completeTask.execute({ taskId, workspaceId });
+    if (result.isFailure) {
+      // Missing proof is a state conflict, not a malformed request: the same
+      // call succeeds unchanged once the validations land (§11.7).
+      throw toHttpException(result.error, { conflicts: ["MissingProofError"] });
+    }
+    return { ok: true };
   }
 
   @Post(":taskId/cancel")

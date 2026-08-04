@@ -130,3 +130,16 @@ export class ManageTaskDependencyDto {
   @IsNotEmpty()
   dependsOnTaskId!: string;
 }
+
+export class SubmitTaskDto {
+  /**
+   * The kinds of proof expected (§11.2 — an open list). Naming none is
+   * legitimate: a human will simply approve, and inventing a default here
+   * would be a policy (§12) nobody asked for.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  validations?: string[];
+}

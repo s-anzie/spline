@@ -31,7 +31,7 @@ export class GetDecisionUseCase
     input: GetDecisionInput,
   ): Promise<Result<Decision, DecisionNotFoundError>> {
     const decision = await this.decisions.findById(input.decisionId);
-    if (!decision || (input.workspaceId && decision.workspaceId !== input.workspaceId)) {
+    if (!decision || decision.workspaceId !== input.workspaceId) {
       return Result.fail(new DecisionNotFoundError(input.decisionId));
     }
     return Result.ok(decision);

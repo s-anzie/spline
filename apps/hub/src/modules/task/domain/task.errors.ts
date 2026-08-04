@@ -58,3 +58,22 @@ export class BlockerAlreadyResolvedError extends DomainError {
     super("This blocker has already been resolved");
   }
 }
+
+/**
+ * §11.7 — "toutes les validations obligatoires réussissent". Distinct from
+ * CompletionRequiresValidationError, which refuses the *path* (COMPLETED is
+ * not reachable by a plain status change); this one refuses the *substance*:
+ * the path was right, the proof is not there.
+ *
+ * Names what is missing rather than only that something is (§17.8): a caller
+ * told "no" without being told which validations are outstanding cannot act.
+ */
+export class MissingProofError extends DomainError {
+  constructor(readonly missing: readonly { id: string; type: string }[]) {
+    super(
+      `This task still needs proof before it can be completed (§11.7): ${missing
+        .map((validation) => `${validation.type} (${validation.id})`)
+        .join(", ")}`,
+    );
+  }
+}

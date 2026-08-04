@@ -43,7 +43,7 @@ export class UpdateGoalDetailsUseCase
     input: UpdateGoalDetailsInput,
   ): Promise<Result<void, UpdateGoalDetailsUseCaseError>> {
     const goal = await this.goals.findById(input.goalId);
-    if (!goal || (input.workspaceId && goal.workspaceId !== input.workspaceId)) {
+    if (!goal || goal.workspaceId !== input.workspaceId) {
       return Result.fail(new GoalNotFoundError(input.goalId));
     }
 

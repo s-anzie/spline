@@ -50,7 +50,7 @@ export class CompleteGoalUseCase
 
   async execute(input: CompleteGoalInput): Promise<Result<void, CompleteGoalError>> {
     const goal = await this.goals.findById(input.goalId);
-    if (!goal || (input.workspaceId && goal.workspaceId !== input.workspaceId)) {
+    if (!goal || goal.workspaceId !== input.workspaceId) {
       return Result.fail(new GoalNotFoundError(input.goalId));
     }
     if (await this.goals.hasOpenChildren(goal.id.value)) {

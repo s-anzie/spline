@@ -26,7 +26,7 @@ résout les jetons d'un provider dans **son propre** module.
 | Module futur | Attente | État |
 | --- | --- | --- |
 | **Run/Attempt** (§4.7-4.8) | la Task porte son *état*, eux porteront les *tentatives* | frontière déjà tenue : les statuts §9.6 d'ordonnancement sont exclus exprès |
-| **Validation** (§11) | `/submit` doit créer une Validation à approuver | **dette : la route change le statut, aucune Validation n'est créée** (§0.4) |
+| **Validation** (§11) | `/submit` doit créer une Validation à approuver | ~~dette~~ **fermée** : `/submit` enregistre les preuves demandées, et `complete()` les exige via `TaskProofPort` |
 | **Scheduler** (§9.5) | `READY` comme porte de mise en travail | la porte de dépendances existe et est testée |
 | **Repository Engine** (§8) | `repositoryId` sur la tâche | présent, opaque et nullable |
 

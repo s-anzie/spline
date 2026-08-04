@@ -48,7 +48,7 @@ export class ReportBlockerUseCase
     input: ReportBlockerInput,
   ): Promise<Result<{ blockerId: string }, ReportBlockerError>> {
     const task = await this.tasks.findById(input.taskId);
-    if (!task || (input.workspaceId && task.workspaceId !== input.workspaceId)) {
+    if (!task || task.workspaceId !== input.workspaceId) {
       return Result.fail(new TaskNotFoundError(input.taskId));
     }
     const reporter = ActorRef.create(input.reporterType, input.reporterId);

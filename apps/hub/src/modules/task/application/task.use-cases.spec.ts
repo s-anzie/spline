@@ -14,6 +14,7 @@ import { InMemoryTaskRepository } from "./testing/task.doubles";
 import { AssignTaskUseCase } from "./assign-task.use-case";
 import { ChangeTaskStatusUseCase } from "./change-task-status.use-case";
 import { CompleteTaskUseCase } from "./complete-task.use-case";
+import { FakeTaskProof } from "./testing/fake-task-proof";
 import { CreateTaskUseCase } from "./create-task.use-case";
 import { GetTaskUseCase } from "./get-task.use-case";
 import { GoalProgressSyncService } from "./goal-progress-sync.service";
@@ -72,6 +73,7 @@ async function makeContext() {
     ),
   );
 
+  const proof = new FakeTaskProof();
   return {
     tasks,
     goals,
@@ -85,7 +87,8 @@ async function makeContext() {
     update: new UpdateTaskDetailsUseCase(tasks, clock, publisher),
     assign: new AssignTaskUseCase(tasks, permissions, clock, publisher),
     changeStatus: new ChangeTaskStatusUseCase(tasks, clock, publisher, goalSync),
-    complete: new CompleteTaskUseCase(tasks, clock, publisher, goalSync),
+    proof,
+    complete: new CompleteTaskUseCase(tasks, clock, publisher, goalSync, proof),
     reportBlocker: new ReportBlockerUseCase(tasks, clock, publisher),
     resolveBlocker: new ResolveBlockerUseCase(tasks, clock, publisher),
     dependency: new ManageTaskDependencyUseCase(tasks, clock, publisher),
@@ -388,6 +391,43 @@ describe("task use-cases", () => {
 
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("CompletionRequiresValidationError");
+    });
+
+    /**
+     * The state machine only ever guaranteed the task went *through* a step
+     * named VALIDATING. §11.7 requires the mandatory validations to have
+     * actually succeeded — without this, the refusal protected a word.
+     */
+    it("refuses completion while a mandatory validation is outstanding", async () => {
+      const ctx = await makeContext();
+      const created = await ctx.create.execute(
+        baseInput(ctx.workspace.id.value, ctx.goal.id.value),
+      );
+      const taskId = created.value.taskId;
+      for (const status of ["READY", "ASSIGNED", "RUNNING", "VALIDATING"] as const) {
+        await ctx.changeStatus.execute({
+          workspaceId: ctx.workspace.id.value,
+          taskId,
+          status,
+        });
+      }
+      ctx.proof.require(taskId, [{ id: "v-1", type: "unit_test" }]);
+
+      const refused = await ctx.complete.execute({
+        workspaceId: ctx.workspace.id.value,
+        taskId,
+      });
+
+      expect(refused.isFailure).toBe(true);
+      expect(refused.error.name).toBe("MissingProofError");
+      // §17.8 — it says which proof is missing, not merely that some is.
+      expect(refused.error.message).toContain("unit_test");
+
+      ctx.proof.require(taskId, []);
+      expect(
+        (await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, taskId }))
+          .isSuccess,
+      ).toBe(true);
     });
   });
 

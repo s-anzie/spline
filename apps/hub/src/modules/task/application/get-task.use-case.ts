@@ -24,7 +24,7 @@ export class GetTaskUseCase
 
   async execute(input: GetTaskInput): Promise<Result<Task, TaskNotFoundError>> {
     const task = await this.tasks.findById(input.taskId);
-    if (!task || (input.workspaceId && task.workspaceId !== input.workspaceId)) {
+    if (!task || task.workspaceId !== input.workspaceId) {
       return Result.fail(new TaskNotFoundError(input.taskId));
     }
     return Result.ok(task);

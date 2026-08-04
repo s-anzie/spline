@@ -81,6 +81,7 @@ model Workspace {
   decisions      Decision[]
   events         Event[]
   notifications  Notification[]
+  validations    Validation[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -211,6 +212,7 @@ model Task {
   artifacts Artifact[]
   decisions Decision[]
   notifications Notification[]
+  validations Validation[]
 
   @@index([workspaceId, status])
   @@index([goalId])
@@ -454,4 +456,46 @@ model NotificationRecipient {
   @@unique([notificationId, recipientType, recipientId])
   @@index([recipientType, recipientId, deliveryStatus])
   @@map("notification_recipients")
+}
+
+enum ValidationStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  SKIPPED
+}
+
+/// The proof (spec 4.9): a task is never finished without one. `type` is a
+/// free string on purpose — spec 11.2 calls it an open list, extensible via
+/// the Extension Registry (19), so an enum would make the registry a breaking
+/// change to this module.
+model Validation {
+  id                     String           @id @default(uuid())
+  workspaceId            String
+  taskId                 String
+  type                   String
+  status                 ValidationStatus @default(PENDING)
+  mandatory              Boolean          @default(true)
+  requestedByType        ActorType
+  requestedById          String
+  executedByType         ActorType?
+  executedById           String?
+  output                 String?
+  reportArtifactIds      Json             @default("[]")
+  dependsOnValidationIds Json             @default("[]")
+  createdAt              DateTime         @default(now())
+  startedAt              DateTime?
+  finishedAt             DateTime?
+  invalidatedAt          DateTime?
+  invalidationReason     String?
+  updatedAt              DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, taskId])
+  @@index([taskId, status])
+  @@map("validations")
 }

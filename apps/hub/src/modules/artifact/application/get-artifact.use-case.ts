@@ -31,7 +31,7 @@ export class GetArtifactUseCase
     input: GetArtifactInput,
   ): Promise<Result<Artifact, ArtifactNotFoundError>> {
     const artifact = await this.artifacts.findById(input.artifactId);
-    if (!artifact || (input.workspaceId && artifact.workspaceId !== input.workspaceId)) {
+    if (!artifact || artifact.workspaceId !== input.workspaceId) {
       return Result.fail(new ArtifactNotFoundError(input.artifactId));
     }
     return Result.ok(artifact);

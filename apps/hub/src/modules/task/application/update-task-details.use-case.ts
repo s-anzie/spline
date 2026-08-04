@@ -45,7 +45,7 @@ export class UpdateTaskDetailsUseCase
     input: UpdateTaskDetailsInput,
   ): Promise<Result<void, TaskNotFoundError | UpdateTaskDetailsError>> {
     const task = await this.tasks.findById(input.taskId);
-    if (!task || (input.workspaceId && task.workspaceId !== input.workspaceId)) {
+    if (!task || task.workspaceId !== input.workspaceId) {
       return Result.fail(new TaskNotFoundError(input.taskId));
     }
 
