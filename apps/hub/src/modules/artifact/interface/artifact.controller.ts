@@ -1,12 +1,8 @@
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
-  GoneException,
   HttpCode,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -14,7 +10,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { InvalidStateTransitionError } from "../../../kernel/domain/errors";
+import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
 import { ActorType } from "../../identity/domain/actor";
 import { ActorAuthGuard } from "../../identity/interface/actor-auth.guard";
@@ -128,10 +124,7 @@ export class ArtifactController {
       createdById: actor.actorId,
     });
     if (result.isFailure) {
-      if (result.error.name === "WorkspaceNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error);
     }
     return result.value;
   }
@@ -152,17 +145,10 @@ export class ArtifactController {
       createdById: actor.actorId,
     });
     if (result.isFailure) {
-      if (result.error.name === "ArtifactNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
       // Immutability and archival are state conflicts, not bad input.
-      if (
-        result.error.name === "ImmutableArtifactError" ||
-        result.error.name === "ArtifactNotActiveError"
-      ) {
-        throw new ConflictException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+      conflicts: ["ImmutableArtifactError", "ArtifactNotActiveError"],
+    });
     }
     return result.value;
   }
@@ -202,7 +188,7 @@ export class ArtifactController {
   ): Promise<ArtifactView> {
     const result = await this.getArtifact.execute({ artifactId, workspaceId });
     if (result.isFailure) {
-      throw new NotFoundException(result.error.message);
+      throw toHttpException(result.error);
     }
     return toView(result.value);
   }
@@ -269,6 +255,7 @@ export class ArtifactController {
     );
   }
 
+  /** Artifact-specific classifications; universal rules live in the kernel. */
   private unwrap(result: {
     isFailure: boolean;
     error: { name: string; message: string };
@@ -276,19 +263,8 @@ export class ArtifactController {
     if (!result.isFailure) {
       return { ok: true };
     }
-    const { name, message } = result.error;
-    if (name.endsWith("NotFoundError")) {
-      throw new NotFoundException(message);
-    }
-    if (name === "ImmutableArtifactError" || name === "ArtifactNotActiveError") {
-      throw new ConflictException(message);
-    }
-    if (name === "InvalidStateTransitionError") {
-      const transition = result.error as InvalidStateTransitionError;
-      throw transition.fromTerminal
-        ? new GoneException(message)
-        : new ConflictException(message);
-    }
-    throw new BadRequestException(message);
+    throw toHttpException(result.error, {
+      conflicts: ["ImmutableArtifactError", "ArtifactNotActiveError"],
+    });
   }
 }

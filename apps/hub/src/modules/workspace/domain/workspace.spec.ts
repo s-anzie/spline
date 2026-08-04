@@ -1,4 +1,4 @@
-import { DEFAULT_WORKSPACE_POLICIES, Workspace } from "./workspace";
+import { Workspace } from "./workspace";
 
 const now = new Date("2026-08-04T10:00:00.000Z");
 const later = new Date("2026-08-04T11:00:00.000Z");
@@ -14,7 +14,7 @@ function createWorkspace(overrides: Partial<Parameters<typeof Workspace.create>[
 
 describe("Workspace", () => {
   describe("create", () => {
-    it("creates ACTIVE, slugs the name, injects the baseline policies, raises workspace.created", () => {
+    it("creates ACTIVE, slugs the name, starts with empty settings, raises workspace.created", () => {
       const result = createWorkspace();
 
       expect(result.isSuccess).toBe(true);
@@ -22,19 +22,18 @@ describe("Workspace", () => {
       expect(workspace.status).toBe("ACTIVE");
       expect(workspace.slug).toBe("spline-core");
       expect(workspace.organizationId).toBe("org-1");
-      expect(workspace.settings["policies"]).toEqual(DEFAULT_WORKSPACE_POLICIES);
+      expect(workspace.settings).toEqual({});
       expect(workspace.createdAt).toEqual(now);
       expect(workspace.updatedAt).toEqual(now);
       expect(workspace.domainEvents[0]?.eventName).toBe("workspace.created");
     });
 
-    it("keeps caller-provided settings and still guarantees non-empty policies", () => {
+    it("keeps caller-provided settings verbatim — settings are configuration, not policy", () => {
       const workspace = createWorkspace({
-        settings: { rootPath: "/srv/project", policies: { custom: true } },
+        settings: { rootPath: "/srv/project" },
       }).value;
 
       expect(workspace.settings["rootPath"]).toBe("/srv/project");
-      expect(workspace.settings["policies"]).toEqual({ custom: true });
     });
 
     it("accepts an optional description", () => {
@@ -49,12 +48,6 @@ describe("Workspace", () => {
       expect(createWorkspace({ name: "###" }).isFailure).toBe(true);
     });
 
-    it("rejects explicitly empty policies in the initial settings", () => {
-      const result = createWorkspace({ settings: { policies: {} } });
-
-      expect(result.isFailure).toBe(true);
-      expect(result.error.name).toBe("EmptyWorkspacePoliciesError");
-    });
   });
 
   describe("updateDetails", () => {
@@ -72,18 +65,8 @@ describe("Workspace", () => {
       expect(workspace.slug).toBe("new-name");
       expect(workspace.description).toBe("desc");
       expect(workspace.settings["extra"]).toBe(1);
-      expect(workspace.settings["policies"]).toEqual(DEFAULT_WORKSPACE_POLICIES);
       expect(workspace.updatedAt).toEqual(later);
       expect(workspace.domainEvents[0]?.eventName).toBe("workspace.updated");
-    });
-
-    it("refuses to empty the policies through a settings patch", () => {
-      const workspace = createWorkspace().value;
-
-      const result = workspace.updateDetails({ settings: { policies: {} } }, later);
-
-      expect(result.isFailure).toBe(true);
-      expect(result.error.name).toBe("EmptyWorkspacePoliciesError");
     });
 
     it("is only allowed while ACTIVE", () => {
@@ -163,7 +146,7 @@ describe("Workspace", () => {
         slug: "spline-core",
         description: null,
         status: "PAUSED",
-        settings: { policies: DEFAULT_WORKSPACE_POLICIES },
+        settings: {},
         createdAt: now,
         updatedAt: later,
       },

@@ -5,6 +5,37 @@
 > §9.7 (priorités), §22.6 (machine à états), §20.6 (affordances)
 > Statut : implémenté, double-vérifié (245 tests unitaires, 42 e2e).
 
+## 0. Intégration — analyse rétroactive
+
+*Section ajoutée après coup. Elle a produit une correction : voir §0.4.*
+
+### 0.1 Ce que goal est dans le système
+
+Le **niveau de pilotage** : on dirige par résultat attendu, pas par micro-action. Un Goal ne sait rien du
+domaine de travail de ses tâches — c'est ce qui permet à Spline de servir autre chose que du logiciel.
+
+### 0.2 Ce qu'il consomme et fournit
+
+Consomme workspace (ACTIVE requis) et identity (owner, permissions). Fournit à task le rattachement
+obligatoire (`goalId`) et, via `GOAL_WORKLOAD`, l'inversion qui lui permet d'imposer ses règles sans
+importer task.
+
+### 0.3 Ce que les modules à venir en attendront
+
+| Module futur | Attente |
+| --- | --- |
+| **Validation** (§11) | brancher son pipeline sur `REVIEW → COMPLETED` sans changer la machine — la transition est déjà isolée derrière `complete()` et `approve_validation` |
+| **Scheduler** (§9) | lire priorités et dépendances pour ordonner — les deux existent |
+| **Memory** (§16.5) | « Goal Memory : objectifs, contraintes, décisions, avancement » — tout est là sauf les décisions (module Decision) |
+
+### 0.4 Ce que l'audit rétroactif a trouvé — et corrigé
+
+**Le calcul de progression vivait dans le module task**, alors que §5.6 met explicitement « calcul du
+pourcentage » sous la responsabilité du Goal Engine. La règle (ce que *signifie* progresser) appartient
+au Goal ; les faits (combien de tâches sont closes) appartiennent à Task. La formule a été déplacée ici
+(`RecomputeGoalProgressUseCase`), le module task ne faisant plus que déclencher le recalcul via le port
+`GOAL_WORKLOAD` — étendu d'un `tally()` pour l'occasion.
+
 ## 1. Rôle
 
 Un Goal est un résultat observable : il décrit **ce qui doit être atteint, jamais comment** (§4.5). Ce

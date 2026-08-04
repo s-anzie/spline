@@ -1,20 +1,17 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   ForbiddenException,
   Get,
-  GoneException,
   HttpCode,
-  NotFoundException,
   Param,
   Patch,
   Post,
   UseGuards,
 } from "@nestjs/common";
 
-import { InvalidStateTransitionError } from "../../../kernel/domain/errors";
+import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
 import { ActorAuthGuard } from "../../identity/interface/actor-auth.guard";
 import { CurrentActor } from "../../identity/interface/current-actor.decorator";
@@ -87,13 +84,7 @@ export class WorkspaceController {
       creatorUserId: actor.actorId,
     });
     if (result.isFailure) {
-      if (result.error.name === "OrganizationNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      if (result.error.name === "NotOrganizationOwnerError") {
-        throw new ForbiddenException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, { forbidden: ["NotOrganizationOwnerError"] });
     }
     return result.value;
   }
@@ -112,7 +103,7 @@ export class WorkspaceController {
   async get(@Param("workspaceId") workspaceId: string): Promise<WorkspaceView> {
     const result = await this.getWorkspace.execute({ workspaceId });
     if (result.isFailure) {
-      throw new NotFoundException(result.error.message);
+      throw toHttpException(result.error);
     }
     return toView(result.value);
   }
@@ -125,10 +116,7 @@ export class WorkspaceController {
   ): Promise<{ ok: true }> {
     const result = await this.updateWorkspace.execute({ workspaceId, ...dto });
     if (result.isFailure) {
-      if (result.error.name === "WorkspaceNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error);
     }
     return { ok: true };
   }
@@ -179,14 +167,7 @@ export class WorkspaceController {
   ): Promise<{ ok: true }> {
     const result = await this.changeStatus.execute({ workspaceId, status });
     if (result.isFailure) {
-      if (result.error.name === "WorkspaceNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      const transition = result.error as InvalidStateTransitionError;
-      // fromTerminal distinguishes "gone for good" (410) from "conflict" (409).
-      throw transition.fromTerminal
-        ? new GoneException(transition.message)
-        : new ConflictException(transition.message);
+      throw toHttpException(result.error);
     }
     return { ok: true };
   }

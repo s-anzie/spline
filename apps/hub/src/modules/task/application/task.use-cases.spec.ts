@@ -3,6 +3,7 @@ import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher
 import { GrantWorkspaceMembershipUseCase } from "../../identity/application/grant-workspace-membership.use-case";
 import { InMemoryWorkspaceMembershipRepository } from "../../identity/application/testing/identity.doubles";
 import { PermissionsService } from "../../identity/application/permissions.service";
+import { RecomputeGoalProgressUseCase } from "../../goal/application/recompute-goal-progress.use-case";
 import { UpdateGoalProgressUseCase } from "../../goal/application/update-goal-progress.use-case";
 import { InMemoryGoalRepository } from "../../goal/application/testing/goal.doubles";
 import { Goal } from "../../goal/domain/goal";
@@ -58,9 +59,17 @@ async function makeContext() {
   });
 
   const permissions = new PermissionsService(memberships);
+  // The formula lives in the goal module (§5.6); the task side only triggers.
   const goalSync = new GoalProgressSyncService(
-    tasks,
-    new UpdateGoalProgressUseCase(goals, clock, publisher),
+    new RecomputeGoalProgressUseCase(
+      {
+        hasOpenTasks: async (goalId: string) =>
+          (await tasks.tallyByGoal(goalId)).completed <
+          (await tasks.tallyByGoal(goalId)).total,
+        tally: async (goalId: string) => tasks.tallyByGoal(goalId),
+      },
+      new UpdateGoalProgressUseCase(goals, clock, publisher),
+    ),
   );
 
   return {

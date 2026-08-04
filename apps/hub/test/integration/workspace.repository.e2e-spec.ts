@@ -52,7 +52,6 @@ describe("workspace repository (integration)", () => {
     const reloaded = await workspaces.findById(workspace.id.value);
     expect(reloaded?.slug).toBe("spline-core");
     expect(reloaded?.settings["rootPath"]).toBe("/srv/x");
-    expect(reloaded?.settings["policies"]).toBeDefined();
     expect(reloaded?.status).toBe("ACTIVE");
   });
 

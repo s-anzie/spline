@@ -65,7 +65,6 @@ describe("Workspace (e2e)", () => {
     expect(mine.body).toHaveLength(1);
     expect(mine.body[0].id).toBe(created.body.workspaceId);
     expect(mine.body[0].allowedStatusTargets).toEqual(["PAUSED", "ARCHIVED"]);
-    expect(mine.body[0].settings.policies).toBeDefined();
   });
 
   it("a stranger gets 403 on someone else's workspace; a member reads it", async () => {
@@ -174,11 +173,12 @@ describe("Workspace (e2e)", () => {
       .expect(200);
     expect(fetched.body.slug).toBe("new-name");
 
+    // Settings are free-form configuration: the Policy Engine (§12) owns rules.
     await request(http)
       .patch(url)
       .set("Authorization", `Bearer ${owner.token}`)
-      .send({ settings: { policies: {} } })
-      .expect(400);
+      .send({ settings: { rootPath: "/srv/x" } })
+      .expect(200);
   });
 
   it("requires authentication everywhere", async () => {

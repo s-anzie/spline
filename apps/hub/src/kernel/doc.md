@@ -77,6 +77,8 @@ kernel/
 ├── application/          # conventions de la couche application
 │   ├── use-case.ts               UseCase<Input, Output> (une classe = une opération)
 │   └── flush-domain-events.ts    flushDomainEvents(aggregate, publisher)
+├── interface/            # conventions de la couche interface
+│   └── domain-error.mapping.ts   toHttpException(error, mapping)
 ├── infrastructure/       # implémentations par défaut (peuvent importer Nest)
 │   ├── system-clock.ts                   Clock → new Date()
 │   └── event-emitter-event-publisher.ts  EventPublisher → EventEmitter2
@@ -232,7 +234,20 @@ l'arithmétique de dates n'est plus jamais écrite sur un site d'appel.
 Chaque module définit **ses seuils** (constantes nommées type `MACHINE_STALE_TTL_MS`) et les passe à ces
 fonctions — le kernel fournit l'arithmétique, jamais les valeurs.
 
-### 4.9 Couche application : `UseCase` et `flushDomainEvents`
+### 4.9 Couche interface : `toHttpException`
+
+Le seul endroit qui décide comment un échec de domaine devient un statut HTTP. Deux règles sont
+universelles et ne se déclarent pas : toute erreur nommée `*NotFoundError` est un 404 (les sous-classes
+d'`EntityNotFoundError` la respectent toutes), et une `InvalidStateTransitionError` est un 410 quand elle
+quitte un état terminal, un 409 sinon. Le reste est un 400 sauf si le contrôleur le classe explicitement
+(`conflicts`, `forbidden`, `notFound`) — le défaut reste donc honnête : non classé signifie « requête
+invalide », jamais un 500 silencieux.
+
+**Pourquoi au kernel** : cette convention était recopiée dans cinq contrôleurs et avait déjà divergé —
+une erreur ajoutée à un module retombait en 400 ailleurs faute d'y être connue. Personne ne possédait la
+règle ; maintenant si.
+
+### 4.10 Couche application : `UseCase` et `flushDomainEvents`
 
 - `UseCase<Input, Output>` : une classe = une opération, une seule méthode `execute`. L'interface existe
   pour l'uniformité (et les tests), pas pour du polymorphisme.
@@ -240,7 +255,7 @@ fonctions — le kernel fournit l'arithmétique, jamais les valeurs.
   une seule fonction. Un use-case appelle `repository.save(aggregate)` puis `flushDomainEvents(...)` —
   jamais `publishAll`/`clearDomainEvents` à la main, l'inversion accidentelle devient impossible.
 
-### 4.10 Ports `Clock` et `EventPublisher`
+### 4.11 Ports `Clock` et `EventPublisher`
 
 - `Clock` : le domaine et l'application n'appellent **jamais** `new Date()` — ils reçoivent `CLOCK` par DI.
   Tous les calculs de staleness/TTL sont testables avec `FakeClock` (gelée, `set`/`advance` explicites).
@@ -250,7 +265,7 @@ fonctions — le kernel fournit l'arithmétique, jamais les valeurs.
 Les jetons DI sont des chaînes préfixées (`"kernel/Clock"`, `"kernel/EventPublisher"`) — lisibles dans les
 erreurs Nest et sans collision entre modules.
 
-### 4.11 `kernel.module.ts`
+### 4.12 `kernel.module.ts`
 
 Module Nest `@Global()` : chaque module du hub résout `CLOCK` et `EVENT_PUBLISHER` sans les réimporter.
 Les tests d'application les remplacent par les doubles de `testing/`.
@@ -300,7 +315,10 @@ Les tests d'application les remplacent par les doubles de `testing/`.
 ## 7. Évolutions prévues
 
 - **Event Bus persistant (§14)** : `EventPublisher` gagnera une implémentation qui persiste avant d'émettre
-  (outbox). Le port ne change pas — c'est le critère de réussite de son design.
+  (outbox). Le port ne change pas — c'est le critère de réussite de son design. **Dette nommée** : tant
+  qu'il n'existe pas, toute réaction inter-modules branchée sur un événement (aujourd'hui : l'annulation
+  en cascade des tâches d'un objectif) est « au mieux » — un processus qui meurt entre la publication et
+  le traitement perd la réaction. Aucun module ne doit supposer le contraire.
 - **`Lease` (§4.13)** : le bail est une entité à part entière (owner, resource, expires_at, renew) — elle
   vivra dans le module qui la possède (Lock Manager ou Runtime), construite sur `isExpired` du kernel.
   Elle n'entre pas au kernel : elle a une identité et un propriétaire, ce n'est pas une primitive.

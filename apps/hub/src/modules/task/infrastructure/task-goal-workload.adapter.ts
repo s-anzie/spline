@@ -1,6 +1,10 @@
 import { Global, Injectable, Module } from "@nestjs/common";
 
-import { GOAL_WORKLOAD, GoalWorkloadPort } from "../../goal/domain/ports/goal-workload.port";
+import {
+  GOAL_WORKLOAD,
+  GoalWorkloadPort,
+  GoalWorkloadTally,
+} from "../../goal/domain/ports/goal-workload.port";
 import {
   ACTOR_WORKLOAD,
   ActorWorkloadPort,
@@ -25,6 +29,14 @@ export class TaskGoalWorkloadAdapter implements GoalWorkloadPort {
       where: { goalId, status: { notIn: ["COMPLETED", "CANCELLED"] } },
     });
     return open > 0;
+  }
+
+  async tally(goalId: string): Promise<GoalWorkloadTally> {
+    const [total, completed] = await Promise.all([
+      this.prisma.task.count({ where: { goalId, status: { not: "CANCELLED" } } }),
+      this.prisma.task.count({ where: { goalId, status: "COMPLETED" } }),
+    ]);
+    return { total, completed };
   }
 }
 

@@ -1,14 +1,9 @@
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
-  GoneException,
   HttpCode,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -16,7 +11,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { InvalidStateTransitionError } from "../../../kernel/domain/errors";
+import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
 import { ActorType } from "../../identity/domain/actor";
 import { ActorAuthGuard } from "../../identity/interface/actor-auth.guard";
@@ -133,19 +128,9 @@ export class TaskController {
   ): Promise<{ taskId: string }> {
     const result = await this.createTask.execute({ workspaceId, ...dto });
     if (result.isFailure) {
-      if (
-        result.error.name === "WorkspaceNotFoundError" ||
-        result.error.name === "GoalNotFoundError"
-      ) {
-        throw new NotFoundException(result.error.message);
-      }
-      if (
-        result.error.name === "AssigneeNotInWorkspaceError" ||
-        result.error.name === "AssigneeCannotExecuteError"
-      ) {
-        throw new ForbiddenException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+        forbidden: ["AssigneeNotInWorkspaceError", "AssigneeCannotExecuteError"],
+      });
     }
     return result.value;
   }
@@ -192,7 +177,7 @@ export class TaskController {
   ): Promise<TaskView> {
     const result = await this.getTask.execute({ taskId, workspaceId });
     if (result.isFailure) {
-      throw new NotFoundException(result.error.message);
+      throw toHttpException(result.error);
     }
     return toView(result.value);
   }
@@ -215,16 +200,7 @@ export class TaskController {
     @Param("taskId") taskId: string,
     @Body() dto: AssignTaskDto,
   ): Promise<{ ok: true }> {
-    const result = await this.assignTask.execute({ taskId, workspaceId, ...dto });
-    if (result.isFailure) {
-      if (
-        result.error.name === "AssigneeNotInWorkspaceError" ||
-        result.error.name === "AssigneeCannotExecuteError"
-      ) {
-        throw new ForbiddenException(result.error.message);
-      }
-    }
-    return this.unwrap(result);
+    return this.unwrap(await this.assignTask.execute({ taskId, workspaceId, ...dto }));
   }
 
   /** The assignee drives their own work forward. */
@@ -294,10 +270,7 @@ export class TaskController {
       reporterId: actor.actorId,
     });
     if (result.isFailure) {
-      if (result.error.name === "TaskNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error);
     }
     return result.value;
   }
@@ -312,16 +285,14 @@ export class TaskController {
     @Param("blockerId") blockerId: string,
     @Body() dto: ResolveBlockerDto,
   ): Promise<{ ok: true }> {
-    const result = await this.resolveBlocker.execute({
-      taskId,
-      workspaceId,
-      blockerId,
-      resolution: dto.resolution,
-    });
-    if (result.isFailure && result.error.name === "BlockerAlreadyResolvedError") {
-      throw new ConflictException(result.error.message);
-    }
-    return this.unwrap(result);
+    return this.unwrap(
+      await this.resolveBlocker.execute({
+        taskId,
+        workspaceId,
+        blockerId,
+        resolution: dto.resolution,
+      }),
+    );
   }
 
   @Post(":taskId/dependencies")
@@ -358,13 +329,13 @@ export class TaskController {
       dependsOnTaskId,
       operation,
     });
-    if (result.isFailure && result.error.name === "TaskDependencyError") {
-      throw new ConflictException(result.error.message);
+    if (result.isFailure) {
+      throw toHttpException(result.error, { conflicts: ["TaskDependencyError"] });
     }
-    return this.unwrap(result);
+    return { ok: true };
   }
 
-  /** Shared failure mapping: not-found, terminal (410), conflict (409). */
+  /** Task-specific classifications; the universal rules live in the kernel. */
   private unwrap(result: {
     isFailure: boolean;
     error: { name: string; message: string };
@@ -372,19 +343,9 @@ export class TaskController {
     if (!result.isFailure) {
       return { ok: true };
     }
-    const { name, message } = result.error;
-    if (name.endsWith("NotFoundError")) {
-      throw new NotFoundException(message);
-    }
-    if (name === "UnsatisfiedTaskDependenciesError") {
-      throw new ConflictException(message);
-    }
-    if (name === "InvalidStateTransitionError") {
-      const transition = result.error as InvalidStateTransitionError;
-      throw transition.fromTerminal
-        ? new GoneException(message)
-        : new ConflictException(message);
-    }
-    throw new BadRequestException(message);
+    throw toHttpException(result.error, {
+      conflicts: ["UnsatisfiedTaskDependenciesError", "BlockerAlreadyResolvedError"],
+      forbidden: ["AssigneeNotInWorkspaceError", "AssigneeCannotExecuteError"],
+    });
   }
 }

@@ -1,19 +1,17 @@
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
   UseGuards,
 } from "@nestjs/common";
 
+import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ChangeMembershipRoleUseCase } from "../application/change-membership-role.use-case";
 import { InviteWorkspaceMemberUseCase } from "../application/invite-workspace-member.use-case";
 import { RevokeWorkspaceMembershipUseCase } from "../application/revoke-workspace-membership.use-case";
@@ -62,13 +60,9 @@ export class WorkspaceMemberController {
   ): Promise<{ membershipId: string }> {
     const result = await this.invite.execute({ workspaceId, ...dto });
     if (result.isFailure) {
-      if (result.error.name === "UserNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      if (result.error.name === "MembershipAlreadyExistsError") {
-        throw new ConflictException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+        conflicts: ["MembershipAlreadyExistsError"],
+      });
     }
     return result.value;
   }
@@ -104,14 +98,8 @@ export class WorkspaceMemberController {
   ): Promise<{ ok: true }> {
     const result = await this.changeRole.execute({ membershipId, role: dto.role });
     if (result.isFailure) {
-      if (result.error.name === "MembershipNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
       // Losing the last owner would leave the workspace unadministrable.
-      if (result.error.name === "CannotRemoveLastOwnerError") {
-        throw new ConflictException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, { conflicts: ["CannotRemoveLastOwnerError"] });
     }
     return { ok: true };
   }
@@ -122,18 +110,11 @@ export class WorkspaceMemberController {
   async remove(@Param("membershipId") membershipId: string): Promise<{ ok: true }> {
     const result = await this.revoke.execute({ membershipId });
     if (result.isFailure) {
-      if (result.error.name === "MembershipNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
       // Both refusals are state conflicts, not malformed requests: the caller
       // must settle something first, then retry the very same call.
-      if (
-        result.error.name === "CannotRemoveLastOwnerError" ||
-        result.error.name === "ActorStillOwnsWorkError"
-      ) {
-        throw new ConflictException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+        conflicts: ["CannotRemoveLastOwnerError", "ActorStillOwnsWorkError"],
+      });
     }
     return { ok: true };
   }

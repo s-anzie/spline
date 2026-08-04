@@ -6,6 +6,46 @@
 > politiques depuis l'Organization)
 > Statut : implémenté, double-vérifié, audité en accessibilité (§9).
 
+## 0. Intégration — analyse rétroactive
+
+*Section ajoutée après coup, quand la règle « analyser l'intégration avant de concevoir » a été posée.
+Elle vaut relecture : ce qui suit a été confronté au code réel, pas au souvenir que j'en avais.*
+
+### 0.1 Ce qu'identity est dans le système
+
+**Le module de fondation** : il ne dépend d'aucun autre et tous dépendent de lui. Il possède *qui existe*
+(User, Organization, acteurs) et *qui a le droit de quoi* (memberships, matrice, gardes). Tout module
+suivant importe `IdentityModule` pour ses deux gardes et sa `PermissionsService`.
+
+### 0.2 Ce qu'il fournit aux modules existants
+
+| Consommateur | Ce qu'il prend | Forme |
+| --- | --- | --- |
+| workspace | `GrantWorkspaceMembershipUseCase` (fonder la propriété OWNER), `ORGANIZATION_REPOSITORY` | use-case exporté |
+| goal, task, artifact | `ActorAuthGuard`, `PermissionsGuard`, `@RequirePermission`, `ActorRef` | gardes + value object |
+| task | `PermissionsService.can(...)` pour vérifier qu'un assignee peut exécuter | service exporté |
+
+### 0.3 Ce qu'il prend en retour
+
+Un seul port, et il est né d'un défaut réel : `ActorWorkloadPort`. Identity **déclare** la question
+« cet acteur détient-il encore du travail vivant ? » et le module qui possède le travail y répond. Sans
+lui, révoquer un membre laissait ses tâches orphelines.
+
+### 0.4 Ce que les modules à venir en attendront
+
+| Module futur | Attente | État aujourd'hui |
+| --- | --- | --- |
+| **Runtime/Worker** (§6.3) | credentials de type `WORKER`, `@BootstrapOperation("machine-link")` | l'entité et le registre existent ; **aucune route d'émission de jeton** — report assumé, voir §8 |
+| **Policy Engine** (§12.2) | l'héritage part de l'Organization | `Organization` existe et porte déjà les workspaces |
+| **Audit** (§18.7) | `ActorRef` sur chaque entrée, `Permission Change` audité | `ActorRef` prêt ; **aucun audit n'est écrit** |
+| **Extensions** (§19.4) | un `publisher` identifiable | `ActorRef` couvre le besoin |
+
+### 0.5 Ce que l'audit rétroactif a trouvé
+
+Rien d'absorbé à tort : identity ne fait que de l'identité et de l'autorisation. Deux **dettes** en
+revanche, nommées ici pour ne pas les perdre — pas d'émission de credentials par l'API (le module agent
+la portera), et **aucune écriture d'audit** alors que §18.7 l'exige pour les changements de permission.
+
 ## 1. Rôle
 
 Le module identity possède **qui existe et qui a le droit de faire quoi** : les identités (humains,

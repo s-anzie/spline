@@ -9,6 +9,7 @@ import { GetGoalUseCase } from "./application/get-goal.use-case";
 import { ManageGoalDependencyUseCase } from "./application/manage-goal-dependency.use-case";
 import { ListGoalsUseCase } from "./application/list-goals.use-case";
 import { UpdateGoalDetailsUseCase } from "./application/update-goal-details.use-case";
+import { RecomputeGoalProgressUseCase } from "./application/recompute-goal-progress.use-case";
 import { UpdateGoalProgressUseCase } from "./application/update-goal-progress.use-case";
 import { GOAL_REPOSITORY } from "./domain/ports/goal.repository.port";
 import { PrismaGoalRepository } from "./infrastructure/prisma-goal.repository";
@@ -27,7 +28,13 @@ import { GoalController } from "./interface/goal.controller";
     CompleteGoalUseCase,
     UpdateGoalProgressUseCase,
     ManageGoalDependencyUseCase,
+    RecomputeGoalProgressUseCase,
   ],
-  exports: [GOAL_REPOSITORY, UpdateGoalProgressUseCase, GetGoalUseCase],
+  exports: [
+    GOAL_REPOSITORY,
+    UpdateGoalProgressUseCase,
+    RecomputeGoalProgressUseCase,
+    GetGoalUseCase,
+  ],
 })
 export class GoalModule {}

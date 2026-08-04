@@ -33,6 +33,7 @@ async function makeContext() {
     changeStatus: new ChangeGoalStatusUseCase(goals, clock, publisher),
     complete: new CompleteGoalUseCase(goals, clock, publisher, {
       hasOpenTasks: async () => false,
+      tally: async () => ({ total: 0, completed: 0 }),
     }),
     updateProgress: new UpdateGoalProgressUseCase(goals, clock, publisher),
   };
@@ -329,6 +330,7 @@ describe("CompleteGoalUseCase — open tasks block completion", () => {
 
     const complete = new CompleteGoalUseCase(goals, clock, publisher, {
       hasOpenTasks: async () => withOpenTasks,
+      tally: async () => ({ total: 0, completed: 0 }),
     });
     return { complete, goalId: created.value.goalId };
   }

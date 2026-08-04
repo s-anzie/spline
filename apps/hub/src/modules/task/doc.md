@@ -5,6 +5,43 @@
 > §5.7 (Task Engine), §9.5-9.6 (DAG, états), §10.9/§11 (validation), §20.6 (affordances), §22.6
 > Statut : implémenté, double-vérifié (§7), audité en accessibilité.
 
+## 0. Intégration — analyse rétroactive
+
+*Section ajoutée après coup, avec ce que l'audit transversal a mis au jour (§0.4).*
+
+### 0.1 Ce que task est dans le système
+
+**L'unité de travail réelle** : c'est le seul module que les agents pilotent directement au quotidien
+(`/status`, `/submit`, `/blockers`, `/mine`). Tout ce que le Runtime exécutera plus tard s'ancrera ici.
+
+### 0.2 Ce qu'il consomme et fournit
+
+Consomme workspace, goal (rattachement + port de charge) et identity (assignee vérifié exécutant).
+Fournit aujourd'hui les deux implémentations de ports que goal et identity déclarent — `hasOpenTasks`,
+`tally`, `hasOpenWork` — toutes trois câblées par le module global `WorkloadModule`, parce que Nest
+résout les jetons d'un provider dans **son propre** module.
+
+### 0.3 Ce que les modules à venir en attendront
+
+| Module futur | Attente | État |
+| --- | --- | --- |
+| **Run/Attempt** (§4.7-4.8) | la Task porte son *état*, eux porteront les *tentatives* | frontière déjà tenue : les statuts §9.6 d'ordonnancement sont exclus exprès |
+| **Validation** (§11) | `/submit` doit créer une Validation à approuver | **dette : la route change le statut, aucune Validation n'est créée** (§0.4) |
+| **Scheduler** (§9.5) | `READY` comme porte de mise en travail | la porte de dépendances existe et est testée |
+| **Repository Engine** (§8) | `repositoryId` sur la tâche | présent, opaque et nullable |
+
+### 0.4 Ce que l'audit rétroactif a trouvé
+
+- **`/submit` ne crée aucune Validation.** La route porte `request_validation` et fait passer la tâche en
+  `VALIDATING`, mais aucune entité §4.9 n'existe : personne ne peut voir *ce qui* est soumis ni *qui* doit
+  revoir. Le statut est là, la trace n'y est pas. Dette du module Validation — la conception le permet
+  sans rupture, `VALIDATING → COMPLETED` restant derrière `approve_validation`.
+- **Le calcul de progression a été rendu au module goal** (§5.6) ; ce module ne fait plus que déclencher.
+- **La réaction en cascade à l'annulation d'un objectif est « au mieux »** : elle passe par le bus
+  d'événements en mémoire. Si le processus meurt entre la publication et le traitement, les tâches
+  restent vivantes sur un objectif annulé. L'outbox du module Event (§14) fermera ce trou ; d'ici là le
+  comportement est nommé, pas supposé fiable.
+
 ## 1. Rôle
 
 Une Task est **l'unité atomique de travail** : un responsable unique, un objectif de rattachement, des

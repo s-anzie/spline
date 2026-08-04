@@ -13,13 +13,6 @@ export class InvalidWorkspaceNameError extends DomainError {
   }
 }
 
-export class EmptyWorkspacePoliciesError extends DomainError {
-  constructor() {
-    super(
-      "A workspace must always keep at least one policy (settings.policies cannot be emptied)",
-    );
-  }
-}
 
 export class WorkspaceNotActiveError extends DomainError {
   constructor(status: string) {

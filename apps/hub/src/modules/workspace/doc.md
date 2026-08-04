@@ -5,6 +5,49 @@
 > §18.8 (bootstrap `workspace-create`), §22 (machine à états)
 > Statut : implémenté, double-vérifié (§7), permissions affinées par l.audit d.accessibilité.
 
+## 0. Intégration — analyse rétroactive
+
+*Section ajoutée après coup. Elle a directement produit une correction : voir §0.5.*
+
+### 0.1 Ce que workspace est dans le système
+
+**L'unité d'isolation** : chaque entité métier porte un `workspaceId`, et chaque garde de permission le
+lit. C'est le module dont tous les autres héritent leur périmètre.
+
+### 0.2 Ce qu'il consomme et ce qu'il fournit
+
+Il consomme identity (membership OWNER à la création, `ORGANIZATION_REPOSITORY` pour vérifier la
+propriété). Il fournit `WORKSPACE_REPOSITORY` à goal, task et artifact, qui vérifient tous qu'un
+workspace est `ACTIVE` avant d'y créer quoi que ce soit.
+
+### 0.3 Ce que les modules à venir en attendront
+
+| Module futur | Attente | Conséquence |
+| --- | --- | --- |
+| **Scheduler** (§9) et **Runtime** (§6) | respecter `PAUSED` : un workspace en pause fige l'exécution | le statut existe et est distinct d'`ARCHIVED` exprès ; **c'est à eux de l'honorer** |
+| **Policy Engine** (§12) | posséder les politiques du workspace | voir §0.5 |
+| **Repository Engine** (§8) | un `rootPath` où travailler | `settings` est libre et l'accueillera |
+
+### 0.4 Sémantique de suppression
+
+Logique uniquement (`ARCHIVED` → `DELETED`), jamais physique — sauf la compensation de création, seul
+`delete()` du repository, réservé au cas où la membership OWNER échoue.
+
+### 0.5 Ce que l'audit rétroactif a trouvé — et corrigé
+
+**Le module avait absorbé le Policy Engine (§12) en trompe-l'œil.** `settings.policies` était injecté à
+la création avec trois règles (`requireValidationBeforeCompletion`, `allowDirectPushToProtectedBranches`,
+`maxConcurrentSessionsPerAgent`), et un invariant interdisait de le vider. **Aucune de ces règles n'était
+lue nulle part.** Deux référençaient des choses inexistantes (Git, sessions) ; la troisième était en
+réalité codée en dur dans les machines à états de Goal et Task. L'API annonçait donc une politique
+appliquée qui ne l'était pas — pire qu'une absence, parce qu'un lecteur du code ou un client de l'API
+pouvait légitimement croire le contraire.
+
+Supprimé. `settings` est désormais de la **configuration libre** (rootPath, préférences), et
+l'invariant §4.2 « un Workspace possède au moins une politique » est une **dette explicite du Policy
+Engine** : c'est lui qui possédera des entités Policy héritables (§12.2) et qui pourra l'honorer
+réellement.
+
 ## 1. Rôle
 
 Le Workspace est l'unité d'isolation principale du système (§4.2) : toutes les ressources métier

@@ -11,7 +11,6 @@ import {
   WorkspaceUpdated,
 } from "./workspace-events";
 import {
-  EmptyWorkspacePoliciesError,
   InvalidWorkspaceNameError,
   WorkspaceNotActiveError,
 } from "./workspace.errors";
@@ -31,16 +30,11 @@ const STATUS_MACHINE = new StateMachine<WorkspaceStatus>({
 });
 
 /**
- * Baseline policies injected at creation so settings.policies is never
- * empty (§4.2 invariant). The policy module will replace this with real
- * inheritable entities without breaking the settings key.
+ * Free-form workspace configuration (root path, integration handles, UI
+ * preferences…). Deliberately NOT the home of policies: §12's Policy Engine
+ * owns those as inheritable entities, and a JSON blob nobody reads would
+ * announce rules the system does not actually enforce.
  */
-export const DEFAULT_WORKSPACE_POLICIES: Record<string, unknown> = {
-  requireValidationBeforeCompletion: true,
-  allowDirectPushToProtectedBranches: false,
-  maxConcurrentSessionsPerAgent: 1,
-};
-
 export type WorkspaceSettings = Record<string, unknown>;
 
 interface WorkspaceProps {
@@ -68,28 +62,13 @@ export interface UpdateWorkspaceDetailsProps {
   settings?: WorkspaceSettings;
 }
 
-export type CreateWorkspaceError =
-  | GuardViolation
-  | InvalidWorkspaceNameError
-  | EmptyWorkspacePoliciesError;
+export type CreateWorkspaceError = GuardViolation | InvalidWorkspaceNameError;
 
 export type UpdateWorkspaceDetailsError =
   | GuardViolation
   | InvalidWorkspaceNameError
-  | EmptyWorkspacePoliciesError
   | WorkspaceNotActiveError;
 
-function policiesPatchIsEmpty(settings: WorkspaceSettings): boolean {
-  if (!("policies" in settings)) {
-    return false;
-  }
-  const policies = settings["policies"];
-  return (
-    typeof policies !== "object" ||
-    policies === null ||
-    Object.keys(policies).length === 0
-  );
-}
 
 export class Workspace extends AggregateRoot<WorkspaceProps> {
   static create(
@@ -107,12 +86,6 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
       return Result.fail(new InvalidWorkspaceNameError(input.name));
     }
     const settings: WorkspaceSettings = { ...input.settings };
-    if (policiesPatchIsEmpty(settings)) {
-      return Result.fail(new EmptyWorkspacePoliciesError());
-    }
-    if (!("policies" in settings)) {
-      settings["policies"] = { ...DEFAULT_WORKSPACE_POLICIES };
-    }
 
     const workspace = new Workspace(
       {
@@ -191,13 +164,10 @@ export class Workspace extends AggregateRoot<WorkspaceProps> {
       nextName = name.value;
       nextSlug = slug;
     }
-    let nextSettings = this.props.settings;
-    if (patch.settings !== undefined) {
-      if (policiesPatchIsEmpty(patch.settings)) {
-        return Result.fail(new EmptyWorkspacePoliciesError());
-      }
-      nextSettings = { ...this.props.settings, ...patch.settings };
-    }
+    const nextSettings =
+      patch.settings === undefined
+        ? this.props.settings
+        : { ...this.props.settings, ...patch.settings };
 
     this.props.name = nextName;
     this.props.slug = nextSlug;

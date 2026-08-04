@@ -1,13 +1,9 @@
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
-  GoneException,
   HttpCode,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -15,7 +11,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { InvalidStateTransitionError } from "../../../kernel/domain/errors";
+import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
 import { ActorAuthGuard } from "../../identity/interface/actor-auth.guard";
 import { CurrentActor } from "../../identity/interface/current-actor.decorator";
@@ -105,13 +101,7 @@ export class GoalController {
       ownerId: actor.actorId,
     });
     if (result.isFailure) {
-      if (
-        result.error.name === "WorkspaceNotFoundError" ||
-        result.error.name === "GoalNotFoundError"
-      ) {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error);
     }
     return result.value;
   }
@@ -140,7 +130,7 @@ export class GoalController {
   ): Promise<GoalView> {
     const result = await this.getGoal.execute({ goalId, workspaceId });
     if (result.isFailure) {
-      throw new NotFoundException(result.error.message);
+      throw toHttpException(result.error);
     }
     return toView(result.value);
   }
@@ -154,10 +144,7 @@ export class GoalController {
   ): Promise<{ ok: true }> {
     const result = await this.updateGoal.execute({ goalId, workspaceId, ...dto });
     if (result.isFailure) {
-      if (result.error.name === "GoalNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error);
     }
     return { ok: true };
   }
@@ -176,19 +163,9 @@ export class GoalController {
       status: dto.status,
     });
     if (result.isFailure) {
-      if (result.error.name === "GoalNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      if (result.error.name === "CompletionRequiresApprovalError") {
-        throw new BadRequestException(result.error.message);
-      }
-      if (result.error.name === "UnsatisfiedDependenciesError") {
-        throw new ConflictException(result.error.message);
-      }
-      const transition = result.error as InvalidStateTransitionError;
-      throw transition.fromTerminal
-        ? new GoneException(transition.message)
-        : new ConflictException(transition.message);
+      throw toHttpException(result.error, {
+        conflicts: ["OpenChildrenError", "OpenTasksError", "UnsatisfiedDependenciesError", "GoalDependencyError"],
+      });
     }
     return { ok: true };
   }
@@ -207,19 +184,9 @@ export class GoalController {
   ): Promise<{ ok: true }> {
     const result = await this.completeGoal.execute({ goalId, workspaceId });
     if (result.isFailure) {
-      if (result.error.name === "GoalNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      if (
-        result.error.name === "OpenChildrenError" ||
-        result.error.name === "OpenTasksError"
-      ) {
-        throw new ConflictException(result.error.message);
-      }
-      const transition = result.error as InvalidStateTransitionError;
-      throw transition.fromTerminal
-        ? new GoneException(transition.message)
-        : new ConflictException(transition.message);
+      throw toHttpException(result.error, {
+        conflicts: ["OpenChildrenError", "OpenTasksError", "UnsatisfiedDependenciesError", "GoalDependencyError"],
+      });
     }
     return { ok: true };
   }
@@ -233,10 +200,9 @@ export class GoalController {
   ): Promise<{ ok: true }> {
     const result = await this.updateProgress.execute({ goalId, progress: dto.progress });
     if (result.isFailure) {
-      if (result.error.name === "GoalNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+        conflicts: ["OpenChildrenError", "OpenTasksError", "UnsatisfiedDependenciesError", "GoalDependencyError"],
+      });
     }
     return { ok: true };
   }
@@ -276,13 +242,9 @@ export class GoalController {
       operation,
     });
     if (result.isFailure) {
-      if (result.error.name === "GoalNotFoundError") {
-        throw new NotFoundException(result.error.message);
-      }
-      if (result.error.name === "GoalDependencyError") {
-        throw new ConflictException(result.error.message);
-      }
-      throw new BadRequestException(result.error.message);
+      throw toHttpException(result.error, {
+        conflicts: ["OpenChildrenError", "OpenTasksError", "UnsatisfiedDependenciesError", "GoalDependencyError"],
+      });
     }
     return { ok: true };
   }
