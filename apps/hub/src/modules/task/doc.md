@@ -189,11 +189,15 @@ route `acquire_locks`, `manage_processes`, `record_decisions`, `manage_machines`
 
 Reports explicites (décidés, pas oubliés) :
 
-- **Un assignee qui perd son appartenance au workspace** laisse ses tâches rattachées à un acteur qui n'a
-  plus le droit d'agir. Le traitement (bloquer la révocation, ou réassigner/signaler) est une décision
-  produit à part entière, et le module identity est le bon endroit pour la porter — noté ici pour ne pas
-  la perdre.
-- **Annuler un Goal ne propage rien à ses tâches** : elles restent vivantes sur un objectif annulé. Même
-  nature de décision (cascade ou signalement), à trancher avec le cas ci-dessus.
+- ~~Un assignee qui perd son appartenance au workspace~~ : **soldé**. Identity déclare
+  `ActorWorkloadPort`, le côté task le fournit, et la révocation est refusée (409) tant que l'acteur détient
+  du travail vivant — il faut le réassigner ou le clore d'abord. Même patron d'inversion que
+  `GoalWorkloadPort`, même câblage global.
+- ~~Annuler un Goal ne propage rien à ses tâches~~ : **soldé**, et par l'événementiel plutôt que par un
+  appel direct. `CancelTasksOnGoalCancelledListener` réagit à `goal.status_changed` → `CANCELLED` et annule
+  les tâches vivantes de l'objectif, sans jamais toucher aux tâches déjà closes (l'histoire ne se réécrit
+  pas). C'est le **premier consommateur réel** du bus d'événements : jusqu'ici on publiait sans que
+  personne n'écoute. L'événement a dû gagner son `workspaceId` au passage — un fait doit se suffire à
+  lui-même pour être consommable (§14).
 - **Runs et Attempts** (§4.7-4.8) : la Task porte son *état*, pas ses tentatives ; c'est le module
   d'exécution qui les apportera.

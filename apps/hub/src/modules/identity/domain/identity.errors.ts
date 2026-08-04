@@ -63,6 +63,14 @@ export class MembershipAlreadyExistsError extends DomainError {
   }
 }
 
+export class ActorStillOwnsWorkError extends DomainError {
+  constructor() {
+    super(
+      "This actor still owns live work in the workspace — reassign it before removing them",
+    );
+  }
+}
+
 export class CannotRemoveLastOwnerError extends DomainError {
   constructor(workspaceId: string) {
     super(`Workspace "${workspaceId}" must keep at least one OWNER`);

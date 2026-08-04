@@ -11,7 +11,9 @@ function makeUseCases() {
   const publisher = new FakeEventPublisher();
   const grant = new GrantWorkspaceMembershipUseCase(memberships, clock, publisher);
   const changeRole = new ChangeMembershipRoleUseCase(memberships, clock, publisher);
-  const revoke = new RevokeWorkspaceMembershipUseCase(memberships, clock, publisher);
+  const revoke = new RevokeWorkspaceMembershipUseCase(memberships, clock, publisher, {
+    hasOpenWork: async () => false,
+  });
   return { memberships, grant, changeRole, revoke, publisher };
 }
 
@@ -117,5 +119,41 @@ describe("workspace membership use-cases", () => {
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("MembershipNotFoundError");
+  });
+});
+
+/** Recorded as a deferral by the task module, settled here. */
+describe("revoking a member who still owns live work", () => {
+  async function contextWithWorkload(hasOpenWork: boolean) {
+    const memberships = new InMemoryWorkspaceMembershipRepository();
+    const clock = new FakeClock(new Date("2026-08-04T10:00:00Z"));
+    const publisher = new FakeEventPublisher();
+    const grant = new GrantWorkspaceMembershipUseCase(memberships, clock, publisher);
+    await grant.execute({ ...owner });
+    const worker = await grant.execute({
+      actorType: "AGENT",
+      actorId: "a-1",
+      workspaceId: "w-1",
+      role: "AGENT_CONTRIBUTOR",
+    });
+    const revoke = new RevokeWorkspaceMembershipUseCase(memberships, clock, publisher, {
+      hasOpenWork: async () => hasOpenWork,
+    });
+    return { revoke, membershipId: worker.value.membershipId };
+  }
+
+  it("is refused while the actor owns open work", async () => {
+    const { revoke, membershipId } = await contextWithWorkload(true);
+
+    const result = await revoke.execute({ membershipId });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error.name).toBe("ActorStillOwnsWorkError");
+  });
+
+  it("succeeds once their work has been reassigned or settled", async () => {
+    const { revoke, membershipId } = await contextWithWorkload(false);
+
+    expect((await revoke.execute({ membershipId })).isSuccess).toBe(true);
   });
 });

@@ -24,6 +24,7 @@ export class GoalStatusChanged extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    readonly workspaceId: string,
     readonly from: GoalStatus,
     readonly to: GoalStatus,
   ) {

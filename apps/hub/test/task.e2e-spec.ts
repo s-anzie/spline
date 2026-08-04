@@ -302,4 +302,51 @@ describe("Task (e2e)", () => {
 
     await auth(request(http).post(`${goal}/complete`)).expect(200);
   });
+
+  describe("cross-module consistency", () => {
+    it("cancelling a goal cancels its live tasks but never rewrites settled ones", async () => {
+      const ctx = await setup();
+      const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+      const asAgent = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.agentToken}`);
+      const goal = `/workspaces/${ctx.workspaceId}/goals/${ctx.goalId}`;
+      const live = (await auth(request(http).post(ctx.base)).send(body(ctx.goalId, { title: "live" })).expect(201))
+        .body.taskId as string;
+      const done = (await auth(request(http).post(ctx.base)).send(body(ctx.goalId, { title: "done" })).expect(201))
+        .body.taskId as string;
+
+      for (const status of ["READY", "ASSIGNED", "RUNNING"] as const) {
+        await asAgent(request(http).post(`${ctx.base}/${done}/status`)).send({ status }).expect(200);
+      }
+      await asAgent(request(http).post(`${ctx.base}/${done}/submit`)).expect(200);
+      await auth(request(http).post(`${ctx.base}/${done}/complete`)).expect(200);
+
+      await auth(request(http).post(`${goal}/status`)).send({ status: "CANCELLED" }).expect(200);
+      // The listener reacts to the published event, not to a direct call.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect((await auth(request(http).get(`${ctx.base}/${live}`)).expect(200)).body.status).toBe(
+        "CANCELLED",
+      );
+      expect((await auth(request(http).get(`${ctx.base}/${done}`)).expect(200)).body.status).toBe(
+        "COMPLETED",
+      );
+    });
+
+    it("a member owning live work cannot be removed until it is reassigned", async () => {
+      const ctx = await setup();
+      const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+      const members = `/workspaces/${ctx.workspaceId}/members`;
+      const created = await auth(request(http).post(ctx.base)).send(body(ctx.goalId)).expect(201);
+      const listed = await auth(request(http).get(members)).expect(200);
+      const agentMembership = listed.body.find(
+        (m: { actorType: string }) => m.actorType === "AGENT",
+      );
+
+      await auth(request(http).delete(`${members}/${agentMembership.membershipId}`)).expect(409);
+
+      // Settle the work, then removal is allowed.
+      await auth(request(http).post(`${ctx.base}/${created.body.taskId}/cancel`)).expect(200);
+      await auth(request(http).delete(`${members}/${agentMembership.membershipId}`)).expect(200);
+    });
+  });
 });

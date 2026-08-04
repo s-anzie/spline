@@ -125,7 +125,12 @@ export class WorkspaceMemberController {
       if (result.error.name === "MembershipNotFoundError") {
         throw new NotFoundException(result.error.message);
       }
-      if (result.error.name === "CannotRemoveLastOwnerError") {
+      // Both refusals are state conflicts, not malformed requests: the caller
+      // must settle something first, then retry the very same call.
+      if (
+        result.error.name === "CannotRemoveLastOwnerError" ||
+        result.error.name === "ActorStillOwnsWorkError"
+      ) {
         throw new ConflictException(result.error.message);
       }
       throw new BadRequestException(result.error.message);

@@ -1,6 +1,11 @@
 import { Global, Injectable, Module } from "@nestjs/common";
 
 import { GOAL_WORKLOAD, GoalWorkloadPort } from "../../goal/domain/ports/goal-workload.port";
+import {
+  ACTOR_WORKLOAD,
+  ActorWorkloadPort,
+} from "../../identity/domain/ports/actor-workload.port";
+import { ActorRef } from "../../identity/domain/actor";
 import { PrismaService } from "../../../prisma/prisma.service";
 
 /**
@@ -24,6 +29,27 @@ export class TaskGoalWorkloadAdapter implements GoalWorkloadPort {
 }
 
 /**
+ * Answers identity's "does this actor still own live work?" — the reason a
+ * member cannot be removed while tasks are on their name.
+ */
+@Injectable()
+export class TaskActorWorkloadAdapter implements ActorWorkloadPort {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async hasOpenWork(actor: ActorRef, workspaceId: string): Promise<boolean> {
+    const open = await this.prisma.task.count({
+      where: {
+        workspaceId,
+        assigneeType: actor.type,
+        assigneeId: actor.actorId,
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
+      },
+    });
+    return open > 0;
+  }
+}
+
+/**
  * Global on purpose. Nest resolves a provider's tokens inside its own module,
  * so a binding declared in TaskModule would never reach CompleteGoalUseCase,
  * which lives in GoalModule — and having GoalModule import TaskModule would
@@ -32,7 +58,10 @@ export class TaskGoalWorkloadAdapter implements GoalWorkloadPort {
  */
 @Global()
 @Module({
-  providers: [{ provide: GOAL_WORKLOAD, useClass: TaskGoalWorkloadAdapter }],
-  exports: [GOAL_WORKLOAD],
+  providers: [
+    { provide: GOAL_WORKLOAD, useClass: TaskGoalWorkloadAdapter },
+    { provide: ACTOR_WORKLOAD, useClass: TaskActorWorkloadAdapter },
+  ],
+  exports: [GOAL_WORKLOAD, ACTOR_WORKLOAD],
 })
-export class GoalWorkloadModule {}
+export class WorkloadModule {}

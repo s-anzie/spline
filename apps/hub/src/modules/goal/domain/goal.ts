@@ -329,7 +329,15 @@ export class Goal extends AggregateRoot<GoalProps> {
         const from = this.props.status;
         this.props.status = outcome.to;
         this.props.updatedAt = now;
-        this.addDomainEvent(new GoalStatusChanged(this.id.value, now, from, outcome.to));
+        this.addDomainEvent(
+          new GoalStatusChanged(
+            this.id.value,
+            now,
+            this.props.workspaceId,
+            from,
+            outcome.to,
+          ),
+        );
         return Result.ok(undefined);
       }
     }

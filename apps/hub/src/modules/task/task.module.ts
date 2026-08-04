@@ -4,6 +4,7 @@ import { GoalModule } from "../goal/goal.module";
 import { IdentityModule } from "../identity/identity.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { AssignTaskUseCase } from "./application/assign-task.use-case";
+import { CancelTasksOnGoalCancelledListener } from "./application/cancel-tasks-on-goal-cancelled.listener";
 import { ChangeTaskStatusUseCase } from "./application/change-task-status.use-case";
 import { CompleteTaskUseCase } from "./application/complete-task.use-case";
 import { CreateTaskUseCase } from "./application/create-task.use-case";
@@ -34,6 +35,7 @@ import { TaskController } from "./interface/task.controller";
     ResolveBlockerUseCase,
     ManageTaskDependencyUseCase,
     GoalProgressSyncService,
+    CancelTasksOnGoalCancelledListener,
   ],
   exports: [TASK_REPOSITORY, GetTaskUseCase],
 })
