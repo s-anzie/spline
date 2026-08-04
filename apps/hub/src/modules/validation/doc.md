@@ -186,8 +186,10 @@ Reports explicites, avec leur raison :
 
 - **L'exécution des validations** (§11.3, étapes Prepare/Execute) : c'est le Runtime (§6, §7). Écrire un
   exécuteur ici reviendrait à inventer le Worker.
-- **« Aucune politique violée »** (§11.7) : le Policy Engine (§12) n'existe pas. Nommé en §1.7 plutôt que
-  sous-entendu satisfait.
+- ~~**« Aucune politique violée »** (§11.7)~~ : **fermé** par le module policy. Et pas par un second
+  chemin de refus : une politique `required_validations` (§12.3) fait naître des Validations obligatoires
+  ordinaires, que `CompleteTaskUseCase` exige déjà sans rien savoir des politiques. La quatrième condition
+  se ramène à la première.
 - **L'ordonnancement du graphe** (§11.9) : `dependsOnValidationIds` est stocké, le `DependencyGraph` du
   kernel existe, mais ordonnancer est au Scheduler (§9).
 - **La revalidation automatique** (§11.8) : le déclencheur appartient à qui observe le changement — un

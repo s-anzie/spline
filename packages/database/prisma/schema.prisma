@@ -82,6 +82,7 @@ model Workspace {
   events         Event[]
   notifications  Notification[]
   validations    Validation[]
+  policies       Policy[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -498,4 +499,49 @@ model Validation {
   @@index([workspaceId, taskId])
   @@index([taskId, status])
   @@map("validations")
+}
+
+enum PolicyScopeType {
+  ORGANIZATION
+  WORKSPACE
+  REPOSITORY
+  GOAL
+  TASK
+}
+
+enum PolicyType {
+  SECURITY
+  RUNTIME
+  GIT
+  VALIDATION
+  COST
+  EXTENSION
+}
+
+/// A declarative workspace rule (spec 12). `rule` is a free string like a
+/// validation type: 12.3 lists examples, not a closed set, and the Runtime
+/// and the Extension Registry will publish more.
+///
+/// workspaceId is present even for an ORGANIZATION scope: without it no query
+/// is filterable per workspace, and 4.2 admits no exception. The scope says
+/// where the rule comes from; workspaceId says where it is readable.
+model Policy {
+  id          String          @id @default(uuid())
+  workspaceId String
+  scopeType   PolicyScopeType
+  scopeId     String
+  type        PolicyType
+  rule        String
+  value       Json
+  enabled     Boolean         @default(true)
+  createdByType ActorType
+  createdById   String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, scopeType, scopeId, rule])
+  @@index([workspaceId, enabled])
+  @@map("policies")
 }

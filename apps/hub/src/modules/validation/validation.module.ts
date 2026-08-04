@@ -1,6 +1,7 @@
 import { Global, Module } from "@nestjs/common";
 
 import { IdentityModule } from "../identity/identity.module";
+import { PolicyModule } from "../policy/policy.module";
 import { TASK_PROOF } from "../task/domain/ports/task-proof.port";
 import { TaskModule } from "../task/task.module";
 import { InvalidateValidationsUseCase } from "./application/invalidate-validations.use-case";
@@ -21,7 +22,7 @@ import { ValidationController } from "./interface/validation.controller";
  */
 @Global()
 @Module({
-  imports: [IdentityModule, TaskModule],
+  imports: [IdentityModule, TaskModule, PolicyModule],
   controllers: [ValidationController],
   providers: [
     { provide: VALIDATION_REPOSITORY, useClass: PrismaValidationRepository },
