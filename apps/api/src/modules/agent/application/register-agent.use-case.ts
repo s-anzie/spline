@@ -1,5 +1,5 @@
 import { ActorType, WorkspaceRole } from "@repo/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import {
   EVENT_PUBLISHER,
@@ -19,7 +19,8 @@ import {
   AGENT_REPOSITORY,
   AgentRepository,
 } from "../domain/ports/agent.repository.port";
-import { InvalidAgentWorkspaceRoleError } from "./agent-application.errors";
+import { PROVIDER_PROFILE_REPOSITORY, ProviderProfileRepository } from "../domain/ports/provider-profile.repository.port";
+import { AgentProviderUnavailableError, InvalidAgentWorkspaceRoleError } from "./agent-application.errors";
 import { defaultAgentPromptProfile } from "./default-agent-prompt-profiles";
 
 const AGENT_ROLES: WorkspaceRole[] = [
@@ -47,7 +48,8 @@ export type RegisterAgentError =
   | WorkspaceNotFoundError
   | EmptyAgentProviderError
   | EmptyAgentDisplayNameError
-  | InvalidAgentWorkspaceRoleError;
+  | InvalidAgentWorkspaceRoleError
+  | AgentProviderUnavailableError;
 
 @Injectable()
 export class RegisterAgentUseCase {
@@ -57,6 +59,9 @@ export class RegisterAgentUseCase {
     private readonly issueAgentToken: IssueAgentTokenUseCase,
     private readonly assignWorkspaceRole: AssignWorkspaceRoleUseCase,
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
+    @Optional()
+    @Inject(PROVIDER_PROFILE_REPOSITORY)
+    private readonly providerProfiles?: ProviderProfileRepository,
   ) {}
 
   async execute(
@@ -71,6 +76,9 @@ export class RegisterAgentUseCase {
     if (!AGENT_ROLES.includes(role)) {
       return Result.fail(new InvalidAgentWorkspaceRoleError(role));
     }
+    const providerProfile = await this.providerProfiles?.findByProvider(input.provider);
+    if (providerProfile?.available === false)
+      return Result.fail(new AgentProviderUnavailableError(input.provider));
 
     let agent: Agent;
     try {

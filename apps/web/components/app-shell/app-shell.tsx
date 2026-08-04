@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appNavigation, workspaceNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -13,6 +12,7 @@ import { WorkspaceSwitcher } from "./workspace-switcher";
 import { RealtimeBridge } from "./realtime-bridge";
 import { CommandSearch } from "./command-search";
 import { AccountMenu } from "./account-menu";
+import { NotificationMenu } from "./notification-menu";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { usePlanningStore } from "@/stores/planning-store";
@@ -35,16 +35,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const resetWorkspaces = useWorkspaceStore((state) => state.reset);
   const resetPlanning = usePlanningStore((state) => state.reset);
   const resetDomains = useWorkspaceDomainStore((state) => state.reset);
-  const questions = useWorkspaceDomainStore((state) => state.questions);
   const notifications = useWorkspaceDomainStore((state) => state.notifications);
   const runtimeHealth = useWorkspaceDomainStore((state) => state.runtimeHealth);
   const sessions = useWorkspaceDomainStore((state) => state.sessions);
   const tasks = usePlanningStore((state) => state.tasks);
   const goals = usePlanningStore((state) => state.goals);
   const unreadNotifications = useNotificationStore((state) => state.items);
+  const actionableUnreadCount = unreadNotifications.filter(({ notification }) => {
+    const payload = notification.payload;
+    return (
+      payload["collaborationType"] === "MANAGER_HUMAN_QUESTION" ||
+      payload["type"] === "agent_session_failure" ||
+      notification.kind === "SYSTEM_ALERT"
+    );
+  }).length;
   const loadNotifications = useNotificationStore((state) => state.load);
   const interventionCount =
-    questions.filter((item) => item.status === "OPEN").length +
     notifications.filter(
       (item) =>
         item.payload["collaborationType"] === "MANAGER_HUMAN_QUESTION" &&
@@ -123,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               : isCollaboration
                 ? activeAgentCount
                 : isGlobalAttention
-                  ? unreadNotifications.length
+                  ? actionableUnreadCount
                   : 0;
             return (
               <div key={href}>
@@ -179,24 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="relative ml-17 grid h-dvh min-h-0 grid-rows-[3.5rem_minmax(0,1fr)] overflow-hidden md:ml-61">
         <header className="z-10 flex h-14 items-center justify-end gap-3 border-b border-white/[.075] bg-[#11100f]/85 px-4 backdrop-blur-xl transition-shadow duration-300 sm:px-8 lg:px-10">
           <CommandSearch workspaceId={workspaceId} />
-          <Button
-            nativeButton={false}
-            render={<Link href={workspaceId ? `/workspaces/${workspaceId}/attention` : "/attention"} />}
-            size="icon-lg"
-            variant="outline"
-            className="relative hidden border-white/[.075] bg-white/[.025] text-muted-foreground sm:inline-flex"
-          >
-            <Bell />
-            {(workspaceId ? interventionCount : unreadNotifications.length) > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-[#f47b64] px-1 py-0.5 text-[7px] font-bold text-[#241614] shadow-[0_0_0_3px_#11100f]">
-                {(workspaceId ? interventionCount : unreadNotifications.length) > 99
-                  ? "99+"
-                  : workspaceId
-                    ? interventionCount
-                    : unreadNotifications.length}
-              </span>
-            )}
-          </Button>
+          <NotificationMenu workspaceId={workspaceId} />
           <CreateDialog />
         </header>
         <div

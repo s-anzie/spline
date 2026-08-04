@@ -18,11 +18,15 @@ const HEARTBEAT_INTERVAL_MS = Number(
   process.env["HEARTBEAT_INTERVAL_MS"] ?? 15000,
 );
 const UNKNOWN_EXIT_CODE = -1;
+const HUB_DISCONNECT_GRACE_MS = Number(
+  process.env["HUB_DISCONNECT_GRACE_MS"] ?? 60_000,
+);
 
 function main(): void {
   let hub: HubConnection | null = null;
   let activeSignature = "";
   let currentConfig: RuntimeConfig = readRuntimeConfig();
+  let disconnectSafetyTimer: NodeJS.Timeout | undefined;
   const processSupervisor = new ProcessSupervisor({
     runner: new GenericCommandRunner(),
     onProcessStarted: (processId, pid) =>
@@ -43,6 +47,8 @@ function main(): void {
       hub?.reportSessionOutput(sessionId, sequence, stream, content),
     onProviderSessionId: (sessionId, providerSessionId) =>
       hub?.reportProviderSessionId(sessionId, providerSessionId),
+    onProviderQuota: (sessionId, provider, resetAt, reason) =>
+      hub?.reportProviderQuota(sessionId, provider, resetAt, reason),
   });
   const dispatcher = new CommandDispatcher({
     processSupervisor,
@@ -90,12 +96,30 @@ function main(): void {
       const nextHub = new HubConnection(config.hubUrl, config.machineToken);
       nextHub.onCommand((command) => dispatcher.dispatch(command));
       nextHub.onConnect(() => {
+        if (disconnectSafetyTimer) clearTimeout(disconnectSafetyTimer);
+        disconnectSafetyTimer = undefined;
         console.log(`[runtime] connected to ${config.hubUrl}/machines`);
         // Signal readiness before asking the hub to deliver queued commands.
         // Commands emitted from the server's connection hook can arrive before
         // the Socket.IO client has entered its connected state and be lost.
         nextHub.sendMachineHeartbeat();
         nextHub.reportRuntimeInventory(sessionSupervisor.runningSessionIds());
+      });
+      nextHub.onDisconnect(() => {
+        if (
+          disconnectSafetyTimer ||
+          sessionSupervisor.runningSessionIds().length === 0
+        )
+          return;
+        disconnectSafetyTimer = setTimeout(() => {
+          disconnectSafetyTimer = undefined;
+          const stopped = sessionSupervisor.stopAll("SIGTERM");
+          if (stopped.length > 0)
+            console.error(
+              `[runtime] hub unavailable for ${HUB_DISCONNECT_GRACE_MS}ms; stopped ${stopped.length} provider session(s) to prevent unobserved token usage`,
+            );
+        }, HUB_DISCONNECT_GRACE_MS);
+        disconnectSafetyTimer.unref();
       });
       nextHub.connect();
       hub = nextHub;
@@ -117,6 +141,8 @@ function main(): void {
   }, HEARTBEAT_INTERVAL_MS);
   const shutdown = () => {
     clearInterval(heartbeat);
+    if (disconnectSafetyTimer) clearTimeout(disconnectSafetyTimer);
+    sessionSupervisor.stopAll("SIGTERM");
     void stopWatching();
     hub?.disconnect();
     process.exit(0);

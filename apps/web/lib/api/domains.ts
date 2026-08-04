@@ -28,10 +28,18 @@ const post = <T>(path: string, token: string, body?: unknown) =>
   });
 const patch = <T>(path: string, token: string, body: unknown) =>
   apiRequest<T>(path, { method: "PATCH", token, body });
+const remove = (path: string, token: string) =>
+  apiRequest<void>(path, { method: "DELETE", token });
 
 export const domainApi = {
   providers: (token: string) =>
     apiRequest<ProviderProfile[]>("/provider-profiles", { token }),
+  setProviderAvailability: (provider: string, available: boolean, token: string) =>
+    patch<ProviderProfile>(
+      `/provider-profiles/${encodeURIComponent(provider)}/availability`,
+      token,
+      { available },
+    ),
   agents: (id: string, token: string) =>
     apiRequest<Agent[]>(ws(id, "/agents"), { token }),
   agent: (id: string, agentId: string, token: string) =>
@@ -109,6 +117,8 @@ export const domainApi = {
     ),
   startSession: (id: string, input: unknown, token: string) =>
     post<AgentSession>(ws(id, "/agent-sessions"), token, input),
+  deleteSession: (id: string, sessionId: string, token: string) =>
+    remove(ws(id, `/agent-sessions/${sessionId}`), token),
   agentQuestions: (id: string, token: string) =>
     apiRequest<AgentQuestion[]>(ws(id, "/agent-questions"), { token }),
   collaborationSync: (id: string, token: string) =>
@@ -122,12 +132,36 @@ export const domainApi = {
     post<{
       sessionId: string | null;
       answeredAt: string;
-      deliveryStatus: "DELIVERED" | "PENDING_WAKE";
+      deliveryStatus: "QUEUED";
+      notificationId: string;
       warning?: string;
     }>(
       ws(id, `/collaboration/human-questions/${notificationId}/answer`),
       token,
       { answer },
+    ),
+  messageManager: (
+    id: string,
+    sessionId: string,
+    message: string,
+    token: string,
+    replyToNotificationId?: string,
+  ) =>
+    post<Notification>(ws(id, "/collaboration/manager-messages"), token, {
+      sessionId,
+      message,
+      replyToNotificationId,
+    }),
+  editManagerMessage: (
+    id: string,
+    notificationId: string,
+    message: string,
+    token: string,
+  ) =>
+    patch<Notification>(
+      ws(id, `/collaboration/manager-messages/${notificationId}`),
+      token,
+      { message },
     ),
   sessionAction: (
     id: string,

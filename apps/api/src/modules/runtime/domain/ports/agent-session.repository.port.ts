@@ -14,7 +14,7 @@ export interface AgentSessionRepository {
   /** Every non-terminal session for this agent — used to enforce "one active session per agent". */
   listActiveByAgent(agentId: string): Promise<AgentSession[]>;
   listActiveByMachine(machineId: string): Promise<AgentSession[]>;
-  /** Every non-terminal session — used by boot-time reconciliation. */
+  /** Provider processes expected to be executing right now (never parked IDLE conversations). */
   listActive(): Promise<AgentSession[]>;
   save(session: AgentSession): Promise<void>;
 }

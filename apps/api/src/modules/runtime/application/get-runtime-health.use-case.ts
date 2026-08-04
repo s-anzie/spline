@@ -1,4 +1,4 @@
-import { LocalMachineRuntimeStatus, RuntimeCommandStatus } from "@repo/db";
+import { AgentSessionStatus, LocalMachineRuntimeStatus, RuntimeCommandStatus } from "@repo/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
@@ -90,8 +90,13 @@ export class GetRuntimeHealthUseCase {
       }
     }
 
+    const executingStatuses = new Set<AgentSessionStatus>([
+      AgentSessionStatus.STARTING,
+      AgentSessionStatus.RUNNING,
+      AgentSessionStatus.AWAITING_APPROVAL,
+    ]);
     const sessionList = (await this.sessions.listByWorkspace(workspaceId)).filter(
-      (session) => !session.isTerminal,
+      (session) => executingStatuses.has(session.status),
     );
     const staleSessions = sessionList.filter((session) => session.isStale(now, SESSION_STALE_TTL_MS));
 

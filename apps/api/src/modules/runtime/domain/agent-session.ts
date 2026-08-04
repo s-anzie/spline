@@ -19,6 +19,7 @@ const TERMINAL_STATUSES: AgentSessionStatus[] = [
 const ALLOWED_TRANSITIONS: Record<AgentSessionStatus, AgentSessionStatus[]> = {
   [AgentSessionStatus.STARTING]: [
     AgentSessionStatus.RUNNING,
+    AgentSessionStatus.STOPPED,
     AgentSessionStatus.FAILED,
     AgentSessionStatus.CRASHED,
   ],

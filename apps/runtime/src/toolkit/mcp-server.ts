@@ -13,9 +13,10 @@ type Tool = {
 const apiUrl = process.env["SPLINE_API_URL"]?.replace(/\/$/, "");
 const workspaceId = process.env["SPLINE_WORKSPACE_ID"];
 const token = process.env["SPLINE_AGENT_TOKEN"];
+const agentId = process.env["SPLINE_AGENT_ID"];
 const agentRole = process.env["SPLINE_AGENT_ROLE"] ?? "unknown";
-if (!apiUrl || !workspaceId || !token) {
-  process.stderr.write("Spline MCP requires SPLINE_API_URL, SPLINE_WORKSPACE_ID and SPLINE_AGENT_TOKEN\n");
+if (!apiUrl || !workspaceId || !token || !agentId) {
+  process.stderr.write("Spline MCP requires SPLINE_API_URL, SPLINE_WORKSPACE_ID, SPLINE_AGENT_ID and SPLINE_AGENT_TOKEN\n");
   process.exit(1);
 }
 
@@ -28,6 +29,7 @@ const without = (input: Record<string, Json>, key: string): Json => {
 };
 
 const tools: Tool[] = [
+  { name: "spline_inbox", description: "Read this agent's unread personal inbox across every workspace. Call first on every turn; then mark each message SEEN, ACKNOWLEDGED, and ACTED_ON as it is processed.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => `/notifications/unread?recipientType=AGENT&recipientId=${encodeURIComponent(agentId)}` },
   { name: "spline_sync_workspace", description: "Read goals, tasks, agents, events, locks, processes, and open manager questions in one call.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => workspace("/collaboration/sync") },
   { name: "spline_list_tasks", description: "List workspace tasks and their current ownership/state.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => workspace("/tasks") },
   { name: "spline_get_task", description: "Read one task including status, assignee, dependencies, blockers, and validation state.", inputSchema: { type: "object", properties: { taskId: stringProperty("Task UUID") }, required: ["taskId"] }, method: "GET", path: (i) => workspace(`/tasks/${i.taskId}`) },
@@ -56,7 +58,8 @@ const tools: Tool[] = [
   { name: "spline_close_question", description: "Manager-only: close a question after the contributor acknowledged the answer.", inputSchema: { type: "object", properties: { questionId: stringProperty("Question UUID") }, required: ["questionId"] }, method: "POST", path: (i) => workspace(`/agent-questions/${i.questionId}/close`) },
   { name: "spline_ask_human", description: "Manager-only: create a durable human attention request linked to the current session. Use only when the decision cannot be resolved autonomously.", inputSchema: { type: "object", properties: { question: stringProperty("Precise decision needed from the human"), context: stringProperty("Evidence, impact, and work already attempted"), options: { type: "array", items: { type: "string" } }, recommendation: stringProperty("Recommended option and rationale"), sessionId: stringProperty("Current manager session UUID") }, required: ["question", "context", "sessionId"] }, method: "POST", path: () => workspace("/collaboration/ask-human"), body: (i) => i },
   { name: "spline_launch_agent", description: "Manager-only: launch a contributor for an assigned task with explicit acceptance criteria. Spline automatically reuses the latest compatible provider conversation when possible.", inputSchema: { type: "object", properties: { agentId: stringProperty("Contributor UUID"), machineId: stringProperty("Online linked machine UUID"), taskId: stringProperty("Assigned task UUID"), instruction: stringProperty("Outcome, scope, constraints, acceptance criteria, validation") }, required: ["agentId", "machineId", "taskId", "instruction"] }, method: "POST", path: () => workspace("/agent-sessions"), body: (i) => i },
-  { name: "spline_delegate_task", description: "Manager-only: coherently create, attach, assign, and launch a contributor task; automatically reuses its compatible provider conversation and compensates task creation if launch fails.", inputSchema: { type: "object", properties: { goalId: stringProperty("Goal UUID this task contributes to"), title: stringProperty("Task title"), description: stringProperty("Scope and acceptance criteria"), priority: stringProperty("LOW, MEDIUM, HIGH, or CRITICAL"), agentId: stringProperty("Contributor UUID"), machineId: stringProperty("Online linked machine UUID"), instruction: stringProperty("Outcome, constraints, acceptance criteria, and validation") }, required: ["goalId", "title", "description", "agentId", "machineId", "instruction"] }, method: "POST", path: () => workspace("/collaboration/delegate"), body: (i) => i },
+  { name: "spline_activate_agent", description: "Manager-only high-level lifecycle control. Safely waits if the contributor is active, wakes an IDLE conversation, recovers FAILED/CRASHED work, or starts a fresh linked conversation. Prefer this over spline_launch_agent.", inputSchema: { type: "object", properties: { agentId: stringProperty("Contributor UUID"), machineId: stringProperty("Online linked machine UUID"), taskId: stringProperty("Optional assigned task UUID"), instruction: stringProperty("Concrete next action and acceptance criteria") }, required: ["agentId", "machineId", "instruction"] }, method: "POST", path: () => workspace("/collaboration/activate-agent"), body: (i) => i },
+  { name: "spline_delegate_task", description: "Manager-only: create, attach, assign, and activate a contributor task. If the agent is busy, the task remains safely QUEUED instead of being deleted or starting a parallel instance.", inputSchema: { type: "object", properties: { goalId: stringProperty("Goal UUID this task contributes to"), title: stringProperty("Task title"), description: stringProperty("Scope and acceptance criteria"), priority: stringProperty("LOW, MEDIUM, HIGH, or CRITICAL"), agentId: stringProperty("Contributor UUID"), machineId: stringProperty("Online linked machine UUID"), instruction: stringProperty("Outcome, constraints, acceptance criteria, and validation") }, required: ["goalId", "title", "description", "agentId", "machineId", "instruction"] }, method: "POST", path: () => workspace("/collaboration/delegate"), body: (i) => i },
   { name: "spline_record_decision", description: "Record a material workspace decision and its rationale.", inputSchema: { type: "object", properties: { subject: stringProperty("Decision subject"), context: stringProperty("Context"), decision: stringProperty("Chosen decision"), optionsConsidered: { type: "array", items: { type: "string" } }, references: { type: "array", items: { type: "string" } } }, required: ["subject", "decision"] }, method: "POST", path: () => workspace("/decisions"), body: (i) => i },
   { name: "spline_create_artifact", description: "Register a material output and link it to a goal/task/decision/process.", inputSchema: { type: "object", properties: { type: stringProperty("Artifact type enum"), name: stringProperty("Artifact name"), description: stringProperty("What it contains"), goalId: stringProperty("Optional goal UUID"), taskId: stringProperty("Optional task UUID"), decisionId: stringProperty("Optional decision UUID"), processId: stringProperty("Optional process UUID"), source: stringProperty("Source"), contentRef: stringProperty("Content reference"), checksum: stringProperty("Checksum") }, required: ["type", "name"] }, method: "POST", path: () => workspace("/artifacts"), body: (i) => i },
   { name: "spline_list_artifacts", description: "List registered workspace outputs and their links.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => workspace("/artifacts") },
@@ -75,6 +78,7 @@ const tools: Tool[] = [
   { name: "spline_send_notification", description: "Send a scoped internal notification to explicit human or agent recipients.", inputSchema: { type: "object", properties: { kind: stringProperty("NotificationKind enum"), scope: stringProperty("NotificationScope enum"), taskId: stringProperty("Optional task UUID"), title: stringProperty("Title"), body: stringProperty("Body"), payload: { type: "object" }, recipients: { type: "array", items: { type: "object" } } }, required: ["kind", "scope", "body"] }, method: "POST", path: () => workspace("/notifications"), body: (i) => i },
   { name: "spline_list_notifications", description: "List workspace notifications for coordination and pending attention.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => workspace("/notifications") },
   { name: "spline_advance_notification", description: "Advance the authenticated agent recipient state for a notification.", inputSchema: { type: "object", properties: { notificationId: stringProperty("Notification UUID"), status: stringProperty("DELIVERED, SEEN, ACKNOWLEDGED, or ACTED_ON") }, required: ["notificationId", "status"] }, method: "POST", path: (i) => workspace(`/notifications/${i.notificationId}/advance`), body: (i) => ({ status: i.status ?? null }) },
+  { name: "spline_ack_message", description: "Acknowledge or complete one inbox message for this agent. Use ACKNOWLEDGED once understood, then ACTED_ON only after the requested work or reply is actually complete.", inputSchema: { type: "object", properties: { notificationId: stringProperty("Inbox notification UUID"), status: stringProperty("ACKNOWLEDGED or ACTED_ON") }, required: ["notificationId", "status"] }, method: "POST", path: (i) => workspace(`/notifications/${i.notificationId}/advance`), body: (i) => ({ status: i.status ?? "ACKNOWLEDGED" }) },
   { name: "spline_report_event", description: "Publish a structured lifecycle, progress, blocker, handoff, or result event.", inputSchema: { type: "object", properties: { type: stringProperty("Event type"), severity: stringProperty("INFO, WARNING, ERROR, or CRITICAL"), payload: { type: "object" }, target: { type: "object" } }, required: ["type"] }, method: "POST", path: () => workspace("/events"), body: (i) => i },
   { name: "spline_list_events", description: "List the workspace event journal.", inputSchema: { type: "object", properties: {} }, method: "GET", path: () => workspace("/events") },
   { name: "spline_get_event", description: "Read one event and its structured payload.", inputSchema: { type: "object", properties: { eventId: stringProperty("Event UUID") }, required: ["eventId"] }, method: "GET", path: (i) => workspace(`/events/${i.eventId}`) },
@@ -92,6 +96,7 @@ const managerOnlyTools = new Set([
   "spline_ask_human",
   "spline_close_question",
   "spline_launch_agent",
+  "spline_activate_agent",
   "spline_delegate_task",
   "spline_validate_task",
   "spline_reject_task",
@@ -120,6 +125,28 @@ async function execute(tool: Tool, input: Record<string, Json>): Promise<Json> {
   let data: Json = text;
   try { data = text ? (JSON.parse(text) as Json) : null; } catch { /* keep text */ }
   if (!response.ok) throw new Error(`Spline API ${response.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`);
+  if (tool.name === "spline_inbox" && Array.isArray(data)) {
+    await Promise.all(
+      data.map(async (entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+        const notification = entry["notification"];
+        if (!notification || typeof notification !== "object" || Array.isArray(notification)) return;
+        const notificationId = notification["id"];
+        const notificationWorkspaceId = notification["workspaceId"];
+        if (typeof notificationId !== "string" || typeof notificationWorkspaceId !== "string") return;
+        const seen = await fetch(
+          `${apiUrl}/workspaces/${notificationWorkspaceId}/notifications/${notificationId}/advance`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "SEEN" }),
+          },
+        );
+        if (!seen.ok)
+          throw new Error(`Could not mark inbox message ${notificationId} as SEEN (${seen.status})`);
+      }),
+    );
+  }
   return data;
 }
 

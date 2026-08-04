@@ -39,12 +39,16 @@ type DomainState = {
   pendingAction: string | null;
   error: string | null;
   load: (workspaceId: string, force?: boolean) => Promise<void>;
+  refreshSessions: (workspaceId: string) => Promise<void>;
+  applySessionStatus: (sessionId: string, status: AgentSession["status"]) => void;
+  setProviderAvailability: (provider: string, available: boolean) => Promise<void>;
   registerAgent: (input: unknown) => Promise<Agent & { token: string }>;
   backfillAgentPromptProfiles: () => Promise<number>;
   registerMachine: (input: unknown) => Promise<Machine & { token: string }>;
   linkMachine: (machineId: string) => Promise<void>;
   registerProcess: (input: unknown) => Promise<void>;
   startSession: (input: unknown) => Promise<AgentSession>;
+  deleteSession: (sessionId: string) => Promise<void>;
   acquireLock: (input: unknown) => Promise<void>;
   createArtifact: (input: unknown) => Promise<Artifact>;
   artifactAction: (
@@ -65,6 +69,8 @@ type DomainState = {
     status: string,
   ) => Promise<void>;
   answerHumanQuestion: (notificationId: string, answer: string) => Promise<void>;
+  messageManager: (sessionId: string, message: string, replyToNotificationId?: string) => Promise<void>;
+  editManagerMessage: (notificationId: string, message: string) => Promise<void>;
   processAction: (
     processId: string,
     action: "start" | "stop" | "restart",
@@ -117,6 +123,55 @@ const empty = {
 
 export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
   ...empty,
+  applySessionStatus: (sessionId, status) => {
+    const now = new Date().toISOString();
+    const terminal = ["COMPLETED", "FAILED", "CRASHED", "STOPPED"].includes(status);
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              status,
+              updatedAt: now,
+              endedAt: terminal ? session.endedAt ?? now : null,
+            }
+          : session,
+      ),
+    }));
+  },
+  refreshSessions: async (workspaceId) => {
+    if (get().workspaceId !== workspaceId) return;
+    try {
+      const sessions = await domainApi.sessions(workspaceId, authToken());
+      if (get().workspaceId === workspaceId) {
+        set({ sessions: uniqueById(sessions) });
+      }
+    } catch {
+      // The complete workspace refresh exposes persistent API errors. This
+      // focused fallback must remain silent so a transient poll cannot flash
+      // or erase otherwise usable collaboration data.
+    }
+  },
+  setProviderAvailability: async (provider, available) => {
+    set({ pendingAction: `provider:${provider}:availability`, error: null });
+    try {
+      const profile = await domainApi.setProviderAvailability(
+        provider,
+        available,
+        authToken(),
+      );
+      set((state) => ({
+        providers: upsertById(state.providers, profile),
+        pendingAction: null,
+      }));
+    } catch (error) {
+      set({
+        pendingAction: null,
+        error: error instanceof Error ? error.message : "Mise à jour du provider impossible",
+      });
+      throw error;
+    }
+  },
   load: async (workspaceId, force = false) => {
     if (get().workspaceId === workspaceId && !force) return;
     const changingWorkspace = get().workspaceId !== workspaceId;
@@ -301,6 +356,24 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
       set({
         pendingAction: null,
         error: error instanceof Error ? error.message : "Démarrage impossible",
+      });
+      throw error;
+    }
+  },
+  deleteSession: async (sessionId) => {
+    const workspaceId = get().workspaceId;
+    if (!workspaceId) throw new Error("Workspace requis");
+    set({ pendingAction: `session:${sessionId}:delete`, error: null });
+    try {
+      await domainApi.deleteSession(workspaceId, sessionId, authToken());
+      set((state) => ({
+        sessions: state.sessions.filter((session) => session.id !== sessionId),
+        pendingAction: null,
+      }));
+    } catch (error) {
+      set({
+        pendingAction: null,
+        error: error instanceof Error ? error.message : "Suppression impossible",
       });
       throw error;
     }
@@ -573,6 +646,53 @@ export const useWorkspaceDomainStore = create<DomainState>((set, get) => ({
       set({
         pendingAction: null,
         error: error instanceof Error ? error.message : "Réponse impossible",
+      });
+      throw error;
+    }
+  },
+  messageManager: async (sessionId, message, replyToNotificationId) => {
+    const workspaceId = get().workspaceId;
+    if (!workspaceId) throw new Error("Workspace requis");
+    set({ pendingAction: `session:${sessionId}:message`, error: null });
+    try {
+      const notification = await domainApi.messageManager(
+        workspaceId,
+        sessionId,
+        message,
+        authToken(),
+        replyToNotificationId,
+      );
+      set((state) => ({
+        notifications: upsertById(state.notifications, notification),
+        pendingAction: null,
+      }));
+    } catch (error) {
+      set({
+        pendingAction: null,
+        error: error instanceof Error ? error.message : "Message impossible",
+      });
+      throw error;
+    }
+  },
+  editManagerMessage: async (notificationId, message) => {
+    const workspaceId = get().workspaceId;
+    if (!workspaceId) throw new Error("Workspace requis");
+    set({ pendingAction: `notification:${notificationId}:edit`, error: null });
+    try {
+      const notification = await domainApi.editManagerMessage(
+        workspaceId,
+        notificationId,
+        message,
+        authToken(),
+      );
+      set((state) => ({
+        notifications: upsertById(state.notifications, notification),
+        pendingAction: null,
+      }));
+    } catch (error) {
+      set({
+        pendingAction: null,
+        error: error instanceof Error ? error.message : "Modification impossible",
       });
       throw error;
     }

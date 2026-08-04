@@ -1,4 +1,5 @@
 import type { ProviderAdapter, ProviderSessionHandle } from "../provider-adapters/provider-adapter";
+import { detectProviderQuota } from "../provider-quota-detector";
 
 /** Mirrors the hub's AgentSessionStatus Prisma enum values without depending on @repo/db. */
 export type AgentSessionStatus = "RUNNING" | "IDLE" | "FAILED" | "CRASHED" | "STOPPED";
@@ -13,6 +14,12 @@ export interface SessionSupervisorDeps {
     content: string,
   ) => void;
   onProviderSessionId?: (sessionId: string, providerSessionId: string) => void;
+  onProviderQuota?: (
+    sessionId: string,
+    provider: string,
+    resetAt: string,
+    reason: string,
+  ) => void;
 }
 
 /**
@@ -25,10 +32,16 @@ export class SessionSupervisor {
   private readonly handles = new Map<string, ProviderSessionHandle>();
   private readonly stopRequested = new Set<string>();
   private readonly providerFailures = new Set<string>();
+  private readonly forceKillTimers = new Map<string, NodeJS.Timeout>();
+  private readonly quotaFailures = new Set<string>();
 
   constructor(private readonly deps: SessionSupervisorDeps) {}
 
   start(sessionId: string, provider: string, prompt: string, cwd: string, env?: Record<string, string>, resumeSessionId?: string, outputSequenceStart = 0): void {
+    // Command delivery is at-least-once. A heartbeat can overlap another
+    // delivery attempt, so receiving the same START_SESSION twice must never
+    // spawn a second provider process or replace the tracked handle.
+    if (this.handles.has(sessionId)) return;
     const adapter = this.deps.adapters.get(provider);
     if (!adapter) {
       throw new Error(`Unknown provider: "${provider}" — no ProviderAdapter registered for it`);
@@ -37,6 +50,10 @@ export class SessionSupervisor {
     let sequence = outputSequenceStart;
     const secret = env?.["SPLINE_AGENT_TOKEN"];
     const pendingOutput: Record<"stdout" | "stderr", string> = {
+      stdout: "",
+      stderr: "",
+    };
+    const quotaScanTail: Record<"stdout" | "stderr", string> = {
       stdout: "",
       stderr: "",
     };
@@ -67,17 +84,47 @@ export class SessionSupervisor {
         onProviderSessionId: (providerSessionId) =>
           this.deps.onProviderSessionId?.(sessionId, providerSessionId),
         onOutput: (chunk, stream) => {
-          if (
-            !this.providerFailures.has(sessionId) &&
-            /authentication_error|failed to authenticate|oauth access token has been revoked/i.test(
-              chunk,
-            )
-          ) {
-            this.providerFailures.add(sessionId);
-            this.deps.onSessionStatus(sessionId, "FAILED");
-            // Some provider CLIs keep their process alive after emitting a
-            // fatal authentication response. Do not leave Spline RUNNING.
-            queueMicrotask(() => this.handles.get(sessionId)?.kill("SIGTERM"));
+          // stdout is the model's own conversational/code output (stream-json
+          // protocol content), not a system-level signal — an agent merely
+          // writing or discussing "429", "rate limit", or "authentication_error"
+          // as part of ordinary work (e.g. implementing API error handling)
+          // must never be mistaken for a real provider failure. Only stderr,
+          // where the CLI process itself reports transport/auth/quota errors,
+          // is scanned.
+          if (stream === "stderr") {
+            const quotaCandidate = quotaScanTail[stream] + chunk;
+            quotaScanTail[stream] = quotaCandidate.slice(-1_000);
+            const quota = detectProviderQuota(quotaCandidate);
+            if (quota && !this.quotaFailures.has(sessionId)) {
+              this.quotaFailures.add(sessionId);
+              this.providerFailures.add(sessionId);
+              this.deps.onProviderQuota?.(
+                sessionId,
+                provider,
+                quota.resetAt,
+                quota.reason,
+              );
+              this.deps.onSessionStatus(sessionId, "FAILED");
+              queueMicrotask(() => {
+                this.handles.get(sessionId)?.kill("SIGTERM");
+                this.scheduleForceKill(sessionId);
+              });
+            }
+            if (
+              !this.providerFailures.has(sessionId) &&
+              /authentication_error|failed to authenticate|oauth access token has been revoked/i.test(
+                chunk,
+              )
+            ) {
+              this.providerFailures.add(sessionId);
+              this.deps.onSessionStatus(sessionId, "FAILED");
+              // Some provider CLIs keep their process alive after emitting a
+              // fatal authentication response. Do not leave Spline RUNNING.
+              queueMicrotask(() => {
+                this.handles.get(sessionId)?.kill("SIGTERM");
+                this.scheduleForceKill(sessionId);
+              });
+            }
           }
           const combined = redact(pendingOutput[stream] + chunk);
           const lastNewline = combined.lastIndexOf("\n");
@@ -95,8 +142,12 @@ export class SessionSupervisor {
           emitOutput(pendingOutput.stdout, "stdout");
           emitOutput(pendingOutput.stderr, "stderr");
           this.handles.delete(sessionId);
+          const forceKillTimer = this.forceKillTimers.get(sessionId);
+          if (forceKillTimer) clearTimeout(forceKillTimer);
+          this.forceKillTimers.delete(sessionId);
           const wasStopRequested = this.stopRequested.delete(sessionId);
           const providerFailed = this.providerFailures.delete(sessionId);
+          this.quotaFailures.delete(sessionId);
           this.deps.onSessionStatus(
             sessionId,
             providerFailed
@@ -134,6 +185,13 @@ export class SessionSupervisor {
     }
     this.stopRequested.add(sessionId);
     handle.kill(signal);
+    if (signal !== "SIGKILL") this.scheduleForceKill(sessionId);
+  }
+
+  stopAll(signal: NodeJS.Signals = "SIGTERM"): string[] {
+    const sessionIds = this.runningSessionIds();
+    for (const sessionId of sessionIds) this.stop(sessionId, signal);
+    return sessionIds;
   }
 
   isRunning(sessionId: string): boolean {
@@ -142,6 +200,16 @@ export class SessionSupervisor {
 
   runningSessionIds(): string[] {
     return [...this.handles.keys()];
+  }
+
+  private scheduleForceKill(sessionId: string): void {
+    if (this.forceKillTimers.has(sessionId)) return;
+    const timer = setTimeout(() => {
+      this.forceKillTimers.delete(sessionId);
+      this.handles.get(sessionId)?.kill("SIGKILL");
+    }, 10_000);
+    timer.unref();
+    this.forceKillTimers.set(sessionId, timer);
   }
 
   private resolveExitStatus(wasStopRequested: boolean, code: number | null): AgentSessionStatus {

@@ -1,11 +1,14 @@
-import { AgentSessionStatus, LocalMachineRuntimeStatus, WorkspaceRole } from "@repo/db";
+import { ActorType, AgentSessionStatus, LocalMachineRuntimeStatus, TaskStatus, WorkspaceRole } from "@repo/db";
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 
 import { PrismaService } from "../../../prisma/prisma.service";
 import { StartAgentSessionUseCase } from "./start-agent-session.use-case";
+import { ReportSessionStatusUseCase } from "./report-session-status.use-case";
+import { SESSION_STALE_TTL_MS } from "../domain/runtime-thresholds";
 
 const POLL_INTERVAL_MS = 30_000;
 const DEFAULT_WAKE_MINUTES = 2;
+const DEFAULT_CHECKPOINT_MINUTES = 30;
 
 function positiveMinutes(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 1
@@ -40,6 +43,7 @@ export class CollaborationWakeScheduler implements OnModuleInit, OnModuleDestroy
   constructor(
     private readonly prisma: PrismaService,
     private readonly startSession: StartAgentSessionUseCase,
+    private readonly reportSessionStatus: ReportSessionStatusUseCase,
   ) {}
 
   onModuleInit(): void {
@@ -55,6 +59,7 @@ export class CollaborationWakeScheduler implements OnModuleInit, OnModuleDestroy
     if (this.running) return;
     this.running = true;
     try {
+      await this.reconcileAbandonedExecutions();
       const workspaces = await this.prisma.workspace.findMany({
         where: { status: "ACTIVE", rootPath: { not: null } },
         include: {
@@ -86,7 +91,86 @@ export class CollaborationWakeScheduler implements OnModuleInit, OnModuleDestroy
           });
           // A first user/manager assignment is required before an agent joins
           // the autonomous loop. Never invent an initial objective.
-          if (!latest || latest.status !== AgentSessionStatus.IDLE) continue;
+          if (!latest) continue;
+          const provider = await this.prisma.providerProfile.findUnique({
+            where: { provider: latest.provider },
+            select: { available: true, quotaUnavailableUntil: true },
+          });
+          if (
+            provider?.available === false ||
+            (provider?.quotaUnavailableUntil &&
+              provider.quotaUnavailableUntil.getTime() > Date.now())
+          )
+            continue;
+          const unreadMessages = await this.prisma.notificationRecipient.count({
+            where: {
+              recipientType: "AGENT",
+              recipientId: membership.actorId,
+              readAt: null,
+              deliveryStatus: { not: "FAILED" },
+              notification: { workspaceId: workspace.id, kind: "CHAT_MESSAGE" },
+            },
+          });
+          // IDLE means the durable conversation may be woken. Every other
+          // state is deliberate: executing states already own a provider
+          // process, while FAILED/CRASHED/COMPLETED/STOPPED require an
+          // explicit recovery or a fresh human/manager activation.
+          if (latest.status !== AgentSessionStatus.IDLE) continue;
+
+          const isManager = membership.role === WorkspaceRole.AGENT_MANAGER;
+          const [assignedWork, openQuestions, reviewOrActiveTeamWork] =
+            await Promise.all([
+              this.prisma.task.count({
+                where: {
+                  workspaceId: workspace.id,
+                  assigneeType: ActorType.AGENT,
+                  assigneeId: membership.actorId,
+                  status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
+                },
+              }),
+              this.prisma.agentQuestion.count({
+                where: isManager
+                  ? {
+                      workspaceId: workspace.id,
+                      managerAgentId: membership.actorId,
+                      status: "OPEN",
+                    }
+                  : {
+                      workspaceId: workspace.id,
+                      askerAgentId: membership.actorId,
+                      status: "ANSWERED",
+                    },
+              }),
+              isManager
+                ? this.prisma.task.count({
+                    where: {
+                      workspaceId: workspace.id,
+                      status: {
+                        in: [TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW],
+                      },
+                    },
+                  })
+                : Promise.resolve(0),
+            ]);
+          const hasActionableWork =
+            unreadMessages > 0 ||
+            assignedWork > 0 ||
+            openQuestions > 0 ||
+            reviewOrActiveTeamWork > 0;
+          // An agent with nothing queued still needs to check in occasionally
+          // — its own wake instruction already assumes this (a contributor
+          // reports idle status, the manager asks the human for the next
+          // objective) — otherwise a fully caught-up team goes silent
+          // forever with no signal to anyone that new work is needed. This
+          // interval is deliberately much longer than the busy-wake interval
+          // below, since there is nothing actionable to act on yet.
+          const checkpointMinutes = positiveMinutes(
+            collaboration["checkpointIntervalMinutes"],
+            DEFAULT_CHECKPOINT_MINUTES,
+          );
+          const dueForCheckpoint =
+            Date.now() - latest.updatedAt.getTime() >= checkpointMinutes * 60_000;
+          if (!hasActionableWork && !dueForCheckpoint) continue;
           const roleKey =
             membership.role === WorkspaceRole.AGENT_MANAGER
               ? "managerWakeIntervalMinutes"
@@ -113,7 +197,9 @@ export class CollaborationWakeScheduler implements OnModuleInit, OnModuleDestroy
             machineId: machine.id,
             taskId: latest.currentTaskId ?? undefined,
             instruction: wakeInstruction(membership.role),
-            resumeFromSessionId: latest.id,
+            ...(latest.providerSessionId
+              ? { resumeFromSessionId: latest.id }
+              : { lineageFromSessionId: latest.id }),
           });
           if (result.isFailure)
             this.logger.debug(
@@ -125,6 +211,37 @@ export class CollaborationWakeScheduler implements OnModuleInit, OnModuleDestroy
       this.logger.error("Collaboration wake-up cycle failed", error);
     } finally {
       this.running = false;
+    }
+  }
+
+  private async reconcileAbandonedExecutions(): Promise<void> {
+    const cutoff = new Date(Date.now() - SESSION_STALE_TTL_MS * 2);
+    const abandoned = await this.prisma.agentSession.findMany({
+      where: {
+        status: { in: ["STARTING", "RUNNING", "AWAITING_APPROVAL"] },
+        OR: [
+          { lastHeartbeatAt: { lt: cutoff } },
+          { lastHeartbeatAt: null, startedAt: { lt: cutoff } },
+        ],
+        machine: {
+          OR: [
+            { runtimeStatus: LocalMachineRuntimeStatus.OFFLINE },
+            { lastSeenAt: { lt: cutoff } },
+            { lastSeenAt: null },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    for (const session of abandoned) {
+      const result = await this.reportSessionStatus.execute({
+        sessionId: session.id,
+        status: AgentSessionStatus.CRASHED,
+      });
+      if (result.isFailure)
+        this.logger.warn(
+          `Unable to reconcile abandoned session ${session.id}: ${result.error.message}`,
+        );
     }
   }
 }

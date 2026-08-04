@@ -1,5 +1,6 @@
 import { AgentSessionStatus, RuntimeCommandStatus } from "@repo/db";
 import { Inject } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import {
   ConnectedSocket,
   MessageBody,
@@ -12,6 +13,7 @@ import {
 import { Namespace, Socket } from "socket.io";
 
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
+import { PrismaService } from "../../../prisma/prisma.service";
 import { VerifyMachineTokenUseCase } from "../../identity/application/verify-machine-token.use-case";
 import { AppendSessionOutputUseCase } from "../application/append-session-output.use-case";
 import { ReportProcessExitedUseCase } from "../application/report-process-exited.use-case";
@@ -63,6 +65,8 @@ export class MachineGateway
     private readonly appendSessionOutput: AppendSessionOutputUseCase,
     private readonly reportProviderSessionId: ReportProviderSessionIdUseCase,
     private readonly reconcileMachineSessions: ReconcileMachineSessionsUseCase,
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -101,9 +105,10 @@ export class MachineGateway
     const machineId = client.data?.machineId as string | undefined;
     if (machineId) {
       await this.updateMachinePresence.execute({ machineId, connected: false });
-      await this.reconcileMachineSessions.execute(machineId, [], {
-        includeStarting: true,
-      });
+      // A socket interruption does not mean the provider processes died.
+      // Keep their last known state until the daemon reconnects and sends its
+      // authoritative runtime inventory. Prematurely crashing them makes a
+      // harmless API reload irrecoverable while the CLI is still running.
     }
   }
 
@@ -242,6 +247,51 @@ export class MachineGateway
     await this.enqueueStateUpdate(client, () =>
       this.reportProviderSessionId.execute({ machineId, ...body }),
     );
+  }
+
+  @SubscribeMessage("provider_quota")
+  async onProviderQuota(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: {
+      sessionId: string;
+      provider: string;
+      resetAt: string;
+      reason: string;
+    },
+  ): Promise<void> {
+    const machineId = client.data?.machineId as string | undefined;
+    if (!machineId) return;
+    const session = await this.prisma.agentSession.findFirst({
+      where: {
+        id: body.sessionId,
+        machineId,
+        provider: body.provider,
+      },
+      select: { id: true },
+    });
+    const resetAt = new Date(body.resetAt);
+    const maximum = Date.now() + 31 * 24 * 60 * 60_000;
+    if (
+      !session ||
+      !Number.isFinite(resetAt.getTime()) ||
+      resetAt.getTime() <= Date.now() ||
+      resetAt.getTime() > maximum
+    )
+      return;
+    await this.prisma.providerProfile.update({
+      where: { provider: body.provider },
+      data: {
+        quotaUnavailableUntil: resetAt,
+        quotaReason: body.reason.slice(0, 500),
+      },
+    });
+    this.events.emit("provider.availability_changed", {
+      provider: body.provider,
+      available: false,
+      cause: "QUOTA",
+      resetAt: resetAt.toISOString(),
+    });
   }
 
   @SubscribeMessage("runtime_inventory")

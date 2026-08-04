@@ -80,8 +80,12 @@ export class CommandDispatcher {
         );
         const sessionEnvironment =
           env || agentEnvironment
-            ? { ...env, ...agentEnvironment }
-            : undefined;
+            ? {
+                ...env,
+                ...agentEnvironment,
+                SPLINE_SESSION_ID: sessionId,
+              }
+            : { SPLINE_SESSION_ID: sessionId };
         this.deps.sessionSupervisor.start(
           sessionId,
           provider,

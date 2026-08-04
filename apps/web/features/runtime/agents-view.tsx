@@ -29,6 +29,7 @@ import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
 export function AgentsView({ workspaceId }: { workspaceId: string }) {
   const {
     agents,
+    providers,
     loading,
     error,
     pendingAction,
@@ -99,11 +100,14 @@ export function AgentsView({ workspaceId }: { workspaceId: string }) {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {agents.map((agent) => {
           const color = workspaceColor(agent.id);
+          const providerAvailable = providers.find(
+            (provider) => provider.provider === agent.provider,
+          )?.available !== false;
           const visibleCapabilities = agent.capabilities.slice(0, 3);
           return (
             <Card
               key={agent.id}
-              className="group overflow-hidden border-white/[.075] bg-white/[.018] transition-all hover:-translate-y-0.5 hover:border-white/[.12] hover:bg-white/[.025]"
+              className={`group overflow-hidden bg-white/[.018] transition-all hover:-translate-y-0.5 ${providerAvailable ? "border-white/[.075] hover:border-white/[.12] hover:bg-white/[.025]" : "border-red-400/20 opacity-70"}`}
             >
               <CardContent className="p-0">
                 <div className="flex items-start gap-3 border-b border-white/[.055] p-5">
@@ -131,7 +135,7 @@ export function AgentsView({ workspaceId }: { workspaceId: string }) {
                         {agent.provider}
                       </Badge>
                       <span className="text-[8px] text-muted-foreground">
-                        {agent.status}
+                        {providerAvailable ? agent.status : "PROVIDER INDISPONIBLE"}
                       </span>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import { ActorType, AgentQuestionStatus, WorkspaceRole } from "@repo/db";
+import { ActorType, AgentQuestionStatus, AgentSessionStatus, WorkspaceRole } from "@repo/db";
 import {
   Body,
   Controller,
@@ -6,6 +6,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -25,12 +26,16 @@ import {
 import {
   AnswerQuestionDto,
   AnswerHumanQuestionDto,
+  ActivateAgentDto,
   AskHumanDto,
   AskManagerDto,
   DelegateTaskDto,
+  ManagerMessageDto,
+  EditManagerMessageDto,
 } from "./dto/agent-question.dto";
 import { StartAgentSessionUseCase } from "../application/start-agent-session.use-case";
 import { BadRequestException } from "@nestjs/common";
+import { AgentAlreadyHasActiveSessionError } from "../application/runtime-application.errors";
 
 @Controller("workspaces/:workspaceId")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -50,6 +55,122 @@ export class CollaborationController {
           actorId: requester.id,
         },
       },
+    });
+  }
+
+  @Post("collaboration/manager-messages")
+  @RequirePermission("read_tasks")
+  async messageManager(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: ManagerMessageDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    if (requester.type !== ActorType.HUMAN)
+      throw new ForbiddenException("Only a human operator may message the manager");
+    const humanMembership = await this.role(workspaceId, requester);
+    if (!humanMembership)
+      throw new ForbiddenException("Human is not a member of this workspace");
+    const session = await this.prisma.agentSession.findFirst({
+      where: { id: dto.sessionId, workspaceId },
+      include: {
+        agent: { select: { promptProfile: true } },
+      },
+    });
+    const profile = session?.agent.promptProfile as Record<string, unknown> | undefined;
+    if (!session || profile?.["role"] !== "manager")
+      throw new NotFoundException("Manager session not found");
+    if (dto.replyToNotificationId) {
+      const replyTarget = await this.prisma.notification.findFirst({
+        where: { id: dto.replyToNotificationId, workspaceId },
+        include: { recipients: true },
+      });
+      const targetCreatedBy = replyTarget?.createdBy as
+        | Record<string, unknown>
+        | undefined;
+      const belongsToConversation =
+        targetCreatedBy?.["id"] === session.agentId ||
+        replyTarget?.recipients.some(
+          (recipient) =>
+            recipient.recipientType === ActorType.AGENT &&
+            recipient.recipientId === session.agentId,
+        );
+      if (!replyTarget || !belongsToConversation)
+        throw new NotFoundException("Reply target is not part of this manager conversation");
+    }
+
+    const notification = await this.prisma.notification.create({
+      data: {
+        workspaceId,
+        kind: "CHAT_MESSAGE",
+        scope: "DIRECT",
+        title: "Nouveau message de l’opérateur",
+        body: dto.message.trim(),
+        payload: {
+          collaborationType: "HUMAN_MANAGER_MESSAGE",
+          sessionId: session.id,
+          managerAgentId: session.agentId,
+          replyToNotificationId: dto.replyToNotificationId ?? null,
+        },
+        createdBy: { type: requester.type, id: requester.id },
+        recipients: {
+          create: {
+            recipientType: ActorType.AGENT,
+            recipientId: session.agentId,
+          },
+        },
+      },
+      include: { recipients: true },
+    });
+    this.events.publish(
+      new NotificationSent(
+        workspaceId,
+        notification.id,
+        notification.kind,
+        notification.scope,
+      ),
+    );
+    return notification;
+  }
+
+  @Patch("collaboration/manager-messages/:notificationId")
+  @RequirePermission("read_tasks")
+  async editManagerMessage(
+    @Param("workspaceId") workspaceId: string,
+    @Param("notificationId") notificationId: string,
+    @Body() dto: EditManagerMessageDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    if (requester.type !== ActorType.HUMAN)
+      throw new ForbiddenException("Only a human operator may edit this message");
+    const notification = await this.prisma.notification.findFirst({
+      where: { id: notificationId, workspaceId, kind: "CHAT_MESSAGE" },
+      include: { recipients: true },
+    });
+    const createdBy = notification?.createdBy as Record<string, unknown> | undefined;
+    const payload = notification?.payload as Record<string, unknown> | undefined;
+    if (
+      !notification ||
+      createdBy?.["type"] !== ActorType.HUMAN ||
+      createdBy["id"] !== requester.id ||
+      payload?.["collaborationType"] !== "HUMAN_MANAGER_MESSAGE"
+    )
+      throw new NotFoundException("Editable manager message not found");
+    if (
+      notification.recipients.some((recipient) => recipient.readAt !== null)
+    )
+      throw new BadRequestException(
+        "This message was already seen; send a correction as a reply instead",
+      );
+    return this.prisma.notification.update({
+      where: { id: notification.id },
+      data: {
+        body: dto.message.trim(),
+        payload: {
+          ...payload,
+          editedAt: new Date().toISOString(),
+        },
+      },
+      include: { recipients: true },
     });
   }
 
@@ -124,54 +245,38 @@ export class CollaborationController {
       }),
     ]);
 
-    const instruction = `Human decision in response to your question « ${notification.body} »:\n${answer}\nSynchronize the workspace, record and apply this decision, then continue the collaboration.`;
-    let resumed = await this.startAgentSession.execute({
-      workspaceId,
-      agentId: managerAgentId,
-      machineId: session.machineId,
-      taskId: session.currentTaskId ?? undefined,
-      resumeFromSessionId: session.id,
-      requesterType: ActorType.HUMAN,
-      instruction,
-    });
-    if (
-      resumed.isFailure &&
-      resumed.error.code === "AGENT_SESSION_NOT_RESUMABLE"
-    ) {
-      resumed = await this.startAgentSession.execute({
-        workspaceId,
-        agentId: managerAgentId,
-        machineId: session.machineId,
-        taskId: session.currentTaskId ?? undefined,
-        lineageFromSessionId: session.id,
-        requesterType: ActorType.HUMAN,
-        instruction,
-      });
-    }
-    if (resumed.isFailure) {
-      return {
-        sessionId: null,
-        answeredAt,
-        deliveryStatus: "PENDING_WAKE" as const,
-        warning: resumed.error.message,
-      };
-    }
-    await this.prisma.notification.update({
-      where: { id: notification.id },
+    const reply = await this.prisma.notification.create({
       data: {
+        workspaceId,
+        kind: "CHAT_MESSAGE",
+        scope: "DIRECT",
+        title: "Réponse de l’opérateur",
+        body: answer,
         payload: {
-          ...payload,
-          humanAnswer: answer,
-          answeredByHumanId: requester.id,
-          answeredAt: answeredAt.toISOString(),
-          managerDeliverySessionId: resumed.value.id.toString(),
+          collaborationType: "HUMAN_MANAGER_ANSWER",
+          replyToNotificationId: notification.id,
+          question: notification.body,
+          sessionId: session.id,
+          managerAgentId,
+        },
+        createdBy: { type: requester.type, id: requester.id },
+        recipients: {
+          create: {
+            recipientType: ActorType.AGENT,
+            recipientId: managerAgentId,
+          },
         },
       },
+      include: { recipients: true },
     });
+    this.events.publish(
+      new NotificationSent(workspaceId, reply.id, reply.kind, reply.scope),
+    );
     return {
-      sessionId: resumed.value.id.toString(),
+      sessionId: session.id,
       answeredAt,
-      deliveryStatus: "DELIVERED" as const,
+      deliveryStatus: "QUEUED" as const,
+      notificationId: reply.id,
     };
   }
 
@@ -202,6 +307,20 @@ export class CollaborationController {
     @CurrentRequester() requester: AuthenticatedRequester,
   ) {
     const membership = await this.role(workspaceId, requester);
+    const unavailableProviders =
+      requester.type === ActorType.AGENT
+        ? (
+            await this.prisma.providerProfile.findMany({
+              where: {
+                OR: [
+                  { available: false },
+                  { quotaUnavailableUntil: { gt: new Date() } },
+                ],
+              },
+              select: { provider: true },
+            })
+          ).map((profile) => profile.provider)
+        : [];
     const questionWhere =
       requester.type === ActorType.HUMAN ||
       membership?.role === WorkspaceRole.AGENT_MANAGER
@@ -225,7 +344,15 @@ export class CollaborationController {
         this.prisma.workspace.findUnique({ where: { id: workspaceId } }),
         this.prisma.goal.findMany({ where: { workspaceId }, orderBy: { updatedAt: "desc" } }),
         this.prisma.task.findMany({ where: { workspaceId }, orderBy: { updatedAt: "desc" } }),
-        this.prisma.agent.findMany({ where: { workspaceId }, orderBy: { displayName: "asc" } }),
+        this.prisma.agent.findMany({
+          where: {
+            workspaceId,
+            ...(unavailableProviders.length > 0
+              ? { provider: { notIn: unavailableProviders } }
+              : {}),
+          },
+          orderBy: { displayName: "asc" },
+        }),
         this.prisma.event.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" }, take: 100 }),
         this.prisma.resourceLock.findMany({ where: { workspaceId, releasedAt: null }, orderBy: { lockedAt: "desc" } }),
         this.prisma.process.findMany({ where: { workspaceId }, orderBy: { updatedAt: "desc" } }),
@@ -240,7 +367,12 @@ export class CollaborationController {
           orderBy: { updatedAt: "desc" },
         }),
         this.prisma.agentSession.findMany({
-          where: { workspaceId },
+          where: {
+            workspaceId,
+            ...(unavailableProviders.length > 0
+              ? { provider: { notIn: unavailableProviders } }
+              : {}),
+          },
           orderBy: { startedAt: "desc" },
           take: 100,
         }),
@@ -255,17 +387,6 @@ export class CollaborationController {
           orderBy: { startedAt: "desc" },
           select: { id: true, status: true, startedAt: true, endedAt: true },
         });
-        const nativeCronEvidence =
-          agent.provider === "claude"
-            ? await this.prisma.agentSessionOutput.findFirst({
-                where: {
-                  session: { agentId: agent.id },
-                  content: { contains: "CronCreate" },
-                },
-                orderBy: { createdAt: "desc" },
-                select: { createdAt: true, sessionId: true },
-              })
-            : null;
         return {
           agentId: agent.id,
           provider: agent.provider,
@@ -274,9 +395,7 @@ export class CollaborationController {
             : { status: "AWAITING_FIRST_WAKE" },
           nativeCron:
             agent.provider === "claude"
-              ? nativeCronEvidence
-                ? { status: "OBSERVED", ...nativeCronEvidence }
-                : { status: "NOT_OBSERVED" }
+              ? { status: "DISABLED_SPLINE_AUTHORITATIVE" }
               : { status: "NOT_SUPPORTED" },
         };
       }),
@@ -316,7 +435,7 @@ export class CollaborationController {
       orderBy: { createdAt: "asc" },
     });
     if (!manager) throw new NotFoundException("No manager agent is configured");
-    return this.prisma.agentQuestion.create({
+    const question = await this.prisma.agentQuestion.create({
       data: {
         workspaceId,
         askerAgentId: requester.id,
@@ -329,6 +448,36 @@ export class CollaborationController {
         blocking: dto.blocking,
       },
     });
+    const notification = await this.prisma.notification.create({
+      data: {
+        workspaceId,
+        kind: "CHAT_MESSAGE",
+        scope: "DIRECT",
+        title: dto.blocking ? "Question bloquante d’un collaborateur" : "Question d’un collaborateur",
+        body: dto.question.trim(),
+        payload: {
+          collaborationType: "CONTRIBUTOR_MANAGER_QUESTION",
+          questionId: question.id,
+          context: dto.context.trim(),
+          options: dto.options ?? [],
+          recommendation: dto.recommendation?.trim() ?? null,
+          blocking: dto.blocking,
+          sessionId: dto.sessionId ?? null,
+        },
+        createdBy: { type: requester.type, id: requester.id },
+        recipients: {
+          create: {
+            recipientType: ActorType.AGENT,
+            recipientId: manager.actorId,
+          },
+        },
+      },
+      include: { recipients: true },
+    });
+    this.events.publish(
+      new NotificationSent(workspaceId, notification.id, notification.kind, notification.scope),
+    );
+    return question;
   }
 
   @Post("collaboration/ask-human")
@@ -435,15 +584,60 @@ export class CollaborationController {
     if (!question) throw new NotFoundException("Question not found");
     if (question.status !== AgentQuestionStatus.OPEN)
       throw new BadRequestException("Only an OPEN question can be answered");
-    return this.prisma.agentQuestion.update({
+    const answeredAt = new Date();
+    const answered = await this.prisma.agentQuestion.update({
       where: { id: question.id },
       data: {
         answer: dto.answer.trim(),
         answeredByAgentId: requester.id,
-        answeredAt: new Date(),
+        answeredAt,
         status: AgentQuestionStatus.ANSWERED,
       },
     });
+    await this.prisma.notificationRecipient.updateMany({
+      where: {
+        recipientType: ActorType.AGENT,
+        recipientId: requester.id,
+        notification: {
+          workspaceId,
+          payload: { path: ["questionId"], equals: question.id },
+        },
+      },
+      data: {
+        deliveryStatus: "ACTED_ON",
+        deliveredAt: answeredAt,
+        readAt: answeredAt,
+        acknowledgedAt: answeredAt,
+        actionTakenAt: answeredAt,
+        lastSeenAt: answeredAt,
+      },
+    });
+    const notification = await this.prisma.notification.create({
+      data: {
+        workspaceId,
+        kind: "CHAT_MESSAGE",
+        scope: "DIRECT",
+        title: "Réponse du manager",
+        body: dto.answer.trim(),
+        payload: {
+          collaborationType: "MANAGER_CONTRIBUTOR_ANSWER",
+          questionId: question.id,
+          sessionId: question.sessionId,
+        },
+        createdBy: { type: requester.type, id: requester.id },
+        recipients: {
+          create: {
+            recipientType: ActorType.AGENT,
+            recipientId: question.askerAgentId,
+          },
+        },
+      },
+      include: { recipients: true },
+    });
+    this.events.publish(
+      new NotificationSent(workspaceId, notification.id, notification.kind, notification.scope),
+    );
+    return answered;
   }
 
   @Post("agent-questions/:questionId/acknowledge")
@@ -459,10 +653,30 @@ export class CollaborationController {
       throw new ForbiddenException("Only the asking contributor may acknowledge this answer");
     if (question.status !== AgentQuestionStatus.ANSWERED)
       throw new BadRequestException("Only an ANSWERED question can be acknowledged");
-    return this.prisma.agentQuestion.update({
+    const acknowledgedAt = new Date();
+    const acknowledged = await this.prisma.agentQuestion.update({
       where: { id: question.id },
-      data: { acknowledgedAt: new Date(), status: AgentQuestionStatus.ACKNOWLEDGED },
+      data: { acknowledgedAt, status: AgentQuestionStatus.ACKNOWLEDGED },
     });
+    await this.prisma.notificationRecipient.updateMany({
+      where: {
+        recipientType: ActorType.AGENT,
+        recipientId: requester.id,
+        notification: {
+          workspaceId,
+          payload: { path: ["questionId"], equals: question.id },
+        },
+      },
+      data: {
+        deliveryStatus: "ACTED_ON",
+        deliveredAt: acknowledgedAt,
+        readAt: acknowledgedAt,
+        acknowledgedAt,
+        actionTakenAt: acknowledgedAt,
+        lastSeenAt: acknowledgedAt,
+      },
+    });
+    return acknowledged;
   }
 
   @Post("agent-questions/:questionId/close")
@@ -539,10 +753,122 @@ export class CollaborationController {
       requesterType: requester.type,
     });
     if (started.isFailure) {
+      if (started.error instanceof AgentAlreadyHasActiveSessionError) {
+        const active = await this.prisma.agentSession.findFirst({
+          where: {
+            workspaceId,
+            agentId: dto.agentId,
+            status: { in: ["STARTING", "RUNNING", "AWAITING_APPROVAL"] },
+          },
+          orderBy: { updatedAt: "desc" },
+        });
+        return {
+          task,
+          sessionId: active?.id ?? null,
+          launchStatus: "QUEUED",
+          message:
+            "Task assigned and kept in the contributor queue; the agent is already executing another turn. Do not launch a parallel session.",
+        };
+      }
       await this.prisma.task.delete({ where: { id: task.id } });
       await this.syncGoalProgress(goal.id);
       throw new BadRequestException(started.error.message);
     }
-    return { task, sessionId: started.value.id.toString() };
+    return {
+      task,
+      sessionId: started.value.id.toString(),
+      launchStatus: "STARTED",
+    };
+  }
+
+  @Post("collaboration/activate-agent")
+  @RequirePermission("start_process")
+  async activateAgent(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: ActivateAgentDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    const membership = await this.role(workspaceId, requester);
+    if (
+      requester.type !== ActorType.AGENT ||
+      membership?.role !== WorkspaceRole.AGENT_MANAGER
+    )
+      throw new ForbiddenException("Only the manager agent may activate contributors");
+
+    const contributor = await this.prisma.workspaceMembership.findUnique({
+      where: {
+        workspaceId_actorType_actorId: {
+          workspaceId,
+          actorType: ActorType.AGENT,
+          actorId: dto.agentId,
+        },
+      },
+    });
+    if (contributor?.role !== WorkspaceRole.AGENT_CONTRIBUTOR)
+      throw new BadRequestException("Activation target must be a contributor agent");
+
+    const contributorAgent = await this.prisma.agent.findUnique({
+      where: { id: dto.agentId },
+      select: { provider: true },
+    });
+    const latest = await this.prisma.agentSession.findFirst({
+      where: { workspaceId, agentId: dto.agentId },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    });
+    const executingStatuses = new Set<AgentSessionStatus>([
+      AgentSessionStatus.STARTING,
+      AgentSessionStatus.RUNNING,
+      AgentSessionStatus.AWAITING_APPROVAL,
+    ]);
+    if (
+      latest &&
+      executingStatuses.has(latest.status)
+    ) {
+      return {
+        outcome: "ALREADY_ACTIVE",
+        sessionId: latest.id,
+        status: latest.status,
+        message: "The contributor is already executing. Monitor this session and do not start another instance.",
+      };
+    }
+
+    const recoverableStatuses = new Set<AgentSessionStatus>([
+      AgentSessionStatus.IDLE,
+      AgentSessionStatus.FAILED,
+      AgentSessionStatus.CRASHED,
+    ]);
+    const canResume =
+      latest?.providerSessionId &&
+      recoverableStatuses.has(latest.status) &&
+      // A session recorded under a provider the agent has since been
+      // switched away from can never be resumed (see
+      // StartAgentSessionUseCase, which enforces this too) — check it here
+      // as well so activation gracefully falls through to a fresh/lineage
+      // start instead of hard-failing the whole call.
+      latest.provider === contributorAgent?.provider;
+    const started = await this.startAgentSession.execute({
+      workspaceId,
+      agentId: dto.agentId,
+      machineId: dto.machineId,
+      taskId: dto.taskId,
+      instruction: dto.instruction,
+      requesterType: requester.type,
+      ...(canResume
+        ? { resumeFromSessionId: latest.id }
+        : latest
+          ? { lineageFromSessionId: latest.id }
+          : {}),
+    });
+    if (started.isFailure) throw new BadRequestException(started.error.message);
+    return {
+      outcome: canResume
+        ? latest?.status === AgentSessionStatus.IDLE
+          ? "WOKEN"
+          : "RECOVERED"
+        : "STARTED",
+      sessionId: started.value.id.toString(),
+      status: started.value.status,
+      previousSessionId: latest?.id ?? null,
+    };
   }
 }

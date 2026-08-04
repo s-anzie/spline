@@ -1,14 +1,9 @@
 import {
-  AgentSessionStatus,
   LocalMachineRuntimeStatus,
   ProcessStatus,
 } from "@repo/db";
 import { Inject, Module, OnModuleInit } from "@nestjs/common";
 
-import {
-  EVENT_PUBLISHER,
-  EventPublisher,
-} from "../../kernel/domain/ports/event-publisher.port";
 import { AgentModule } from "../agent/agent.module";
 import { ResourceLockModule } from "../resource-lock/resource-lock.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
@@ -37,12 +32,12 @@ import { StartAgentSessionUseCase } from "./application/start-agent-session.use-
 import { StartProcessUseCase } from "./application/start-process.use-case";
 import { StopAgentSessionUseCase } from "./application/stop-agent-session.use-case";
 import { StopProcessUseCase } from "./application/stop-process.use-case";
+import { StopSessionsForUnavailableProvider } from "./application/stop-sessions-for-unavailable-provider";
 import { UpdateMachinePresenceUseCase } from "./application/update-machine-presence.use-case";
 import { CollaborationWakeScheduler } from "./application/collaboration-wake-scheduler";
 import { NotifyManagerOnSessionFailure } from "./application/notify-manager-on-session-failure";
 import {
   AGENT_SESSION_REPOSITORY,
-  AgentSessionRepository,
 } from "./domain/ports/agent-session.repository.port";
 import {
   LOCAL_MACHINE_REPOSITORY,
@@ -94,6 +89,7 @@ import { RuntimeHealthController } from "./interface/runtime-health.controller";
     CollaborationWakeScheduler,
     NotifyManagerOnSessionFailure,
     StopAgentSessionUseCase,
+    StopSessionsForUnavailableProvider,
     SendSessionHeartbeatUseCase,
     ReportSessionStatusUseCase,
     ReportProviderSessionIdUseCase,
@@ -125,17 +121,12 @@ export class RuntimeModule implements OnModuleInit {
     @Inject(LOCAL_MACHINE_REPOSITORY)
     private readonly machines: LocalMachineRepository,
     @Inject(PROCESS_REPOSITORY) private readonly processes: ProcessRepository,
-    @Inject(AGENT_SESSION_REPOSITORY)
-    private readonly sessions: AgentSessionRepository,
-    @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisher,
   ) {}
 
   /**
-   * Sockets never survive an API restart, so any machine/process/session
-   * persisted as "active" is stale by construction right after boot — mark
-   * it accordingly. A reconnecting daemon re-registers whatever it's still
-   * genuinely running through the normal report flow. This is the concrete
-   * substance behind "reprise après crash" (no periodic sweep needed).
+   * Sockets never survive an API restart, but the daemon and provider
+   * processes usually do. Mark connectivity offline and let the daemon's
+   * runtime inventory reconcile actual executions after reconnecting.
    */
   async onModuleInit(): Promise<void> {
     const activeMachines = await this.machines.listActive();
@@ -150,12 +141,7 @@ export class RuntimeModule implements OnModuleInit {
       await this.processes.save(process);
     }
 
-    const activeSessions = await this.sessions.listActive();
-    for (const session of activeSessions) {
-      session.changeStatus(AgentSessionStatus.CRASHED);
-      await this.sessions.save(session);
-      this.eventPublisher.publishAll(session.domainEvents);
-      session.clearEvents();
-    }
+    // Do not mutate sessions here: IDLE conversations are durable and running
+    // providers are reconciled authoritatively by runtime_inventory.
   }
 }

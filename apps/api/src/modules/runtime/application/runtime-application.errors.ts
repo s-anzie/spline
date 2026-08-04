@@ -74,3 +74,12 @@ export class AgentAlreadyHasActiveSessionError extends DomainError {
     super("AGENT_ALREADY_HAS_ACTIVE_SESSION", `Agent "${agentId}" already has an active session`);
   }
 }
+
+export class ProviderUnavailableError extends DomainError {
+  constructor(provider: string) {
+    super(
+      "PROVIDER_UNAVAILABLE",
+      `Provider "${provider}" is unavailable; change the agent provider before starting it`,
+    );
+  }
+}

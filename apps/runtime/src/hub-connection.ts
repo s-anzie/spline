@@ -21,6 +21,7 @@ export class HubConnection {
   private socket: Socket | null = null;
   private commandHandler: ((command: CommandMessage) => void) | null = null;
   private connectHandler: (() => void) | null = null;
+  private disconnectHandler: ((reason: string) => void) | null = null;
 
   constructor(
     private readonly hubUrl: string,
@@ -43,6 +44,7 @@ export class HubConnection {
     socket.on("connect", () => this.connectHandler?.());
     socket.on("disconnect", (reason) => {
       console.warn(`[runtime] disconnected from hub: ${reason}`);
+      this.disconnectHandler?.(reason);
       // Socket.IO deliberately disables automatic reconnection when the
       // server closes a namespace connection. A backend hot reload or a
       // transient server-side rejection must not leave the daemon alive but
@@ -69,6 +71,10 @@ export class HubConnection {
 
   onConnect(handler: () => void): void {
     this.connectHandler = handler;
+  }
+
+  onDisconnect(handler: (reason: string) => void): void {
+    this.disconnectHandler = handler;
   }
 
   reportRuntimeInventory(runningSessionIds: string[]): void {
@@ -109,6 +115,20 @@ export class HubConnection {
     this.requireSocket().emit("provider_session", {
       sessionId,
       providerSessionId,
+    });
+  }
+
+  reportProviderQuota(
+    sessionId: string,
+    provider: string,
+    resetAt: string,
+    reason: string,
+  ): void {
+    this.requireSocket().emit("provider_quota", {
+      sessionId,
+      provider,
+      resetAt,
+      reason,
     });
   }
 

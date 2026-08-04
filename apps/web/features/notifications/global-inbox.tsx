@@ -23,6 +23,16 @@ import { useNotificationStore } from "@/stores/notification-store";
 export function GlobalInbox({ attention = false }: { attention?: boolean }) {
   const { items, loading, error, load, advance: advanceItem } = useNotificationStore();
   const [pending, setPending] = useState<string | null>(null);
+  const visibleItems = attention
+    ? items.filter(({ notification }) => {
+        const payload = notification.payload;
+        return (
+          payload["collaborationType"] === "MANAGER_HUMAN_QUESTION" ||
+          payload["type"] === "agent_session_failure" ||
+          notification.kind === "SYSTEM_ALERT"
+        );
+      })
+    : items;
 
   useEffect(() => {
     void load();
@@ -51,7 +61,7 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
         }
         actions={
           <>
-            <Badge variant="outline">{items.length} en attente</Badge>
+            <Badge variant="outline">{visibleItems.length} en attente</Badge>
             <LoadingButton
               loading={loading}
               onClick={() => void load()}
@@ -72,7 +82,7 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
 
       <Card className="border-white/[.075] bg-white/[.018]">
         <CardContent className="divide-y divide-white/[.055] p-0">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const notification = item.notification;
             const status = item.recipient.deliveryStatus;
             const payload = notification.payload;
@@ -197,7 +207,7 @@ export function GlobalInbox({ attention = false }: { attention?: boolean }) {
             );
           })}
 
-          {!loading && items.length === 0 && (
+          {!loading && visibleItems.length === 0 && (
             <div className="grid min-h-56 place-items-center text-center">
               <div>
                 <Check className="mx-auto size-7 text-emerald-400" />

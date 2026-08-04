@@ -93,7 +93,7 @@ describe("CommandDispatcher", () => {
       "claude",
       "do the thing",
       "/home/bradley/spline",
-      undefined,
+      { SPLINE_SESSION_ID: "sess-1" },
       undefined,
       undefined,
     );
@@ -135,6 +135,7 @@ describe("CommandDispatcher", () => {
       {
         EXTRA: "value",
         SPLINE_AGENT_TOKEN: "agent_safe.token",
+        SPLINE_SESSION_ID: "sess-1",
         SPLINE_WORKSPACE_ID: "ws-1",
       },
       undefined,

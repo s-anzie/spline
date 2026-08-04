@@ -1,6 +1,9 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
+import { ActorType } from "@repo/db";
+import { Body, Controller, ForbiddenException, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { IsBoolean } from "class-validator";
 
-import { JwtAuthGuard } from "../../identity/interface";
+import { AuthenticatedRequester, CurrentRequester, JwtAuthGuard } from "../../identity/interface";
+import { UpdateProviderAvailabilityUseCase } from "../application/update-provider-availability.use-case";
 import { ListProviderProfilesUseCase } from "../application/list-provider-profiles.use-case";
 import { ProviderProfile } from "../domain/provider-profile";
 
@@ -14,9 +17,18 @@ function toProviderProfileResponse(profile: ProviderProfile) {
     hookSupport: profile.hookSupport,
     sandboxModel: profile.sandboxModel,
     outputSchema: profile.outputSchema,
+    available: profile.available,
+    manuallyAvailable: profile.manuallyAvailable,
+    quotaUnavailableUntil: profile.quotaUnavailableUntil?.toISOString() ?? null,
+    quotaReason: profile.quotaReason,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };
+}
+
+class ProviderAvailabilityDto {
+  @IsBoolean()
+  available!: boolean;
 }
 
 /**
@@ -27,11 +39,26 @@ function toProviderProfileResponse(profile: ProviderProfile) {
 @Controller("provider-profiles")
 @UseGuards(JwtAuthGuard)
 export class ProviderProfileController {
-  constructor(private readonly listProviderProfilesUseCase: ListProviderProfilesUseCase) {}
+  constructor(
+    private readonly listProviderProfilesUseCase: ListProviderProfilesUseCase,
+    private readonly updateProviderAvailability: UpdateProviderAvailabilityUseCase,
+  ) {}
 
   @Get()
   async list() {
     const profiles = await this.listProviderProfilesUseCase.execute();
     return profiles.map(toProviderProfileResponse);
+  }
+
+  @Patch(":provider/availability")
+  async setAvailability(
+    @Param("provider") provider: string,
+    @Body() dto: ProviderAvailabilityDto,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
+    if (requester.type !== ActorType.HUMAN)
+      throw new ForbiddenException("Only a human operator may change provider availability");
+    const profile = await this.updateProviderAvailability.execute(provider, dto.available);
+    return toProviderProfileResponse(profile);
   }
 }

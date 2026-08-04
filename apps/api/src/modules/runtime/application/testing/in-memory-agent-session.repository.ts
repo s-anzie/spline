@@ -60,7 +60,14 @@ export class InMemoryAgentSessionRepository implements AgentSessionRepository {
   }
 
   async listActive(): Promise<AgentSession[]> {
-    return [...this.sessions.values()].filter((s) => !TERMINAL_STATUSES.includes(s.status));
+    const executing: AgentSessionStatus[] = [
+      AgentSessionStatus.STARTING,
+      AgentSessionStatus.RUNNING,
+      AgentSessionStatus.AWAITING_APPROVAL,
+    ];
+    return [...this.sessions.values()].filter((session) =>
+      executing.includes(session.status),
+    );
   }
 
   async save(session: AgentSession): Promise<void> {

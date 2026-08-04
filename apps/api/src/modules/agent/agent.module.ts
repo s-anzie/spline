@@ -13,6 +13,7 @@ import { RegisterAgentUseCase } from "./application/register-agent.use-case";
 import { UpdateAgentDetailsUseCase } from "./application/update-agent-details.use-case";
 import { UpdateAgentHealthUseCase } from "./application/update-agent-health.use-case";
 import { UpdateAgentPresenceUseCase } from "./application/update-agent-presence.use-case";
+import { UpdateProviderAvailabilityUseCase } from "./application/update-provider-availability.use-case";
 import { AGENT_REPOSITORY } from "./domain/ports/agent.repository.port";
 import {
   PROVIDER_PROFILE_REPOSITORY,
@@ -39,6 +40,7 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
     UpdateAgentPresenceUseCase,
     ForceAgentOfflineUseCase,
     ListProviderProfilesUseCase,
+    UpdateProviderAvailabilityUseCase,
     ManageAgentCredentialUseCase,
     DisableAgentUseCase,
     EnableAgentUseCase,
@@ -52,6 +54,7 @@ const DEFAULT_PROVIDERS = ["claude", "codex"];
     UpdateAgentPresenceUseCase,
     GetAgentUseCase,
     ListAgentsByWorkspaceUseCase,
+    PROVIDER_PROFILE_REPOSITORY,
   ],
 })
 export class AgentModule implements OnModuleInit {

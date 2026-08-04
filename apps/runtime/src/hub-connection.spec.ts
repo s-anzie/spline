@@ -55,6 +55,22 @@ describe("HubConnection", () => {
     expect(onCommand).toHaveBeenCalledWith(command);
   });
 
+  it("notifies the runtime when supervision by the hub is lost", () => {
+    const socket = createFakeSocket();
+    const hub = new HubConnection(
+      "http://localhost:3001",
+      "machine_abc.secret",
+      jest.fn().mockReturnValue(socket),
+    );
+    const onDisconnect = jest.fn();
+    hub.onDisconnect(onDisconnect);
+
+    hub.connect();
+    socket.handlers.get("disconnect")?.("transport close");
+
+    expect(onDisconnect).toHaveBeenCalledWith("transport close");
+  });
+
   it("sends a machine heartbeat", () => {
     const socket = createFakeSocket();
     const hub = new HubConnection("http://localhost:3001", "machine_abc.secret", jest.fn().mockReturnValue(socket));
@@ -93,6 +109,21 @@ describe("HubConnection", () => {
     hub.reportSessionStatus("sess-1", "RUNNING");
 
     expect(socket.emit).toHaveBeenCalledWith("session_status", { sessionId: "sess-1", status: "RUNNING" });
+  });
+
+  it("reports a detected provider quota window", () => {
+    const socket = createFakeSocket();
+    const hub = new HubConnection("http://localhost:3001", "machine_abc.secret", jest.fn().mockReturnValue(socket));
+    hub.connect();
+
+    hub.reportProviderQuota("sess-1", "claude", "2026-08-04T08:00:00.000Z", "usage limit");
+
+    expect(socket.emit).toHaveBeenCalledWith("provider_quota", {
+      sessionId: "sess-1",
+      provider: "claude",
+      resetAt: "2026-08-04T08:00:00.000Z",
+      reason: "usage limit",
+    });
   });
 
   it("sends a session heartbeat", () => {

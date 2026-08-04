@@ -1,4 +1,3 @@
-import { ActorType } from "@repo/db";
 import { Controller, ForbiddenException, Get, Query, UseGuards } from "@nestjs/common";
 
 import { AuthenticatedRequester, CurrentRequester, JwtAuthGuard } from "../../identity/interface";
@@ -22,8 +21,7 @@ export class UnreadNotificationsController {
     @CurrentRequester() requester: AuthenticatedRequester,
   ) {
     if (
-      requester.type !== ActorType.HUMAN ||
-      query.recipientType !== ActorType.HUMAN ||
+      query.recipientType !== requester.type ||
       query.recipientId !== requester.id
     )
       throw new ForbiddenException("Unread notifications may only be read by their recipient");

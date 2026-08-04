@@ -37,6 +37,7 @@ import {
   MachineNotFoundError,
   MachineNotLinkedToWorkspaceError,
   WorkspaceRootPathNotConfiguredError,
+  ProviderUnavailableError,
 } from "./runtime-application.errors";
 
 export interface StartAgentSessionInput {
@@ -61,7 +62,8 @@ export type StartAgentSessionError =
   | MachineNotConnectedError
   | AgentAlreadyHasActiveSessionError
   | AgentSessionNotFoundError
-  | AgentSessionNotResumableError;
+  | AgentSessionNotResumableError
+  | ProviderUnavailableError;
 
 @Injectable()
 export class StartAgentSessionUseCase {
@@ -123,6 +125,19 @@ export class StartAgentSessionUseCase {
       return Result.fail(new AgentNotFoundError(input.agentId));
     }
     const agent = agentResult.value;
+    const providerProfile = this.prisma
+      ? await this.prisma.providerProfile.findUnique({
+          where: { provider: agent.provider },
+          select: { available: true, quotaUnavailableUntil: true },
+        })
+      : null;
+    if (
+      providerProfile?.available === false ||
+      (providerProfile?.quotaUnavailableUntil &&
+        providerProfile.quotaUnavailableUntil.getTime() > Date.now())
+    ) {
+      return Result.fail(new ProviderUnavailableError(agent.provider));
+    }
     if (agent.isDisabled) {
       return Result.fail(new AgentNotEligibleError(input.agentId));
     }

@@ -8,12 +8,13 @@ import { useRealtimeStore } from "@/stores/realtime-store";
 import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useSessionOutputStore } from "@/stores/session-output-store";
-import type { SessionOutput } from "@/lib/api/types";
+import type { AgentSession, SessionOutput } from "@/lib/api/types";
 import { useNotificationStore } from "@/stores/notification-store";
 
 const SOCKET_URL=process.env.NEXT_PUBLIC_SPLINE_SOCKET_URL??"http://localhost:8765";
 
 const SILENT_SYNC_INTERVAL_MS = 6000;
+const ACTIVE_SESSION_SYNC_INTERVAL_MS = 2500;
 
 export function RealtimeBridge({ workspaceId }: { workspaceId?: string }){
   const token=useAuthStore((state)=>state.token);
@@ -23,13 +24,23 @@ export function RealtimeBridge({ workspaceId }: { workspaceId?: string }){
     let refreshTimer:number|undefined;
     socket.on("connect",()=>useRealtimeStore.getState().setConnected(true));
     socket.on("disconnect",()=>useRealtimeStore.getState().setConnected(false));
-    socket.onAny((event:string,payload:{workspaceId?:string;output?:SessionOutput})=>{
+    socket.onAny((event:string,payload:{workspaceId?:string;sessionId?:string;to?:string;output?:SessionOutput})=>{
       useRealtimeStore.getState().setLastEvent(event);
       if (event.startsWith("notification."))
         void useNotificationStore.getState().load(true);
       if(event==="session.output"&&payload?.output){
         useSessionOutputStore.getState().append(payload.output);
         return;
+      }
+      if (
+        event === "agent_session.status_changed" &&
+        payload?.sessionId &&
+        payload?.to
+      ) {
+        useWorkspaceDomainStore.getState().applySessionStatus(
+          payload.sessionId,
+          payload.to as AgentSession["status"],
+        );
       }
       window.clearTimeout(refreshTimer);
       refreshTimer=window.setTimeout(()=>{
@@ -41,6 +52,23 @@ export function RealtimeBridge({ workspaceId }: { workspaceId?: string }){
     });
     return()=>{window.clearTimeout(refreshTimer);socket.disconnect();useRealtimeStore.getState().setConnected(false);};
   },[token]);
+
+  useEffect(() => {
+    if (!token || !workspaceId) return;
+    const refreshActiveSessions = () => {
+      if (document.visibilityState === "hidden") return;
+      const state = useWorkspaceDomainStore.getState();
+      const hasExecutingSession = state.sessions.some((session) =>
+        ["STARTING", "RUNNING", "AWAITING_APPROVAL"].includes(session.status),
+      );
+      if (hasExecutingSession) void state.refreshSessions(workspaceId);
+    };
+    const interval = window.setInterval(
+      refreshActiveSessions,
+      ACTIVE_SESSION_SYNC_INTERVAL_MS,
+    );
+    return () => window.clearInterval(interval);
+  }, [token, workspaceId]);
 
   useEffect(() => {
     if (!token) return;

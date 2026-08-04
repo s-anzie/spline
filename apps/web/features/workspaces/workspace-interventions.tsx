@@ -26,7 +26,6 @@ export function WorkspaceInterventions({ workspaceId }: { workspaceId: string })
     agents,
     locks,
     processes,
-    questions,
     notifications,
     runtimeHealth,
     loading: domainLoading,
@@ -56,7 +55,6 @@ export function WorkspaceInterventions({ workspaceId }: { workspaceId: string })
       item.payload["collaborationType"] === "MANAGER_HUMAN_QUESTION" &&
       typeof item.payload["humanAnswer"] !== "string",
   );
-  const openQuestions = questions.filter((item) => item.status === "OPEN");
   const crashedProcesses = processes.filter((process) => process.status === "CRASHED");
   const runtimeInterventions = [
     ...crashedProcesses.map((process) => {
@@ -99,7 +97,6 @@ export function WorkspaceInterventions({ workspaceId }: { workspaceId: string })
     blocked.length +
     validations.length +
     humanQuestions.length +
-    openQuestions.length +
     runtimeIssues;
   const refresh = () => {
     void loadPlan(workspaceId, true);
@@ -119,9 +116,9 @@ export function WorkspaceInterventions({ workspaceId }: { workspaceId: string })
         }
       />
 
-      <Tabs defaultValue={humanQuestions.length + openQuestions.length ? "questions" : validations.length ? "validations" : blocked.length ? "blockers" : "runtime"}>
+      <Tabs defaultValue={humanQuestions.length ? "questions" : validations.length ? "validations" : blocked.length ? "blockers" : "runtime"}>
         <TabsList className="mb-4 h-auto flex-wrap justify-start gap-1 bg-white/[.035] p-1.5">
-          <TabsTrigger value="questions" className="gap-2"><CircleHelp />Questions {humanQuestions.length + openQuestions.length > 0 && <Badge className="border-[#f47b64]/25 bg-[#f47b64]/10 text-[#f47b64]" variant="outline">{humanQuestions.length + openQuestions.length}</Badge>}</TabsTrigger>
+          <TabsTrigger value="questions" className="gap-2"><CircleHelp />Questions {humanQuestions.length > 0 && <Badge className="border-[#f47b64]/25 bg-[#f47b64]/10 text-[#f47b64]" variant="outline">{humanQuestions.length}</Badge>}</TabsTrigger>
           <TabsTrigger value="validations" className="gap-2"><BadgeCheck />À valider {validations.length > 0 && <Badge className="border-sky-400/20 bg-sky-400/[.07] text-sky-300" variant="outline">{validations.length}</Badge>}</TabsTrigger>
           <TabsTrigger value="blockers" className="gap-2"><OctagonAlert />Blocages {blocked.length > 0 && <Badge className="border-amber-400/20 bg-amber-400/[.07] text-amber-300" variant="outline">{blocked.length}</Badge>}</TabsTrigger>
           <TabsTrigger value="runtime" className="gap-2"><Siren />Alertes runtime {runtimeIssues > 0 && <Badge className="border-red-400/20 bg-red-400/[.07] text-red-300" variant="outline">{runtimeIssues}</Badge>}</TabsTrigger>

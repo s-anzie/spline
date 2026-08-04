@@ -25,6 +25,11 @@ function makeCollaborators() {
     appendSessionOutput: { execute: jest.fn() },
     reportProviderSessionId: { execute: jest.fn() },
     reconcileMachineSessions: { execute: jest.fn() },
+    prisma: {
+      agentSession: { findFirst: jest.fn() },
+      providerProfile: { update: jest.fn() },
+    },
+    events: { emit: jest.fn() },
   };
 }
 
@@ -40,10 +45,45 @@ function makeGateway(collaborators: ReturnType<typeof makeCollaborators>) {
     collaborators.appendSessionOutput as never,
     collaborators.reportProviderSessionId as never,
     collaborators.reconcileMachineSessions as never,
+    collaborators.prisma as never,
+    collaborators.events as never,
   );
 }
 
 describe("MachineGateway", () => {
+  it("accepts a quota window only from the machine owning the provider session", async () => {
+    const collaborators = makeCollaborators();
+    collaborators.prisma.agentSession.findFirst.mockResolvedValue({ id: "sess-1" });
+    collaborators.prisma.providerProfile.update.mockResolvedValue({});
+    const gateway = makeGateway(collaborators);
+    const socket = makeSocket({});
+    socket.data["machineId"] = "machine-1";
+    const resetAt = new Date(Date.now() + 60_000).toISOString();
+
+    await gateway.onProviderQuota(socket as never, {
+      sessionId: "sess-1",
+      provider: "claude",
+      resetAt,
+      reason: "usage limit",
+    });
+
+    expect(collaborators.prisma.agentSession.findFirst).toHaveBeenCalledWith({
+      where: { id: "sess-1", machineId: "machine-1", provider: "claude" },
+      select: { id: true },
+    });
+    expect(collaborators.prisma.providerProfile.update).toHaveBeenCalledWith({
+      where: { provider: "claude" },
+      data: {
+        quotaUnavailableUntil: new Date(resetAt),
+        quotaReason: "usage limit",
+      },
+    });
+    expect(collaborators.events.emit).toHaveBeenCalledWith(
+      "provider.availability_changed",
+      expect.objectContaining({ provider: "claude", available: false, cause: "QUOTA" }),
+    );
+  });
+
   it("disconnects a socket that presents no token", async () => {
     const collaborators = makeCollaborators();
     const gateway = makeGateway(collaborators);
@@ -100,11 +140,7 @@ describe("MachineGateway", () => {
       machineId: "machine-1",
       connected: false,
     });
-    expect(collaborators.reconcileMachineSessions.execute).toHaveBeenCalledWith(
-      "machine-1",
-      [],
-      { includeStarting: true },
-    );
+    expect(collaborators.reconcileMachineSessions.execute).not.toHaveBeenCalled();
   });
 
   it("does nothing on disconnect for a socket that never authenticated", async () => {

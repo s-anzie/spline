@@ -108,17 +108,17 @@ export class NotificationRecipient extends Entity<NotificationRecipientProps> {
       return;
     }
     this.props.deliveryStatus = status;
-    if (status === NotificationDeliveryStatus.DELIVERED) {
-      this.props.deliveredAt = at;
+    if (STATUS_RANK[status] >= STATUS_RANK[NotificationDeliveryStatus.DELIVERED]) {
+      this.props.deliveredAt = this.props.deliveredAt ?? at;
     }
-    if (status === NotificationDeliveryStatus.SEEN) {
+    if (STATUS_RANK[status] >= STATUS_RANK[NotificationDeliveryStatus.SEEN]) {
       this.props.readAt = this.props.readAt ?? at;
     }
-    if (status === NotificationDeliveryStatus.ACKNOWLEDGED) {
-      this.props.acknowledgedAt = at;
+    if (STATUS_RANK[status] >= STATUS_RANK[NotificationDeliveryStatus.ACKNOWLEDGED]) {
+      this.props.acknowledgedAt = this.props.acknowledgedAt ?? at;
     }
-    if (status === NotificationDeliveryStatus.ACTED_ON) {
-      this.props.actionTakenAt = at;
+    if (STATUS_RANK[status] >= STATUS_RANK[NotificationDeliveryStatus.ACTED_ON]) {
+      this.props.actionTakenAt = this.props.actionTakenAt ?? at;
     }
   }
 

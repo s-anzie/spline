@@ -12,6 +12,9 @@ export interface ProviderProfileProps {
   hookSupport: string[];
   sandboxModel: SandboxModel;
   outputSchema: Record<string, unknown>;
+  available: boolean;
+  quotaUnavailableUntil: Date | null;
+  quotaReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +27,9 @@ export interface CreateProviderProfileProps {
   hookSupport?: string[];
   sandboxModel?: SandboxModel;
   outputSchema?: Record<string, unknown>;
+  available?: boolean;
+  quotaUnavailableUntil?: Date | null;
+  quotaReason?: string | null;
 }
 
 export interface UpdateProviderProfileProps {
@@ -33,6 +39,9 @@ export interface UpdateProviderProfileProps {
   hookSupport?: string[];
   sandboxModel?: SandboxModel;
   outputSchema?: Record<string, unknown>;
+  available?: boolean;
+  quotaUnavailableUntil?: Date | null;
+  quotaReason?: string | null;
 }
 
 function normalizeProvider(provider: string): string {
@@ -61,6 +70,9 @@ export class ProviderProfile extends Entity<ProviderProfileProps> {
         hookSupport: props.hookSupport ?? [],
         sandboxModel: props.sandboxModel ?? SandboxModel.WORKSPACE_WRITE,
         outputSchema: props.outputSchema ?? {},
+        available: props.available ?? true,
+        quotaUnavailableUntil: props.quotaUnavailableUntil ?? null,
+        quotaReason: props.quotaReason ?? null,
         createdAt: now,
         updatedAt: now,
       },
@@ -100,6 +112,26 @@ export class ProviderProfile extends Entity<ProviderProfileProps> {
     return this.props.outputSchema;
   }
 
+  get available(): boolean {
+    return (
+      this.props.available &&
+      (!this.props.quotaUnavailableUntil ||
+        this.props.quotaUnavailableUntil.getTime() <= Date.now())
+    );
+  }
+
+  get manuallyAvailable(): boolean {
+    return this.props.available;
+  }
+
+  get quotaUnavailableUntil(): Date | null {
+    return this.props.quotaUnavailableUntil;
+  }
+
+  get quotaReason(): string | null {
+    return this.props.quotaReason;
+  }
+
   get createdAt(): Date {
     return this.props.createdAt;
   }
@@ -126,6 +158,15 @@ export class ProviderProfile extends Entity<ProviderProfileProps> {
     }
     if (props.outputSchema !== undefined) {
       this.props.outputSchema = props.outputSchema;
+    }
+    if (props.available !== undefined) {
+      this.props.available = props.available;
+    }
+    if (props.quotaUnavailableUntil !== undefined) {
+      this.props.quotaUnavailableUntil = props.quotaUnavailableUntil;
+    }
+    if (props.quotaReason !== undefined) {
+      this.props.quotaReason = props.quotaReason;
     }
     this.props.updatedAt = new Date();
   }

@@ -51,7 +51,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       set((state) => ({
         error: null,
         items:
-          status === "ACTED_ON"
+          ["SEEN", "ACKNOWLEDGED", "ACTED_ON"].includes(status)
             ? state.items.filter(
                 ({ notification }) => notification.id !== item.notification.id,
               )

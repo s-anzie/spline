@@ -65,7 +65,7 @@ describe("GetRuntimeHealthUseCase", () => {
     ]);
   });
 
-  it("classifies non-terminal sessions as active, and flags the ones without a recent heartbeat as stale", async () => {
+  it("classifies executing sessions as active without treating parked conversations as stale", async () => {
     const { sessions, useCase } = setup();
     const fresh = AgentSession.start(
       { agentId: "a1", provider: "claude", workspaceId: WORKSPACE_ID, machineId: "m1" },
@@ -85,6 +85,13 @@ describe("GetRuntimeHealthUseCase", () => {
     done.changeStatus(AgentSessionStatus.RUNNING);
     done.changeStatus(AgentSessionStatus.COMPLETED);
     await sessions.save(done);
+    const parked = AgentSession.start(
+      { agentId: "a4", provider: "claude", workspaceId: WORKSPACE_ID, machineId: "m1" },
+      new Date(NOW.getTime() - 300_000),
+    );
+    parked.changeStatus(AgentSessionStatus.RUNNING);
+    parked.changeStatus(AgentSessionStatus.IDLE);
+    await sessions.save(parked);
 
     const summary = await useCase.execute(WORKSPACE_ID);
 

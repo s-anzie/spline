@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -35,6 +37,7 @@ import { WorkspaceNotFoundError } from "../../workspace/application/workspace-ap
 import { ReportSessionStatusDto } from "./dto/report-session-status.dto";
 import { StartAgentSessionDto } from "./dto/start-agent-session.dto";
 import { AuthenticatedRequester, CurrentRequester } from "../../identity/interface";
+import { PrismaService } from "../../../prisma/prisma.service";
 
 function toSessionResponse(session: AgentSession) {
   return {
@@ -83,6 +86,7 @@ export class AgentSessionController {
     private readonly getAgentSessionUseCase: GetAgentSessionUseCase,
     private readonly listAgentSessionsByWorkspaceUseCase: ListAgentSessionsByWorkspaceUseCase,
     private readonly listSessionOutputsUseCase: ListSessionOutputsUseCase,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post()
@@ -134,6 +138,31 @@ export class AgentSessionController {
     @Param("sessionId") sessionId: string,
   ) {
     return this.listSessionOutputsUseCase.execute(workspaceId, sessionId);
+  }
+
+  @Delete(":sessionId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission("stop_process")
+  async delete(
+    @Param("workspaceId") workspaceId: string,
+    @Param("sessionId") sessionId: string,
+  ): Promise<void> {
+    const session = await this.prisma.agentSession.findFirst({
+      where: { id: sessionId, workspaceId },
+      select: { id: true, endedAt: true },
+    });
+    if (!session) throw new NotFoundException("Agent session not found");
+    if (!session.endedAt)
+      throw new ConflictException(
+        "An ongoing agent session must be stopped or completed before deletion",
+      );
+    await this.prisma.$transaction([
+      this.prisma.agentQuestion.updateMany({
+        where: { workspaceId, sessionId },
+        data: { sessionId: null },
+      }),
+      this.prisma.agentSession.delete({ where: { id: sessionId } }),
+    ]);
   }
 
   @Post(":sessionId/stop")

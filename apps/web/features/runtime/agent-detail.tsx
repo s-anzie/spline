@@ -215,6 +215,9 @@ export function AgentDetail({
         (item): item is string => typeof item === "string",
       )
     : [];
+  const providerAvailable = providers.find(
+    (item) => item.provider === agent.provider,
+  )?.available !== false;
 
   return (
     <>
@@ -250,6 +253,11 @@ export function AgentDetail({
           </LoadingButton>
         }
       />
+      {!providerAvailable && (
+        <div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/[.045] px-4 py-3 text-[10px] text-red-200">
+          Le provider {agent.provider} est indisponible. Cet agent ne peut plus être démarré ni exposé aux autres agents. Modifiez son provider pour le réactiver.
+        </div>
+      )}
       <div className="grid gap-4 xl:grid-cols-[.78fr_1.22fr]">
         <div className="grid content-start gap-4">
           <Card className="overflow-hidden border-white/[.075] bg-white/[.018]">
@@ -486,7 +494,7 @@ export function AgentDetail({
                     >
                       {!providers.some((item) => item.provider === provider) &&
                         provider && <option value={provider}>{provider}</option>}
-                      {providers.map((item) => (
+                      {providers.filter((item) => item.available).map((item) => (
                         <option key={item.id} value={item.provider}>
                           {item.provider}
                         </option>

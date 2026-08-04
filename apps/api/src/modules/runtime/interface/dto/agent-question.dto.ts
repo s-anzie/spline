@@ -40,6 +40,25 @@ export class AnswerHumanQuestionDto {
   answer!: string;
 }
 
+export class ManagerMessageDto {
+  @IsUUID()
+  sessionId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+
+  @IsOptional()
+  @IsUUID()
+  replyToNotificationId?: string;
+}
+
+export class EditManagerMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+}
+
 export class AskHumanDto {
   @IsString()
   @IsNotEmpty()
@@ -84,6 +103,23 @@ export class DelegateTaskDto {
   @IsString()
   @IsNotEmpty()
   machineId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  instruction!: string;
+}
+
+export class ActivateAgentDto {
+  @IsUUID()
+  agentId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  machineId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  taskId?: string;
 
   @IsString()
   @IsNotEmpty()

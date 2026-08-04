@@ -31,6 +31,9 @@ ExecStart=$NODE_BIN $REPO_ROOT/apps/runtime/dist/main.js
 Environment=SPLINE_RUNTIME_CONFIG=$CONFIG_ROOT/runtime.json
 Restart=always
 RestartSec=3
+KillMode=control-group
+TimeoutStopSec=15
+SendSIGKILL=yes
 
 [Install]
 WantedBy=default.target

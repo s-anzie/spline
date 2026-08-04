@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Square,
   Terminal,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -22,6 +23,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { LiveIndicator } from "@/components/shared/live-indicator";
 import { LaunchSessionDialog } from "@/features/workspaces/launch-session-dialog";
@@ -38,9 +49,10 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
     searchParams.get("tab") === "processes" ? "processes" : "sessions",
   );
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<
-    "working" | "idle" | "history" | "all"
-  >("working");
+    "current" | "working" | "idle" | "history"
+  >("current");
   const {
     sessions,
     questions,
@@ -53,6 +65,9 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
     load,
     sessionAction,
     startSession,
+    deleteSession,
+    messageManager,
+    editManagerMessage,
   } = useWorkspaceDomainStore();
   const loadPlan = usePlanningStore((s) => s.load);
   const tasks = usePlanningStore((s) => s.tasks);
@@ -85,9 +100,10 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
   const activeSessionCount = sessions.filter((session) => workingStatuses.includes(session.status)).length;
   const idleSessionCount = sessions.filter((session) => session.status === "IDLE").length;
   const historicalSessionCount = sessions.filter((session) => Boolean(session.endedAt)).length;
+  const currentSessionCount = sessions.filter((session) => !session.endedAt).length;
   const filteredSessions = recentSessions.filter((session) =>
-    sessionFilter === "all"
-      ? true
+    sessionFilter === "current"
+      ? !session.endedAt
       : sessionFilter === "working"
         ? workingStatuses.includes(session.status)
         : sessionFilter === "idle"
@@ -106,15 +122,20 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
     }
     return turns;
   }, [selectedSessionId, sessions]);
-  function changeSessionFilter(next: "working" | "idle" | "history" | "all") {
+  function changeSessionFilter(next: "current" | "working" | "idle" | "history") {
     setSessionFilter(next);
     if (
       selectedSessionId &&
       !sessions.some(
         (session) =>
           session.id === selectedSessionId &&
-          (next === "all" ||
-            (next === "working" ? workingStatuses.includes(session.status) : next === "idle" ? session.status === "IDLE" : !!session.endedAt)),
+          (next === "current"
+            ? !session.endedAt
+            : next === "working"
+              ? workingStatuses.includes(session.status)
+              : next === "idle"
+                ? session.status === "IDLE"
+                : !!session.endedAt),
       )
     ) {
       setSelectedSessionId(null);
@@ -129,7 +150,7 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
       requestedSessionId &&
       sessions.some((session) => session.id === requestedSessionId)
     ) {
-      setSessionFilter("all");
+      setSessionFilter("current");
       setSelectedSessionId(requestedSessionId);
     }
   }, [requestedSessionId, sessions]);
@@ -161,8 +182,8 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
       {error && <p className="mb-4 text-[10px] text-red-300">{error}</p>}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(String(value))}>
         <TabsList className="mb-4 bg-white/[.035]">
-          <TabsTrigger value="sessions"><Bot /> Sessions & conversations</TabsTrigger>
-          <TabsTrigger value="processes">Processus & locks</TabsTrigger>
+          <TabsTrigger value="sessions"><Bot /> Équipe & conversations</TabsTrigger>
+          <TabsTrigger value="processes"><Activity /> Processus & ressources</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions">
           {(runtimeIssueCount > 0 || questions.some((question) => question.status === "OPEN")) && (
@@ -188,6 +209,14 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
             </span>
             <Button
               size="sm"
+              variant={sessionFilter === "current" ? "secondary" : "ghost"}
+              onClick={() => changeSessionFilter("current")}
+            >
+              <Bot /> Équipe actuelle
+              <Badge variant="outline">{currentSessionCount}</Badge>
+            </Button>
+            <Button
+              size="sm"
               variant={sessionFilter === "working" ? "secondary" : "ghost"}
               onClick={() => changeSessionFilter("working")}
             >
@@ -210,14 +239,6 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
             >
               <History /> Passées
               <Badge variant="outline">{historicalSessionCount}</Badge>
-            </Button>
-            <Button
-              size="sm"
-              variant={sessionFilter === "all" ? "secondary" : "ghost"}
-              onClick={() => changeSessionFilter("all")}
-            >
-              Toutes
-              <Badge variant="outline">{sessions.length}</Badge>
             </Button>
           </div>
           <div
@@ -347,6 +368,18 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                           {canResumeNative ? "Reprendre" : "Relancer"}
                         </LoadingButton>
                       )}
+                      {session.endedAt && (
+                        <Button
+                          size={selectedSessionId ? "icon-sm" : "sm"}
+                          variant="ghost"
+                          className="text-red-300 hover:bg-red-400/10 hover:text-red-200"
+                          onClick={() => setDeletingSessionId(session.id)}
+                          title="Supprimer définitivement cette session"
+                        >
+                          <Trash2 />
+                          {!selectedSessionId && "Supprimer"}
+                        </Button>
+                      )}
                       {!session.endedAt && (
                         <select
                           disabled={pendingAction !== null}
@@ -443,12 +476,6 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
               // when it started. If the agent's provider has since changed,
               // there is nothing left to reply to — only a fresh session can
               // move this agent forward.
-              const canResumeIdle =
-                Boolean(session.providerSessionId) &&
-                session.provider === agent?.provider;
-              const isIdleManagerTurn =
-                ["IDLE", "FAILED", "CRASHED"].includes(session.status) &&
-                agent?.promptProfile["role"] === "manager";
               const isManagerConversation =
                 agent?.promptProfile["role"] === "manager";
               const latestAgentSession = recentSessions.find(
@@ -468,45 +495,21 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
                   )}
                   isLatestAgentConversation={latestAgentSession?.id === session.id}
                   showComposer={isManagerConversation}
-                  canReply={isIdleManagerTurn}
-                  disabledHint={
-                    isIdleManagerTurn && !canResumeIdle
-                      ? "La conversation native n’est plus récupérable. Le prochain message ouvrira automatiquement un nouveau fil lié à cet historique."
-                      : undefined
+                  canReply={isManagerConversation && session.status !== "STOPPED"}
+                  disabledHint={session.status === "STOPPED" ? "Cette activité a été arrêtée explicitement." : undefined}
+                  sending={
+                    pendingAction === "session:start" ||
+                    pendingAction === `session:${session.id}:message` ||
+                    pendingAction?.endsWith(":edit") === true
                   }
-                  sending={pendingAction === "session:start"}
-                  onSend={async (instruction) => {
-                    const baseInput = {
-                      agentId: session.agentId,
-                      machineId: session.machineId,
-                      taskId: session.currentTaskId ?? undefined,
+                  onSend={async (instruction, replyToNotificationId) => {
+                    await messageManager(
+                      session.id,
                       instruction,
-                    };
-                    let next;
-                    try {
-                      next = await startSession({
-                        ...baseInput,
-                        ...(canResumeIdle
-                          ? { resumeFromSessionId: session.id }
-                          : { lineageFromSessionId: session.id }),
-                      });
-                    } catch (error) {
-                      if (
-                        !canResumeIdle ||
-                        !(error instanceof Error) ||
-                        !/no recoverable provider conversation|not resumable/i.test(
-                          error.message,
-                        )
-                      )
-                        throw error;
-                      next = await startSession({
-                        ...baseInput,
-                        lineageFromSessionId: session.id,
-                      });
-                    }
-                    setSessionFilter("working");
-                    setSelectedSessionId(next.id);
+                      replyToNotificationId,
+                    );
                   }}
+                  onEdit={editManagerMessage}
                   onClose={() => setSelectedSessionId(null)}
                 />
               );
@@ -520,6 +523,35 @@ export function ExecutionView({ workspaceId }: { workspaceId: string }) {
           </div>
         </TabsContent>
       </Tabs>
+      <AlertDialog
+        open={deletingSessionId !== null}
+        onOpenChange={(open) => !open && setDeletingSessionId(null)}
+      >
+        <AlertDialogContent className="border-white/10 bg-[#191715] text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette session ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La conversation et toutes ses sorties seront supprimées définitivement. Les tâches, décisions et questions de collaboration sont conservées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingAction?.endsWith(":delete")}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={!deletingSessionId || pendingAction?.endsWith(":delete")}
+              onClick={async () => {
+                if (!deletingSessionId) return;
+                const sessionId = deletingSessionId;
+                await deleteSession(sessionId);
+                if (selectedSessionId === sessionId) setSelectedSessionId(null);
+                setDeletingSessionId(null);
+              }}
+            >
+              {pendingAction?.endsWith(":delete") ? "Suppression…" : "Supprimer définitivement"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

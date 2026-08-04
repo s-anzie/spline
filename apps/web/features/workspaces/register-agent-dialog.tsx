@@ -199,7 +199,8 @@ export function RegisterAgentDialog() {
     useWorkspaceDomainStore((state) => state.pendingAction) ===
     "agent:register";
   const error = useWorkspaceDomainStore((state) => state.error);
-  const activeProvider = provider || providers[0]?.provider || "";
+  const activeProvider =
+    provider || providers.find((item) => item.available)?.provider || "";
 
   const capabilities = useMemo(() => {
     const base = capabilitiesByRole[role];
@@ -323,7 +324,7 @@ export function RegisterAgentDialog() {
                     required
                     className="h-9 rounded-lg border border-white/10 bg-[#191715] px-3"
                   >
-                    {providers.map((item) => (
+                    {providers.filter((item) => item.available).map((item) => (
                       <option key={item.id} value={item.provider}>
                         {item.provider}
                       </option>

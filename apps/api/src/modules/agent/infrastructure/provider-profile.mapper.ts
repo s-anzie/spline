@@ -12,6 +12,9 @@ export interface ProviderProfilePersistenceData {
   hookSupport: Prisma.InputJsonValue;
   sandboxModel: PrismaProviderProfile["sandboxModel"];
   outputSchema: Prisma.InputJsonValue;
+  available: boolean;
+  quotaUnavailableUntil: Date | null;
+  quotaReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +30,9 @@ export class ProviderProfileMapper {
         hookSupport: record.hookSupport as string[],
         sandboxModel: record.sandboxModel,
         outputSchema: record.outputSchema as Record<string, unknown>,
+        available: record.available,
+        quotaUnavailableUntil: record.quotaUnavailableUntil,
+        quotaReason: record.quotaReason,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
       },
@@ -44,6 +50,9 @@ export class ProviderProfileMapper {
       hookSupport: profile.hookSupport as unknown as Prisma.InputJsonValue,
       sandboxModel: profile.sandboxModel,
       outputSchema: profile.outputSchema as unknown as Prisma.InputJsonValue,
+      available: profile.manuallyAvailable,
+      quotaUnavailableUntil: profile.quotaUnavailableUntil,
+      quotaReason: profile.quotaReason,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };

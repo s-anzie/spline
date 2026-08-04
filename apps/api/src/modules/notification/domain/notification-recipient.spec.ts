@@ -56,7 +56,9 @@ describe("NotificationRecipient", () => {
       recipient.advanceTo("SEEN", seenAt);
 
       expect(recipient.deliveryStatus).toBe("SEEN");
-      expect(recipient.deliveredAt).toBeUndefined();
+      // Reading proves delivery even when the explicit delivery event raced
+      // behind the inbox fetch; cumulative receipts must remain complete.
+      expect(recipient.deliveredAt).toEqual(seenAt);
       expect(recipient.readAt).toEqual(seenAt);
     });
 

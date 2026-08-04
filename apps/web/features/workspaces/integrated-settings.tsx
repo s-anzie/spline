@@ -3,6 +3,8 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   FolderRoot,
   HardDrive,
+  Power,
+  PowerOff,
   Pencil,
   RefreshCw,
   Save,
@@ -44,6 +46,7 @@ export function IntegratedSettings({ workspaceId }: { workspaceId: string }) {
     providers,
     pendingAction,
     linkMachine,
+    setProviderAvailability,
     load: loadDomains,
   } = useWorkspaceDomainStore();
   useEffect(() => {
@@ -424,12 +427,47 @@ export function IntegratedSettings({ workspaceId }: { workspaceId: string }) {
               {providers.map((profile) => (
                 <div
                   key={profile.id}
-                  className="rounded-lg border border-white/[.06] p-3"
+                  className={`rounded-lg border p-3 transition ${profile.available ? "border-emerald-400/15 bg-emerald-400/[.025]" : "border-red-400/15 bg-red-400/[.025]"}`}
                 >
-                  <strong className="text-[10px]">{profile.provider}</strong>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <strong className="text-[10px] capitalize">{profile.provider}</strong>
+                      <p className={`mt-1 text-[8px] ${profile.available ? "text-emerald-300" : "text-red-300"}`}>
+                        {profile.available
+                          ? "Disponible"
+                          : !profile.manuallyAvailable
+                            ? "Désactivé manuellement"
+                            : "Quota épuisé"}
+                      </p>
+                    </div>
+                    <LoadingButton
+                      loading={pendingAction === `provider:${profile.provider}:availability`}
+                      size="xs"
+                      variant={profile.manuallyAvailable ? "outline" : "secondary"}
+                      onClick={() => void setProviderAvailability(profile.provider, !profile.manuallyAvailable)}
+                    >
+                      {profile.manuallyAvailable ? <PowerOff /> : <Power />}
+                      {profile.manuallyAvailable ? "Désactiver" : "Autoriser"}
+                    </LoadingButton>
+                  </div>
                   <p className="mt-2 line-clamp-2 text-[8px] text-muted-foreground">
                     {JSON.stringify(profile.capabilities)}
                   </p>
+                  {!profile.available && (
+                    <p className="mt-2 border-t border-red-400/10 pt-2 text-[8px] leading-4 text-red-200/75">
+                      {agents.filter((agent) => agent.provider === profile.provider).length} agent(s) inutilisable(s). Changez leur provider pour les réactiver.
+                      {profile.quotaUnavailableUntil && profile.manuallyAvailable && (
+                        <span className="mt-1 block text-amber-200">
+                          Réinitialisation prévue {new Date(profile.quotaUnavailableUntil).toLocaleString("fr-FR")}.
+                        </span>
+                      )}
+                      {profile.quotaReason && profile.manuallyAvailable && (
+                        <span className="mt-1 block line-clamp-2 text-muted-foreground" title={profile.quotaReason}>
+                          {profile.quotaReason}
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
               ))}
             </CardContent>
@@ -511,7 +549,7 @@ export function IntegratedSettings({ workspaceId }: { workspaceId: string }) {
                           Scheduler · {wake?.scheduler.status ?? "INCONNU"}
                         </span>
                         <span className="rounded-full bg-white/[.04] px-2 py-1">
-                          Cron natif · {wake?.nativeCron.status ?? "INCONNU"}
+                          Réveil provider · {wake?.nativeCron.status === "DISABLED_SPLINE_AUTHORITATIVE" ? "désactivé (Spline pilote)" : wake?.nativeCron.status ?? "INCONNU"}
                         </span>
                       </div>
                     </div>

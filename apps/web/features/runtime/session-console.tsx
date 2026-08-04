@@ -1,7 +1,21 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CircleHelp, Download, Send, Terminal, X } from "lucide-react";
+import {
+  Brain,
+  CheckCircle2,
+  CircleHelp,
+  Download,
+  FileCode2,
+  LoaderCircle,
+  Pencil,
+  Reply,
+  Send,
+  Terminal,
+  Wrench,
+  X,
+  XCircle,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { AgentQuestion, AgentSession, Notification } from "@/lib/api/types";
@@ -22,6 +36,7 @@ export function SessionConsole({
   disabledHint,
   sending,
   onSend,
+  onEdit,
   onClose,
 }: {
   workspaceId: string;
@@ -37,11 +52,14 @@ export function SessionConsole({
   canReply: boolean;
   disabledHint?: string;
   sending: boolean;
-  onSend: (instruction: string) => Promise<void>;
+  onSend: (instruction: string, replyToNotificationId?: string) => Promise<void>;
+  onEdit: (notificationId: string, message: string) => Promise<void>;
   onClose: () => void;
 }) {
   const isWorking = status === "STARTING" || status === "RUNNING";
   const [message, setMessage] = useState("");
+  const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const bySession = useSessionOutputStore((state) => state.bySession);
   const loading = useSessionOutputStore(
     (state) => state.loadingSessionId === sessionId,
@@ -51,27 +69,170 @@ export function SessionConsole({
   const viewport = useRef<HTMLDivElement>(null);
   const shouldFollowOutput = useRef(true);
   const conversation = useMemo(() => {
-    const messages: Array<{ id: string; author: "user" | "agent" | "coordination"; stream: "stdout" | "stderr"; text: string; label?: string }> = [];
+    type ConversationItem = {
+      id: string;
+      author: "user" | "agent" | "coordination" | "activity";
+      stream: "stdout" | "stderr";
+      text: string;
+      label?: string;
+      activityKind?: "thinking" | "tool" | "command" | "file";
+      activityStatus?: "running" | "completed" | "failed";
+      notificationId?: string;
+      replyPreview?: string;
+      editable?: boolean;
+      edited?: boolean;
+      occurredAt?: number;
+    };
+    const messages: ConversationItem[] = [];
+    const upsertActivity = (item: ConversationItem) => {
+      const existing = messages.findIndex((candidate) => candidate.id === item.id);
+      if (existing >= 0) messages[existing] = item;
+      else messages.push(item);
+    };
+    const compact = (value: unknown, fallback: string) => {
+      if (typeof value === "string" && value.trim()) return value.trim().slice(0, 500);
+      if (value && typeof value === "object")
+        return JSON.stringify(value).slice(0, 500);
+      return fallback;
+    };
     for (const turn of turns) {
       if (
         turn.instruction &&
         !turn.instruction.startsWith("Human decision in response to your question")
       )
-        messages.push({ id: `instruction-${turn.id}`, author: "user", stream: "stdout", text: turn.instruction });
-      const raw = (bySession[turn.id] ?? []).map((output) => output.content).join("");
+        messages.push({
+          id: `instruction-${turn.id}`,
+          author: "user",
+          stream: "stdout",
+          text: turn.instruction,
+          occurredAt: Date.parse(turn.startedAt),
+        });
+      const outputs = bySession[turn.id] ?? [];
+      const outputRanges: Array<{ end: number; occurredAt: number }> = [];
+      let outputEnd = 0;
+      for (const output of outputs) {
+        outputEnd += output.content.length;
+        outputRanges.push({
+          end: outputEnd,
+          occurredAt: Date.parse(output.createdAt),
+        });
+      }
+      const raw = outputs.map((output) => output.content).join("");
+      let lineCursor = 0;
       for (const [index, line] of raw.split("\n").entries()) {
+      const occurredAt =
+        outputRanges.find((range) => lineCursor < range.end)?.occurredAt ??
+        Date.parse(turn.startedAt);
+      lineCursor += line.length + 1;
       if (!line.trim()) continue;
       try {
         const event = JSON.parse(line) as {
           type?: string;
+          subtype?: string;
           message?: string | { content?: Array<{ type?: string; text?: string }> };
-          item?: { type?: string; text?: string };
+          item?: {
+            id?: string;
+            type?: string;
+            text?: string;
+            command?: string;
+            aggregated_output?: string;
+            status?: string;
+            exit_code?: number;
+            server?: string;
+            tool?: string;
+            name?: string;
+            arguments?: unknown;
+            changes?: unknown;
+            query?: string;
+            error?: string;
+          };
           error?: { message?: string };
         };
+        const eventMessage =
+          typeof event.message === "object" ? event.message : undefined;
+        const claudeParts = eventMessage?.content ?? [];
+        for (const part of claudeParts as Array<{
+          type?: string;
+          id?: string;
+          tool_use_id?: string;
+          name?: string;
+          input?: unknown;
+          content?: unknown;
+          is_error?: boolean;
+        }>) {
+          if (part.type === "tool_use") {
+            upsertActivity({
+              id: `claude-tool-${turn.id}-${part.id ?? index}`,
+              author: "activity",
+              stream: "stdout",
+              label: part.name ?? "Outil",
+              text: compact(part.input, "Exécution de l’outil"),
+              activityKind:
+                /read|write|edit/i.test(part.name ?? "") ? "file" :
+                /bash|command/i.test(part.name ?? "") ? "command" : "tool",
+              activityStatus: "running",
+              occurredAt,
+            });
+          }
+          if (part.type === "tool_result") {
+            const activityId = `claude-tool-${turn.id}-${part.tool_use_id ?? index}`;
+            const prior = messages.find((candidate) => candidate.id === activityId);
+            upsertActivity({
+              id: activityId,
+              author: "activity",
+              stream: part.is_error ? "stderr" : "stdout",
+              label: prior?.label ?? "Résultat de l’outil",
+              text: prior?.text ?? compact(part.content, "Traitement terminé"),
+              activityKind: prior?.activityKind ?? "tool",
+              activityStatus: part.is_error ? "failed" : "completed",
+              occurredAt: prior?.occurredAt ?? occurredAt,
+            });
+          }
+        }
+        const codexItem = event.item;
+        if (codexItem?.type && codexItem.type !== "agent_message") {
+          const id = `codex-item-${turn.id}-${codexItem.id ?? index}`;
+          const completed = event.type === "item.completed";
+          const failed =
+            codexItem.status === "failed" ||
+            (typeof codexItem.exit_code === "number" && codexItem.exit_code !== 0) ||
+            Boolean(codexItem.error);
+          const metadata: Record<string, { label: string; kind: "thinking" | "tool" | "command" | "file" }> = {
+            reasoning: { label: "Analyse", kind: "thinking" },
+            command_execution: { label: "Commande", kind: "command" },
+            mcp_tool_call: { label: codexItem.tool ? `Spline · ${codexItem.tool}` : "Outil Spline", kind: "tool" },
+            file_change: { label: "Modification de fichiers", kind: "file" },
+            web_search: { label: "Recherche", kind: "tool" },
+          };
+          const meta = metadata[codexItem.type] ?? {
+            label: codexItem.name ?? codexItem.type.replaceAll("_", " "),
+            kind: "tool" as const,
+          };
+          const prior = messages.find((candidate) => candidate.id === id);
+          upsertActivity({
+            id,
+            author: "activity",
+            stream: failed ? "stderr" : "stdout",
+            label: meta.label,
+            text:
+              prior?.text ??
+              compact(
+                codexItem.command ??
+                  codexItem.text ??
+                  codexItem.query ??
+                  codexItem.arguments ??
+                  codexItem.changes,
+                completed ? "Étape terminée" : "Étape en cours",
+              ),
+            activityKind: meta.kind,
+            activityStatus: failed ? "failed" : completed ? "completed" : "running",
+            occurredAt: prior?.occurredAt ?? occurredAt,
+          });
+        }
         const codexText = event.item?.type === "agent_message" ? event.item.text : undefined;
         const claudeText =
-          typeof event.message === "object"
-            ? event.message.content
+          eventMessage
+            ? eventMessage.content
                 ?.filter((part) => part.type === "text" && part.text)
                 .map((part) => part.text)
                 .join("\n")
@@ -93,15 +254,16 @@ export function SessionConsole({
             author: "user",
             stream: "stdout",
             text: userText,
+            occurredAt,
           });
           continue;
         }
         const text = codexText || claudeText || errorText;
         if (text && !messages.some((item) => item.text === text))
-          messages.push({ id: `event-${turn.id}-${index}`, author: "agent", stream: errorText ? "stderr" : "stdout", text });
+          messages.push({ id: `event-${turn.id}-${index}`, author: "agent", stream: errorText ? "stderr" : "stdout", text, occurredAt });
       } catch {
         if (line.startsWith("[runtime]"))
-          messages.push({ id: `runtime-${turn.id}-${index}`, author: "agent", stream: "stdout", text: line });
+          messages.push({ id: `runtime-${turn.id}-${index}`, author: "agent", stream: "stdout", text: line, occurredAt });
       }
       }
       const turnQuestions = questions.filter((question) => {
@@ -130,6 +292,7 @@ export function SessionConsole({
             ? `Question de ${agentNames[question.askerAgentId] ?? question.askerAgentId}`
             : "Question envoyée au manager",
           text: question.question,
+          occurredAt: Date.parse(question.createdAt),
         });
         if (question.answer) {
           messages.push({
@@ -138,10 +301,47 @@ export function SessionConsole({
             stream: "stdout",
             label: "Réponse du manager",
             text: question.answer,
+            occurredAt: Date.parse(question.answeredAt ?? question.updatedAt),
           });
         }
       }
       if (showComposer) {
+        const operatorMessages = notifications.filter(
+          (notification) =>
+            notification.payload["collaborationType"] ===
+              "HUMAN_MANAGER_MESSAGE" &&
+            notification.payload["sessionId"] === turn.id,
+        );
+        for (const operatorMessage of operatorMessages) {
+          const receipt = operatorMessage.recipients?.find(
+            (recipient) => recipient.recipientType === "AGENT",
+          );
+          const receiptLabel: Record<string, string> = {
+            PENDING: "en attente",
+            DELIVERED: "livré",
+            SEEN: "vu",
+            ACKNOWLEDGED: "acquitté",
+            ACTED_ON: "traité",
+            FAILED: "échec de livraison",
+          };
+          const replyTargetId = operatorMessage.payload["replyToNotificationId"];
+          const replyTarget =
+            typeof replyTargetId === "string"
+              ? notifications.find((item) => item.id === replyTargetId)
+              : undefined;
+          messages.push({
+            id: `operator-message-${operatorMessage.id}`,
+            author: "user",
+            stream: "stdout",
+            label: `Vous · ${receiptLabel[receipt?.deliveryStatus ?? "PENDING"] ?? "transmis"}`,
+            text: operatorMessage.body,
+            notificationId: operatorMessage.id,
+            replyPreview: replyTarget?.body,
+            editable: !receipt?.readAt,
+            edited: typeof operatorMessage.payload["editedAt"] === "string",
+            occurredAt: Date.parse(operatorMessage.createdAt),
+          });
+        }
         const humanRequests = notifications.filter((notification) => {
           const payload = notification.payload;
           if (payload["collaborationType"] !== "MANAGER_HUMAN_QUESTION")
@@ -171,6 +371,8 @@ export function SessionConsole({
               stream: "stdout",
               label: "Question adressée à vous",
               text: request.body,
+              notificationId: request.id,
+              occurredAt: Date.parse(request.createdAt),
             });
           }
           const humanAnswer = payload["humanAnswer"];
@@ -188,12 +390,25 @@ export function SessionConsole({
               stream: "stdout",
               label: "Votre réponse",
               text: humanAnswer,
+              occurredAt: Date.parse(
+                typeof payload["answeredAt"] === "string"
+                  ? payload["answeredAt"]
+                  : request.createdAt,
+              ),
             });
           }
         }
       }
     }
-    return messages;
+    return messages
+      .map((item, index) => ({ item, index }))
+      .sort(
+        (left, right) =>
+          (left.item.occurredAt ?? Number.MAX_SAFE_INTEGER) -
+            (right.item.occurredAt ?? Number.MAX_SAFE_INTEGER) ||
+          left.index - right.index,
+      )
+      .map(({ item }) => item);
   }, [agentNames, bySession, isLatestAgentConversation, notifications, questions, showComposer, turns]);
 
   useEffect(() => {
@@ -237,8 +452,11 @@ export function SessionConsole({
     event.preventDefault();
     const next = message.trim();
     if (!next || !canReply) return;
-    await onSend(next);
+    if (editing) await onEdit(editing.id, next);
+    else await onSend(next, replyTo?.id);
     setMessage("");
+    setEditing(null);
+    setReplyTo(null);
   }
 
   return (
@@ -291,18 +509,83 @@ export function SessionConsole({
           <div
             key={item.id}
             className={
-              item.author === "coordination"
+              item.author === "activity"
+                ? `flex max-w-[96%] items-start gap-2.5 rounded-lg border px-3 py-2 ${item.activityStatus === "failed" ? "border-red-400/15 bg-red-400/[.04]" : "border-white/[.055] bg-white/[.018]"}`
+                : item.author === "coordination"
                 ? "max-w-[94%] rounded-xl border border-sky-400/15 bg-sky-400/[.045] px-3.5 py-2.5 text-sky-100"
                 : item.author === "user"
                 ? "ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-[#f47b64] px-3.5 py-2.5 text-[#241614] shadow-lg shadow-[#f47b64]/5"
                 : `max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 ${item.stream === "stderr" ? "border-red-400/15 bg-red-400/[.06] text-red-200" : "border-white/[.07] bg-white/[.035] text-[#d2cec8]"}`
             }
           >
+            {item.author === "activity" && (
+              <span className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-md ${item.activityStatus === "failed" ? "bg-red-400/10 text-red-300" : "bg-[#f47b64]/10 text-[#f47b64]"}`}>
+                {item.activityStatus === "running" ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : item.activityStatus === "failed" ? (
+                  <XCircle className="size-3.5" />
+                ) : item.activityKind === "thinking" ? (
+                  <Brain className="size-3.5" />
+                ) : item.activityKind === "file" ? (
+                  <FileCode2 className="size-3.5" />
+                ) : item.activityKind === "command" ? (
+                  <Terminal className="size-3.5" />
+                ) : item.activityKind === "tool" ? (
+                  <Wrench className="size-3.5" />
+                ) : (
+                  <CheckCircle2 className="size-3.5" />
+                )}
+              </span>
+            )}
+            <div className={item.author === "activity" ? "min-w-0 flex-1" : undefined}>
+            {item.replyPreview && (
+              <div className="mb-2 line-clamp-2 rounded-md border-l-2 border-current/25 bg-black/15 px-2 py-1 text-[8px] opacity-65">
+                {item.replyPreview}
+              </div>
+            )}
             <p className={`mb-1 flex items-center gap-1 text-[8px] font-semibold uppercase tracking-wider ${item.author === "user" ? "opacity-60" : item.author === "coordination" ? "text-sky-300" : "text-muted-foreground"}`}>
               {item.author === "coordination" && <CircleHelp className="size-3"/>}
               {item.label ?? (item.author === "user" ? "Vous" : agentName)}
+              {item.edited && <span className="normal-case tracking-normal opacity-60">· modifié</span>}
+              {item.author === "activity" && (
+                <span className={`ml-auto normal-case tracking-normal ${item.activityStatus === "running" ? "text-[#f47b64]" : item.activityStatus === "failed" ? "text-red-300" : "text-emerald-400/80"}`}>
+                  {item.activityStatus === "running" ? "En cours" : item.activityStatus === "failed" ? "Échec" : "Terminé"}
+                </span>
+              )}
             </p>
-            <p className="whitespace-pre-wrap">{item.text}</p>
+            <p className={item.author === "activity" ? "line-clamp-3 whitespace-pre-wrap font-mono text-[9px] leading-4 text-[#aaa49e]" : "whitespace-pre-wrap"}>{item.text}</p>
+            {item.notificationId && showComposer && (
+              <div className="mt-1.5 flex justify-end gap-1 opacity-60 transition hover:opacity-100">
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  title="Répondre à ce message"
+                  onClick={() => {
+                    setEditing(null);
+                    setReplyTo({ id: item.notificationId!, text: item.text });
+                  }}
+                >
+                  <Reply />
+                </Button>
+                {item.editable && item.author === "user" && (
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    title="Modifier ce message"
+                    onClick={() => {
+                      setReplyTo(null);
+                      setEditing({ id: item.notificationId!, text: item.text });
+                      setMessage(item.text);
+                    }}
+                  >
+                    <Pencil />
+                  </Button>
+                )}
+              </div>
+            )}
+            </div>
           </div>
         ))}
         {isWorking && (
@@ -334,6 +617,15 @@ export function SessionConsole({
         {error && <span className="text-red-300">{error}</span>}
       </div>
       {showComposer && <form onSubmit={submit} className="border-t border-white/[.07] bg-[#151311] p-3">
+        {(replyTo || editing) && (
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-white/[.07] bg-white/[.025] px-3 py-2 text-[8px] text-muted-foreground">
+            <span className="min-w-0 flex-1">
+              <strong className="block text-foreground/80">{editing ? "Modification du message" : "Réponse à"}</strong>
+              <span className="line-clamp-1">{editing?.text ?? replyTo?.text}</span>
+            </span>
+            <Button type="button" size="icon-xs" variant="ghost" onClick={() => { setEditing(null); setReplyTo(null); if (editing) setMessage(""); }}><X /></Button>
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-xl border border-white/[.08] bg-black/20 p-1.5 transition focus-within:border-[#f47b64]/35">
           <textarea
             value={message}
@@ -358,7 +650,9 @@ export function SessionConsole({
           </Button>
         </div>
         <p className="mt-1.5 px-1 text-[8px] text-muted-foreground">
-          Les collaborateurs passent par ce manager ; ils ne dialoguent pas directement avec vous.
+          {isWorking
+            ? "Le manager travaille : votre message est ajouté à sa boîte prioritaire et sera lu à son prochain point de synchronisation."
+            : "Les collaborateurs passent par ce manager ; ils ne dialoguent pas directement avec vous."}
         </p>
       </form>}
     </aside>

@@ -42,7 +42,7 @@ describe("buildSessionSystemPrompt", () => {
     expect(prompt).toContain("every 2 minute(s)");
   });
 
-  it("instructs a Claude manager to configure native cron and own human communication", () => {
+  it("makes Spline the sole Claude wake authority and preserves human communication", () => {
     const prompt = buildSessionSystemPrompt(
       {
         name: "Project",
@@ -56,8 +56,9 @@ describe("buildSessionSystemPrompt", () => {
       },
     );
     expect(prompt).toContain("only agent allowed to communicate");
-    expect(prompt).toContain("CronCreate job every 5 minute(s)");
-    expect(prompt).toContain("list existing jobs first");
+    expect(prompt).toContain("sole wake-up authority");
+    expect(prompt).toContain("Never create a native CronCreate");
+    expect(prompt).toContain("remove it with CronDelete");
     expect(prompt).toContain("spline_answer_question");
   });
 });

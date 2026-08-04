@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Inject, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
 
 import {
   AuthenticatedRequester,
@@ -23,6 +23,10 @@ import { NotificationRecipient } from "../domain/notification-recipient";
 import { EmptyNotificationBodyError } from "../domain/notification.errors";
 import { AdvanceNotificationRecipientDto } from "./dto/advance-notification-recipient.dto";
 import { SendNotificationDto } from "./dto/send-notification.dto";
+import {
+  NOTIFICATION_RECIPIENT_REPOSITORY,
+  NotificationRecipientRepository,
+} from "../domain/ports/notification-recipient.repository.port";
 
 function toNotificationResponse(notification: Notification) {
   return {
@@ -78,6 +82,8 @@ export class NotificationController {
     private readonly getNotificationUseCase: GetNotificationUseCase,
     private readonly listNotificationsByWorkspaceUseCase: ListNotificationsByWorkspaceUseCase,
     private readonly advanceNotificationRecipientUseCase: AdvanceNotificationRecipientUseCase,
+    @Inject(NOTIFICATION_RECIPIENT_REPOSITORY)
+    private readonly notificationRecipients: NotificationRecipientRepository,
   ) {}
 
   @Post()
@@ -113,7 +119,16 @@ export class NotificationController {
   @RequirePermission("read_tasks")
   async list(@Param("workspaceId") workspaceId: string) {
     const notifications = await this.listNotificationsByWorkspaceUseCase.execute(workspaceId);
-    return notifications.map(toNotificationResponse);
+    return Promise.all(
+      notifications.map(async (notification) => ({
+        ...toNotificationResponse(notification),
+        recipients: (
+          await this.notificationRecipients.listByNotification(
+            notification.id.toString(),
+          )
+        ).map(toRecipientResponse),
+      })),
+    );
   }
 
   @Get(":notificationId")

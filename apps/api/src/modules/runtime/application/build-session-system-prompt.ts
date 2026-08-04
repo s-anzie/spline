@@ -51,7 +51,8 @@ export function buildSessionSystemPrompt(
           "- You are the only agent allowed to communicate decisions or questions to the human user.",
           "- Contributors report questions through the persistent Spline question inbox.",
           "- Before planning or answering the user, call spline_list_questions and resolve OPEN questions.",
-          "- Call spline_list_notifications and consume any MANAGER_HUMAN_QUESTION carrying a humanAnswer; record and apply that durable human decision even if its original provider conversation could not be resumed.",
+          "- Read spline_inbox first. Human guidance and answers are durable CHAT_MESSAGE notifications, never provider prompts. Mark each SEEN when opened, ACKNOWLEDGED when understood, and ACTED_ON only after applying or replying.",
+          "- Also consume HUMAN_MANAGER_MESSAGE notifications as live operator guidance. Acknowledge them, reconcile them with the current objective, and apply them at the next safe point without creating another session.",
           "- Answer collaborators with spline_answer_question; close only after their acknowledgement.",
           "- Escalate to the human only when you cannot resolve the question from workspace context or delegated authority.",
           "- When human input is truly required, call spline_ask_human with the current sessionId, context, options, and your recommendation. Do not rely on plain console text alone.",
@@ -78,16 +79,17 @@ export function buildSessionSystemPrompt(
     provider.provider === "claude"
       ? [
           "Provider wake-up protocol (Claude):",
-          `- At the beginning of the session, configure a recurring CronCreate job every ${wakeMinutes} minute(s) when the CronCreate tool is available.`,
-          "- The cron instruction must tell you to sync Spline state, check assigned work/questions/answers/locks/processes, act only on authorized work, report, release locks, and end cleanly when idle.",
-          "- Do not create duplicate cron jobs: list existing jobs first and reuse the matching Spline collaboration wake-up job.",
-          "- Native cron complements the Spline daemon scheduler; it does not replace Spline events, tasks, locks, or status reporting.",
+          `- Spline is the sole wake-up authority and may resume this conversation after approximately ${wakeMinutes} minute(s), but only when durable actionable work exists.`,
+          "- Never create a native CronCreate collaboration job. A provider cron would race the Spline scheduler and could start overlapping turns.",
+          "- If a legacy Spline collaboration cron exists in this provider conversation, list it and remove it with CronDelete before continuing.",
+          "- On a Spline wake-up, run the inbox/sync/check/claim/act/report/release cycle once, then exit cleanly.",
         ]
       : provider.provider === "codex"
         ? [
             "Provider wake-up protocol (Codex):",
             `- Codex exec is turn-based and has no persistent CronCreate tool. Never busy-wait or keep stdin open. Spline will resume this thread approximately every ${wakeMinutes} minute(s).`,
-            "- On every resumed wake-up, immediately run the role-specific sync/check/claim/act/report/release cycle, then exit cleanly.",
+            "- Spline resumes the same Codex thread and the same durable Spline activity; it does not create a new collaboration session row.",
+            "- On every resumed wake-up, immediately run the inbox/sync/check/claim/act/report/release cycle, then exit cleanly.",
           ]
         : [
             `Provider wake-up protocol: Spline will resume this agent approximately every ${wakeMinutes} minute(s); never busy-wait between turns.`,
@@ -95,8 +97,8 @@ export function buildSessionSystemPrompt(
   const splineToolProtocol = [
     "Spline collaboration toolkit protocol:",
     "- A typed MCP server named spline is attached to this provider. Prefer its spline_* tools over ad-hoc HTTP calls.",
-    "- Start every turn with spline_sync_workspace; it returns the authoritative collaboration snapshot in one call.",
-    "- The runtime provides SPLINE_API_URL, SPLINE_WORKSPACE_ID, SPLINE_AGENT_ID, and SPLINE_AGENT_TOKEN. Never print or expose the token.",
+    "- Start every turn with spline_inbox, advance opened messages to SEEN, then call spline_sync_workspace for authoritative project state.",
+    "- The runtime provides SPLINE_API_URL, SPLINE_WORKSPACE_ID, SPLINE_AGENT_ID, SPLINE_SESSION_ID, and SPLINE_AGENT_TOKEN. Never print or expose the token.",
     "- Authenticate HTTP calls with: Authorization: Bearer $SPLINE_AGENT_TOKEN.",
     "- Sync tasks with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/tasks.",
     "- Sync goals with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/goals.",
@@ -107,8 +109,16 @@ export function buildSessionSystemPrompt(
     "- Sync runtime state with GET $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/processes.",
     "- Managers may launch an assigned contributor with POST $SPLINE_API_URL/workspaces/$SPLINE_WORKSPACE_ID/agent-sessions using agentId, machineId, taskId, and a concrete instruction with acceptance criteria.",
     "- Use spline_ask_manager, spline_answer_question, spline_acknowledge_answer, and spline_close_question for the durable question lifecycle.",
-    "- Use spline_delegate_task with goalId for coherent create/assign/launch; do not manually split delegation unless recovery requires it.",
+    "- Use spline_delegate_task with goalId for new work. A QUEUED result is success: keep the task and wait for the contributor's current turn to end.",
+    "- Use spline_activate_agent for an existing assigned task, an IDLE contributor, or recovery after FAILED/CRASHED. It is the authoritative lifecycle operation; never create a parallel agent instance.",
+    "- Treat spline_launch_agent as a low-level fallback only; do not manually guess resumeFromSessionId.",
+    "- Centralize every long-lived workspace service (development server, worker, database helper, watcher) in Spline processes: list first, register it once if absent, acquire its PROCESS lock, then start/restart it. Never hide a persistent service inside an agent shell.",
     "- Use task and lock endpoints as the source of truth; chat text alone never transfers ownership.",
+    "- Sessions execute work; notifications carry communication. Never create, resume, or restart a provider session merely to deliver a message. The scheduler may wake an IDLE agent only when durable actionable work exists; terminal sessions are never auto-woken.",
+    "- For every inbox item: SEEN means read, ACKNOWLEDGED means understood/accepted, ACTED_ON means the requested action or reply is complete. Never skip directly to ACTED_ON before doing the work.",
+    "- Liveness and collaboration are distinct. The daemon sends a technical session heartbeat every 15 seconds while your provider process exists; do not busy-wait or emit meaningless text merely to stay alive.",
+    "- While actively working, never go more than five minutes without a collaboration checkpoint: inspect spline_inbox at the next safe boundary and publish a structured progress event with spline_report_event (type agent.progress, current task, completed step, evidence, blocker, next step).",
+    "- Before a command that may run longer than five minutes, publish a checkpoint announcing it; publish another immediately after it returns. The daemon heartbeat protects the session during the blocking command.",
   ];
 
   return [

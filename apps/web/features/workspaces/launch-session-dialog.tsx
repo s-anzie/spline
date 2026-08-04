@@ -18,15 +18,22 @@ import { useWorkspaceDomainStore } from "@/stores/workspace-domain-store";
 
 export function LaunchSessionDialog() {
   const [launched, setLaunched] = useState(false);
-  const { agents, machines, sessions, startSession, pendingAction, error } =
+  const { agents, providers, machines, sessions, startSession, pendingAction, error } =
     useWorkspaceDomainStore();
   const tasks = usePlanningStore((state) => state.tasks);
   const activeAgents = new Set(
     sessions.filter((session) => !session.endedAt).map((session) => session.agentId),
   );
   const managers = useMemo(
-    () => agents.filter((agent) => agent.promptProfile["role"] === "manager"),
-    [agents],
+    () => {
+      const available = new Set(
+        providers.filter((provider) => provider.available).map((provider) => provider.provider),
+      );
+      return agents.filter(
+        (agent) => agent.promptProfile["role"] === "manager" && available.has(agent.provider),
+      );
+    },
+    [agents, providers],
   );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -129,7 +136,7 @@ export function LaunchSessionDialog() {
             </label>
             {!managers.length && (
               <p className="text-[10px] text-amber-300">
-                Aucun agent manager n’est configuré dans ce workspace.
+                Aucun manager utilisant un provider disponible n’est configuré.
               </p>
             )}
             {error && <p className="text-[10px] text-red-300">{error}</p>}

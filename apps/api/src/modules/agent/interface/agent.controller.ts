@@ -8,6 +8,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   NotFoundException,
   Param,
   Patch,
@@ -35,6 +36,7 @@ import { RegisterAgentUseCase } from "../application/register-agent.use-case";
 import { UpdateAgentDetailsUseCase } from "../application/update-agent-details.use-case";
 import { UpdateAgentHealthUseCase } from "../application/update-agent-health.use-case";
 import { Agent } from "../domain/agent";
+import { PROVIDER_PROFILE_REPOSITORY, ProviderProfileRepository } from "../domain/ports/provider-profile.repository.port";
 import { RegisterAgentDto } from "./dto/register-agent.dto";
 import { UpdateAgentDetailsDto } from "./dto/update-agent-details.dto";
 import { UpdateAgentHealthDto } from "./dto/update-agent-health.dto";
@@ -90,6 +92,8 @@ export class AgentController {
     private readonly manageAgentCredentialUseCase: ManageAgentCredentialUseCase,
     private readonly disableAgentUseCase: DisableAgentUseCase,
     private readonly enableAgentUseCase: EnableAgentUseCase,
+    @Inject(PROVIDER_PROFILE_REPOSITORY)
+    private readonly providerProfiles: ProviderProfileRepository,
   ) {}
 
   @Post()
@@ -125,17 +129,34 @@ export class AgentController {
 
   @Get()
   @RequirePermission("read_tasks")
-  async list(@Param("workspaceId") workspaceId: string) {
+  async list(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
     const agents = await this.listAgentsByWorkspaceUseCase.execute(workspaceId);
-    return agents.map(toAgentResponse);
+    if (requester.type === ActorType.HUMAN) return agents.map(toAgentResponse);
+    const profiles = await this.providerProfiles.list();
+    const unavailable = new Set(
+      profiles.filter((profile) => !profile.available).map((profile) => profile.provider),
+    );
+    return agents
+      .filter((agent) => !unavailable.has(agent.provider))
+      .map(toAgentResponse);
   }
 
   @Get(":agentId")
   @RequirePermission("read_tasks")
-  async get(@Param("agentId") agentId: string) {
+  async get(
+    @Param("agentId") agentId: string,
+    @CurrentRequester() requester: AuthenticatedRequester,
+  ) {
     const result = await this.getAgentUseCase.execute(agentId);
     if (result.isFailure) {
       throw toHttpError(result.error);
+    }
+    if (requester.type === ActorType.AGENT) {
+      const profile = await this.providerProfiles.findByProvider(result.value.provider);
+      if (profile?.available === false) throw new NotFoundException("Agent was not found");
     }
     return toAgentResponse(result.value);
   }

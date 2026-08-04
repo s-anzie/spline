@@ -14,6 +14,15 @@ export class AgentNotEligibleError extends DomainError {
   }
 }
 
+export class AgentProviderUnavailableError extends DomainError {
+  constructor(provider: string) {
+    super(
+      "AGENT_PROVIDER_UNAVAILABLE",
+      `Provider "${provider}" is unavailable and cannot be assigned to an agent`,
+    );
+  }
+}
+
 export class InvalidAgentWorkspaceRoleError extends DomainError {
   constructor(role: WorkspaceRole) {
     super(

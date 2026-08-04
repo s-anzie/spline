@@ -37,12 +37,8 @@ export class PrismaNotificationRecipientRepository implements NotificationRecipi
       where: {
         recipientType,
         recipientId,
-        deliveryStatus: {
-          notIn: [
-            NotificationDeliveryStatus.ACTED_ON,
-            NotificationDeliveryStatus.FAILED,
-          ],
-        },
+        readAt: null,
+        deliveryStatus: { not: NotificationDeliveryStatus.FAILED },
       },
       orderBy: { notification: { createdAt: "desc" } },
     });

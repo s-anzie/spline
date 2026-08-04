@@ -290,6 +290,9 @@ model ProviderProfile {
   hookSupport   Json         @default("[]")
   sandboxModel  SandboxModel @default(WORKSPACE_WRITE)
   outputSchema  Json         @default("{}")
+  available     Boolean      @default(true)
+  quotaUnavailableUntil DateTime?
+  quotaReason   String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

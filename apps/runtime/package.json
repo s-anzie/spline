@@ -13,7 +13,7 @@
     "daemon:install": "bash scripts/install-systemd.sh",
     "daemon:status": "systemctl --user status spline-runtime.service",
     "daemon:logs": "journalctl --user -u spline-runtime.service -f",
-    "dev": "ts-node src/main.ts",
+    "devs": "ts-node src/main.ts",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
     "test": "jest"
