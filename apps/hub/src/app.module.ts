@@ -13,6 +13,7 @@ import { IdentityModule } from "./modules/identity/identity.module";
 import { NotificationModule } from "./modules/notification/notification.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
 import { TaskModule } from "./modules/task/task.module";
+import { LockModule } from "./modules/lock/lock.module";
 import { PolicyModule } from "./modules/policy/policy.module";
 import { ValidationModule } from "./modules/validation/validation.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
@@ -36,6 +37,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     EventModule,
     NotificationModule,
     PolicyModule,
+    LockModule,
     ValidationModule,
     WorkloadModule,
   ],

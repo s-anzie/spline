@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { IdentityModule } from "../identity/identity.module";
 import { TaskModule } from "../task/task.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
+import { AlertOnLeaseExpiredListener } from "./application/alert-on-lease-expired.listener";
 import { AlertOnPolicyViolatedListener } from "./application/alert-on-policy-violated.listener";
 import { AlertOnValidationFailedListener } from "./application/alert-on-validation-failed.listener";
 import { AdvanceRecipientUseCase } from "./application/advance-recipient.use-case";
@@ -42,6 +43,7 @@ import { NotificationController } from "./interface/notification.controller";
     NotifyAssigneeOnTaskAssignedListener,
     AlertOnValidationFailedListener,
     AlertOnPolicyViolatedListener,
+    AlertOnLeaseExpiredListener,
   ],
   exports: [SendNotificationUseCase],
 })

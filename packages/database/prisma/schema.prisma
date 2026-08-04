@@ -83,6 +83,7 @@ model Workspace {
   notifications  Notification[]
   validations    Validation[]
   policies       Policy[]
+  locks          ResourceLock[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -544,4 +545,43 @@ model Policy {
   @@unique([workspaceId, scopeType, scopeId, rule])
   @@index([workspaceId, enabled])
   @@map("policies")
+}
+
+enum LockStatus {
+  HELD
+  RELEASED
+  EXPIRED
+}
+
+/// Protects one precise resource, never a whole task (spec 4.16).
+///
+/// `resourceType`/`resourceId` are opaque: no foreign key towards processes,
+/// files or branches, or this table would depend on everything it protects.
+///
+/// `activeKey` is the exclusion mechanism. It holds "type:id" while the lock
+/// is held and NULL once released or expired; Postgres treats NULLs as
+/// distinct in a unique index, so the constraint applies to live locks only.
+/// Two concurrent acquisitions on separate connections cannot both win, and
+/// the history is still kept (18.7 forbids erasing without audit).
+model ResourceLock {
+  id           String     @id @default(uuid())
+  workspaceId  String
+  resourceType String
+  resourceId   String
+  activeKey    String?
+  ownerType    ActorType
+  ownerId      String
+  reason       String
+  status       LockStatus @default(HELD)
+  acquiredAt   DateTime   @default(now())
+  expiresAt    DateTime
+  releasedAt   DateTime?
+  updatedAt    DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, activeKey])
+  @@index([workspaceId, status])
+  @@index([ownerType, ownerId])
+  @@map("resource_locks")
 }
