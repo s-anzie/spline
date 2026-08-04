@@ -35,3 +35,32 @@ describe("Organization", () => {
     expect(organization.domainEvents).toHaveLength(0);
   });
 });
+
+describe("Organization.rename", () => {
+  it("renames and re-slugs, raising identity.organization_renamed", () => {
+    const organization = Organization.create({ name: "Old", ownerId: "u-1", now }).value;
+    organization.clearDomainEvents();
+
+    const result = organization.rename("Acme Corp", now);
+
+    expect(result.isSuccess).toBe(true);
+    expect(organization.name).toBe("Acme Corp");
+    expect(organization.slug).toBe("acme-corp");
+    expect(organization.domainEvents[0]?.eventName).toBe("identity.organization_renamed");
+  });
+
+  it("renaming to the same name is an idempotent no-op", () => {
+    const organization = Organization.create({ name: "Same", ownerId: "u-1", now }).value;
+    organization.clearDomainEvents();
+
+    expect(organization.rename("Same", now).isSuccess).toBe(true);
+    expect(organization.domainEvents).toHaveLength(0);
+  });
+
+  it("rejects a name that slugifies to nothing", () => {
+    const organization = Organization.create({ name: "Ok", ownerId: "u-1", now }).value;
+
+    expect(organization.rename("###", now).isFailure).toBe(true);
+    expect(organization.rename(" ", now).isFailure).toBe(true);
+  });
+});

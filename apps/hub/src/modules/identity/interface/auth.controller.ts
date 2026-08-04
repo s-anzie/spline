@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Get,
+  Inject,
   HttpCode,
   Post,
   UnauthorizedException,
@@ -13,6 +14,10 @@ import {
 import { ActorIdentity } from "../application/permissions.service";
 import { LoginUseCase } from "../application/login.use-case";
 import { RegisterUserUseCase } from "../application/register-user.use-case";
+import {
+  USER_REPOSITORY,
+  UserRepository,
+} from "../domain/ports/identity.repository.ports";
 import { ActorAuthGuard } from "./actor-auth.guard";
 import { CurrentActor } from "./current-actor.decorator";
 import { LoginDto, RegisterDto } from "./dto/auth.dtos";
@@ -22,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly registerUser: RegisterUserUseCase,
     private readonly login: LoginUseCase,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
   ) {}
 
   @Post("register")
@@ -59,9 +65,25 @@ export class AuthController {
     return result.value;
   }
 
+  /**
+   * The identity a client renders. Humans carry a profile; other actor types
+   * are named by the module that registers them, so they answer with their
+   * reference alone.
+   */
   @Get("me")
   @UseGuards(ActorAuthGuard)
-  me(@CurrentActor() actor: ActorIdentity): ActorIdentity {
-    return actor;
+  async me(@CurrentActor() actor: ActorIdentity): Promise<{
+    actorType: string;
+    actorId: string;
+    displayName: string | null;
+    email: string | null;
+  }> {
+    const user =
+      actor.actorType === "HUMAN" ? await this.users.findById(actor.actorId) : null;
+    return {
+      ...actor,
+      displayName: user?.displayName ?? null,
+      email: user?.email.value ?? null,
+    };
   }
 }

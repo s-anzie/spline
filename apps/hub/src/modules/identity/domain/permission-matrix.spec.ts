@@ -3,7 +3,7 @@ import { PERMISSIONS, roleHasPermission, WORKSPACE_ROLES } from "./permission-ma
 describe("permission matrix (§18.3)", () => {
   it("exposes the six workspace roles and fourteen permissions", () => {
     expect(WORKSPACE_ROLES).toHaveLength(6);
-    expect(PERMISSIONS).toHaveLength(14);
+    expect(PERMISSIONS).toHaveLength(15);
   });
 
   it("OWNER holds every permission", () => {
@@ -12,13 +12,27 @@ describe("permission matrix (§18.3)", () => {
     }
   });
 
-  it("HUMAN_OPERATOR holds everything except policies, members and extensions", () => {
+  it("HUMAN_OPERATOR holds everything except workspace admin, members and extensions", () => {
     expect(roleHasPermission("HUMAN_OPERATOR", "approve_validation")).toBe(true);
     expect(roleHasPermission("HUMAN_OPERATOR", "manage_machines")).toBe(true);
     expect(roleHasPermission("HUMAN_OPERATOR", "manage_providers")).toBe(true);
-    expect(roleHasPermission("HUMAN_OPERATOR", "manage_policies")).toBe(false);
+    expect(roleHasPermission("HUMAN_OPERATOR", "manage_workspace")).toBe(false);
     expect(roleHasPermission("HUMAN_OPERATOR", "manage_members")).toBe(false);
     expect(roleHasPermission("HUMAN_OPERATOR", "manage_extensions")).toBe(false);
+  });
+
+  it("an operator can pause execution in an emergency, but never rename or archive", () => {
+    // "pilote les agents, valide, arbitre" — freezing execution is piloting;
+    // renaming and archiving are ownership-level acts.
+    expect(roleHasPermission("HUMAN_OPERATOR", "operate_workspace")).toBe(true);
+    expect(roleHasPermission("HUMAN_OPERATOR", "manage_workspace")).toBe(false);
+  });
+
+  it("no agent role can pause or administer a workspace", () => {
+    for (const role of ["AGENT_MANAGER", "AGENT_CONTRIBUTOR", "READ_ONLY_AGENT"] as const) {
+      expect(roleHasPermission(role, "operate_workspace")).toBe(false);
+      expect(roleHasPermission(role, "manage_workspace")).toBe(false);
+    }
   });
 
   it("AGENT_MANAGER can manage goals and tasks but never administers the workspace", () => {
@@ -26,6 +40,7 @@ describe("permission matrix (§18.3)", () => {
     expect(roleHasPermission("AGENT_MANAGER", "manage_tasks")).toBe(true);
     expect(roleHasPermission("AGENT_MANAGER", "execute_tasks")).toBe(true);
     expect(roleHasPermission("AGENT_MANAGER", "manage_members")).toBe(false);
+    expect(roleHasPermission("AGENT_MANAGER", "manage_workspace")).toBe(false);
     expect(roleHasPermission("AGENT_MANAGER", "manage_machines")).toBe(false);
     expect(roleHasPermission("AGENT_MANAGER", "manage_providers")).toBe(false);
   });

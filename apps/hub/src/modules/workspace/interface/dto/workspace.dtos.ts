@@ -1,6 +1,4 @@
-import { IsIn, IsNotEmpty, IsObject, IsOptional, IsString } from "class-validator";
-
-import { WORKSPACE_STATUSES, WorkspaceStatus } from "../../domain/workspace";
+import { IsNotEmpty, IsObject, IsOptional, IsString } from "class-validator";
 
 export class CreateWorkspaceDto {
   @IsString()
@@ -33,9 +31,4 @@ export class UpdateWorkspaceDto {
   @IsOptional()
   @IsObject()
   settings?: Record<string, unknown>;
-}
-
-export class ChangeWorkspaceStatusDto {
-  @IsIn(WORKSPACE_STATUSES)
-  status!: WorkspaceStatus;
 }

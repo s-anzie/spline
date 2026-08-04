@@ -3,7 +3,7 @@ import { Guard, GuardViolation } from "../../../kernel/domain/guard";
 import { Result } from "../../../kernel/domain/result";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { slugify } from "../../../kernel/domain/slug";
-import { OrganizationCreated } from "./identity-events";
+import { OrganizationCreated, OrganizationRenamed } from "./identity-events";
 import { InvalidOrganizationNameError } from "./identity.errors";
 
 interface OrganizationProps {
@@ -70,5 +70,28 @@ export class Organization extends AggregateRoot<OrganizationProps> {
 
   get createdAt(): Date {
     return this.props.createdAt;
+  }
+
+  /** Idempotent: renaming to the current name raises nothing. */
+  rename(
+    name: string,
+    now: Date,
+  ): Result<void, GuardViolation | InvalidOrganizationNameError> {
+    const trimmed = Guard.againstEmpty(name, "name");
+    if (trimmed.isFailure) {
+      return Result.fail(trimmed.error);
+    }
+    const slug = slugify(trimmed.value);
+    if (slug.length === 0) {
+      return Result.fail(new InvalidOrganizationNameError(name));
+    }
+    if (trimmed.value === this.props.name) {
+      return Result.ok(undefined);
+    }
+
+    this.props.name = trimmed.value;
+    this.props.slug = slug;
+    this.addDomainEvent(new OrganizationRenamed(this.id.value, now, slug));
+    return Result.ok(undefined);
   }
 }

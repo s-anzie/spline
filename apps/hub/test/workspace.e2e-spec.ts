@@ -117,15 +117,15 @@ describe("Workspace (e2e)", () => {
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ organizationId: owner.organizationId, name: "Lifecycle" })
       .expect(201);
-    const url = `/workspaces/${created.body.workspaceId}/status`;
+    const base = `/workspaces/${created.body.workspaceId}`;
     const auth = (r: request.Test) => r.set("Authorization", `Bearer ${owner.token}`);
 
-    await auth(request(http).post(url)).send({ status: "PAUSED" }).expect(200);
-    await auth(request(http).post(url)).send({ status: "PAUSED" }).expect(200); // idempotent §22.6
-    await auth(request(http).post(url)).send({ status: "DELETED" }).expect(409); // must archive first
-    await auth(request(http).post(url)).send({ status: "ARCHIVED" }).expect(200);
-    await auth(request(http).post(url)).send({ status: "DELETED" }).expect(200);
-    await auth(request(http).post(url)).send({ status: "ACTIVE" }).expect(410); // terminal
+    await auth(request(http).post(`${base}/pause`)).expect(200);
+    await auth(request(http).post(`${base}/pause`)).expect(200); // idempotent §22.6
+    await auth(request(http).post(`${base}/delete`)).expect(409); // must archive first
+    await auth(request(http).post(`${base}/archive`)).expect(200);
+    await auth(request(http).post(`${base}/delete`)).expect(200);
+    await auth(request(http).post(`${base}/unarchive`)).expect(410); // terminal
 
     // Logical deletion keeps the membership rows (audit), so the permission
     // check still passes — the use-case then hides the workspace: 404.
@@ -142,10 +142,10 @@ describe("Workspace (e2e)", () => {
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ organizationId: owner.organizationId, name: "Ephemeral" })
       .expect(201);
-    const url = `/workspaces/${created.body.workspaceId}/status`;
+    const base = `/workspaces/${created.body.workspaceId}`;
     const auth = (r: request.Test) => r.set("Authorization", `Bearer ${owner.token}`);
-    await auth(request(http).post(url)).send({ status: "ARCHIVED" }).expect(200);
-    await auth(request(http).post(url)).send({ status: "DELETED" }).expect(200);
+    await auth(request(http).post(`${base}/archive`)).expect(200);
+    await auth(request(http).post(`${base}/delete`)).expect(200);
 
     const mine = await request(http)
       .get("/workspaces")
@@ -197,5 +197,169 @@ describe("Workspace (e2e)", () => {
 
     expect(organizations.body).toHaveLength(1);
     expect(organizations.body[0].id).toBe(owner.organizationId);
+  });
+
+  it("an operator can pause in an emergency but never rename or archive", async () => {
+    const owner = await registerAndLogin("owner@example.com");
+    const operator = await registerAndLogin("operator@example.com");
+    const created = await request(http)
+      .post("/workspaces")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ organizationId: owner.organizationId, name: "Prod" })
+      .expect(201);
+    const base = `/workspaces/${created.body.workspaceId}`;
+    await request(http)
+      .post(`${base}/members`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ email: "operator@example.com", role: "HUMAN_OPERATOR" })
+      .expect(201);
+    const asOperator = (r: request.Test) =>
+      r.set("Authorization", `Bearer ${operator.token}`);
+
+    await asOperator(request(http).post(`${base}/pause`)).expect(200);
+    await asOperator(request(http).post(`${base}/resume`)).expect(200);
+    await asOperator(request(http).post(`${base}/archive`)).expect(403);
+    await asOperator(request(http).patch(base)).send({ name: "Renamed" }).expect(403);
+  });
+
+  describe("membership administration", () => {
+    it("invites a human by email, lists members, changes role, revokes", async () => {
+      const owner = await registerAndLogin("owner@example.com");
+      await registerAndLogin("colleague@example.com");
+      const created = await request(http)
+        .post("/workspaces")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ organizationId: owner.organizationId, name: "Team" })
+        .expect(201);
+      const members = `/workspaces/${created.body.workspaceId}/members`;
+      const auth = (r: request.Test) => r.set("Authorization", `Bearer ${owner.token}`);
+
+      const invited = await auth(request(http).post(members))
+        .send({ email: "COLLEAGUE@example.com", role: "VIEWER" })
+        .expect(201);
+
+      const listed = await auth(request(http).get(members)).expect(200);
+      expect(listed.body).toHaveLength(2);
+      const colleague = listed.body.find(
+        (m: { email: string }) => m.email === "colleague@example.com",
+      );
+      expect(colleague.role).toBe("VIEWER");
+      expect(colleague.displayName).toBe("Bradley");
+
+      await auth(request(http).patch(`${members}/${invited.body.membershipId}`))
+        .send({ role: "HUMAN_OPERATOR" })
+        .expect(200);
+      await auth(request(http).delete(`${members}/${invited.body.membershipId}`)).expect(200);
+      const after = await auth(request(http).get(members)).expect(200);
+      expect(after.body).toHaveLength(1);
+    });
+
+    it("an invited member actually gains access to the workspace", async () => {
+      const owner = await registerAndLogin("owner@example.com");
+      const colleague = await registerAndLogin("colleague@example.com");
+      const created = await request(http)
+        .post("/workspaces")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ organizationId: owner.organizationId, name: "Shared" })
+        .expect(201);
+      const base = `/workspaces/${created.body.workspaceId}`;
+
+      await request(http).get(base).set("Authorization", `Bearer ${colleague.token}`).expect(403);
+      await request(http)
+        .post(`${base}/members`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ email: "colleague@example.com", role: "VIEWER" })
+        .expect(201);
+      await request(http).get(base).set("Authorization", `Bearer ${colleague.token}`).expect(200);
+    });
+
+    it("rejects unknown email (404), duplicate (409), and last-owner removal (409)", async () => {
+      const owner = await registerAndLogin("owner@example.com");
+      await registerAndLogin("colleague@example.com");
+      const created = await request(http)
+        .post("/workspaces")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ organizationId: owner.organizationId, name: "Rules" })
+        .expect(201);
+      const members = `/workspaces/${created.body.workspaceId}/members`;
+      const auth = (r: request.Test) => r.set("Authorization", `Bearer ${owner.token}`);
+
+      await auth(request(http).post(members))
+        .send({ email: "ghost@example.com", role: "VIEWER" })
+        .expect(404);
+      await auth(request(http).post(members))
+        .send({ email: "colleague@example.com", role: "VIEWER" })
+        .expect(201);
+      await auth(request(http).post(members))
+        .send({ email: "colleague@example.com", role: "VIEWER" })
+        .expect(409);
+
+      const listed = await auth(request(http).get(members)).expect(200);
+      const ownerMembership = listed.body.find((m: { role: string }) => m.role === "OWNER");
+      await auth(
+        request(http).delete(`${members}/${ownerMembership.membershipId}`),
+      ).expect(409);
+    });
+
+    it("a viewer cannot administer members", async () => {
+      const owner = await registerAndLogin("owner@example.com");
+      const viewer = await registerAndLogin("viewer@example.com");
+      const created = await request(http)
+        .post("/workspaces")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ organizationId: owner.organizationId, name: "Closed" })
+        .expect(201);
+      const members = `/workspaces/${created.body.workspaceId}/members`;
+      await request(http)
+        .post(members)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ email: "viewer@example.com", role: "VIEWER" })
+        .expect(201);
+
+      await request(http)
+        .post(members)
+        .set("Authorization", `Bearer ${viewer.token}`)
+        .send({ email: "owner@example.com", role: "VIEWER" })
+        .expect(403);
+    });
+  });
+
+  it("GET /auth/me carries the profile a client renders", async () => {
+    const owner = await registerAndLogin("owner@example.com");
+
+    const me = await request(http)
+      .get("/auth/me")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .expect(200);
+
+    expect(me.body).toEqual({
+      actorType: "HUMAN",
+      actorId: owner.userId,
+      displayName: "Bradley",
+      email: "owner@example.com",
+    });
+  });
+
+  it("the owner renames their organization; a stranger cannot", async () => {
+    const owner = await registerAndLogin("owner@example.com");
+    const stranger = await registerAndLogin("stranger@example.com");
+
+    await request(http)
+      .patch(`/organizations/${owner.organizationId}`)
+      .set("Authorization", `Bearer ${stranger.token}`)
+      .send({ name: "Hijacked" })
+      .expect(403);
+    await request(http)
+      .patch(`/organizations/${owner.organizationId}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ name: "Acme Corp" })
+      .expect(200);
+
+    const listed = await request(http)
+      .get("/organizations")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .expect(200);
+    expect(listed.body[0].name).toBe("Acme Corp");
+    expect(listed.body[0].slug).toBe("acme-corp");
   });
 });

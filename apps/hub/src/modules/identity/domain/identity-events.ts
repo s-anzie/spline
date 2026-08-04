@@ -27,6 +27,18 @@ export class OrganizationCreated extends BaseDomainEvent {
   }
 }
 
+export class OrganizationRenamed extends BaseDomainEvent {
+  readonly eventName = "identity.organization_renamed";
+
+  constructor(
+    aggregateId: string,
+    occurredAt: Date,
+    readonly slug: string,
+  ) {
+    super(aggregateId, occurredAt);
+  }
+}
+
 export class MembershipGranted extends BaseDomainEvent {
   readonly eventName = "identity.membership_granted";
 

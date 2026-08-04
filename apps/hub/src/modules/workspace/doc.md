@@ -98,9 +98,11 @@ Le module policy la remplacera par de vraies entités héritables (Organization 
   utilisation réelle du registre §18.8) ; refuse les acteurs non humains (403).
 - `GET /workspaces` — mes workspaces (tout acteur authentifié).
 - `GET /workspaces/:workspaceId` — `read_workspace_state`.
-- `PATCH /workspaces/:workspaceId` — `manage_policies`.
-- `POST /workspaces/:workspaceId/status` — `manage_policies` ; corps `{ "status": "PAUSED" }` ;
-  la réponse d'une transition invalide distingue 409 (conflit) de 410 (état terminal) via
+- `PATCH /workspaces/:workspaceId` — `manage_workspace`.
+- `POST .../pause` et `POST .../resume` — `operate_workspace` (OWNER **et** HUMAN_OPERATOR : geler
+  l'exécution en incident est un acte de pilotage, pas d'administration).
+- `POST .../archive`, `.../unarchive`, `.../delete` — `manage_workspace` (fin de vie = propriété).
+  Une transition invalide distingue 409 (conflit) de 410 (état terminal) via
   `InvalidStateTransitionError.fromTerminal` — première application concrète de la convention kernel.
 - e2e : création (avec vérification que la membership OWNER existe), isolation (un tiers reçoit 403),
   cycle de statuts complet, idempotence d'une transition répétée.
@@ -113,6 +115,7 @@ Le module policy la remplacera par de vraies entités héritables (Organization 
 | Compensation explicite plutôt que transaction inter-agrégats | Deux agrégats, deux repositories : une transaction traversante coulerait les frontières de modules ; la compensation est locale, testée, et le cas est rare. |
 | Slug non unique globalement, unicité par organisation préparée mais non imposée | Les ids sont les identifiants ; l'unicité de slug est un besoin d'URL propre à venir avec l'UI — le port `existsBySlugInOrganization` est prêt, la contrainte attendra un vrai besoin. |
 | Un agent ne peut pas créer de workspace | La création fonde la propriété humaine (§1.3 Human Supervision) ; un manager agent opère *dans* un workspace, jamais au-dessus. |
+| Cinq routes de cycle de vie plutôt qu'une route `/status` | L'autorisation aurait dû dépendre du corps de la requête (pause = opérateur, archive = propriétaire) ; une route par intention laisse le décorateur de permission faire son travail déclarativement. |
 | `PAUSED` distinct d'`ARCHIVED` | §4.2 liste les deux ; pause = suspension d'exécution réversible fréquente, archive = fin de vie consultable. Les fusionner perdrait la sémantique que le scheduler exploitera. |
 
 ## 7. Double vérification de complétude

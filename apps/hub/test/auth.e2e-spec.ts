@@ -56,6 +56,8 @@ describe("Auth (e2e)", () => {
     expect(me.body).toEqual({
       actorType: "HUMAN",
       actorId: registered.body.userId,
+      displayName: "Bradley",
+      email: "bradley@example.com",
     });
   });
 

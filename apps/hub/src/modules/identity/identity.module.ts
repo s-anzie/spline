@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 
 import { ChangeMembershipRoleUseCase } from "./application/change-membership-role.use-case";
 import { GrantWorkspaceMembershipUseCase } from "./application/grant-workspace-membership.use-case";
+import { InviteWorkspaceMemberUseCase } from "./application/invite-workspace-member.use-case";
 import { IssueActorCredentialUseCase } from "./application/issue-actor-credential.use-case";
 import { LoginUseCase } from "./application/login.use-case";
 import { PermissionsService } from "./application/permissions.service";
@@ -37,6 +38,7 @@ import { ActorAuthGuard } from "./interface/actor-auth.guard";
 import { AuthController } from "./interface/auth.controller";
 import { OrganizationController } from "./interface/organization.controller";
 import { PermissionsGuard } from "./interface/permissions.guard";
+import { WorkspaceMemberController } from "./interface/workspace-member.controller";
 
 @Module({
   imports: [
@@ -51,7 +53,7 @@ import { PermissionsGuard } from "./interface/permissions.guard";
       }),
     }),
   ],
-  controllers: [AuthController, OrganizationController],
+  controllers: [AuthController, OrganizationController, WorkspaceMemberController],
   providers: [
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: PrismaOrganizationRepository },
@@ -69,6 +71,7 @@ import { PermissionsGuard } from "./interface/permissions.guard";
     RevokeActorCredentialUseCase,
     VerifyActorTokenUseCase,
     GrantWorkspaceMembershipUseCase,
+    InviteWorkspaceMemberUseCase,
     ChangeMembershipRoleUseCase,
     RevokeWorkspaceMembershipUseCase,
     PermissionsService,
@@ -83,10 +86,12 @@ import { PermissionsGuard } from "./interface/permissions.guard";
     IssueActorCredentialUseCase,
     RevokeActorCredentialUseCase,
     GrantWorkspaceMembershipUseCase,
+    InviteWorkspaceMemberUseCase,
     ChangeMembershipRoleUseCase,
     RevokeWorkspaceMembershipUseCase,
     WORKSPACE_MEMBERSHIP_REPOSITORY,
     ORGANIZATION_REPOSITORY,
+    USER_REPOSITORY,
     TOKEN_SIGNER,
   ],
 })

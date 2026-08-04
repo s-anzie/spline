@@ -92,7 +92,8 @@ Catalogue de permissions étendu pour couvrir tout le périmètre v3 (14 permiss
 | `request_validation` | demander une validation (§10.9 — un agent ne s'auto-valide jamais) |
 | `approve_validation` | approbation humaine (§11.2) — **humains uniquement, par construction** |
 | `record_decisions` | §4.17 |
-| `manage_policies` | règles du workspace (§12) |
+| `manage_workspace` | identité et fin de vie du workspace : renommer, décrire, régler, archiver, supprimer |
+| `operate_workspace` | levier opérationnel : mettre en pause / reprendre l'exécution |
 | `manage_members` | inviter/retirer des acteurs, changer les rôles |
 | `manage_machines` | enregistrer/lier des workers (§6.3, bootstrap §18.8) |
 | `manage_extensions` | installer/révoquer des extensions (§19.5) |
@@ -101,7 +102,9 @@ Catalogue de permissions étendu pour couvrir tout le périmètre v3 (14 permiss
 Matrice (testée ligne par ligne — la table complète est dans `permission-matrix.spec.ts`) :
 
 - **OWNER** : tout.
-- **HUMAN_OPERATOR** : tout sauf `manage_policies`, `manage_members`, `manage_extensions`.
+- **HUMAN_OPERATOR** : tout sauf `manage_workspace`, `manage_members`, `manage_extensions` — mais **avec**
+  `operate_workspace` : geler l'exécution en incident fait partie du pilotage, ça ne peut pas attendre
+  le propriétaire.
 - **AGENT_MANAGER** : `read`, `manage_goals`, `manage_tasks`, `execute_tasks`, `acquire_locks`,
   `manage_processes`, `request_validation`, `record_decisions`.
 - **AGENT_CONTRIBUTOR** : `read`, `execute_tasks`, `acquire_locks`, `manage_processes`,
@@ -206,3 +209,53 @@ Reports explicites (décidés, pas oubliés) :
 - **Changement d'email / de mot de passe, réinitialisation** : produit réel mais non exigé par la spec V1 ;
   backlog du module, les ports suffisent déjà.
 - **Rate-limiting du login** : appartient à la couche gateway/API (§20), pas au module.
+
+
+## 9. Audit d'accessibilité et de granularité CRUD (2026-08-04)
+
+Revue transverse demandée après le module Goal : est-ce que chaque opération exposée correspond à un vrai
+cas d'usage, et est-ce que la granularité de permission a du sens ? L'audit a trouvé un défaut sévère qui
+n'était pas de la granularité mais de l'**inaccessibilité pure**.
+
+### Ce qui était cassé
+
+**Six use-cases implémentés, testés, exportés — et injoignables.** `GrantWorkspaceMembership`,
+`ChangeMembershipRole`, `RevokeWorkspaceMembership`, `IssueActorCredential`, `RevokeActorCredential`,
+`VerifyActorToken` n'avaient aucune route. Conséquence concrète : **un workspace ne pouvait jamais avoir
+un second membre.** Impossible d'inviter un collègue, impossible de rattacher un agent. Si les e2e du
+module Goal pouvaient utiliser un agent manager, c'est parce qu'ils attrapaient le use-case directement
+dans le conteneur DI — une porte dérobée de test, pas une capacité produit.
+
+`manage_members` était donc une **permission morte** : déclarée, testée dans la matrice, utilisée nulle
+part — alors que son module est censé être terminé. À distinguer de `manage_tasks`, `acquire_locks`,
+`manage_processes`, `request_validation`, `record_decisions`, `manage_machines`, `manage_extensions`,
+`manage_providers`, qui sont à zéro route parce que **leur module n'existe pas encore** : celles-là ne
+sont pas mortes, elles ne sont pas encore atteintes.
+
+### Ce qui a été corrigé
+
+- **Routes de membres** (`WorkspaceMemberController`) : inviter (par email pour un humain — le seul
+  identifiant que l'invitant connaisse réellement —, par référence explicite pour les autres acteurs),
+  lister, changer de rôle, révoquer. `manage_members` a enfin des routes.
+- **Découpage de `manage_policies`**, qui faisait deux métiers. Devenu `manage_workspace` (renommer,
+  configurer, archiver, supprimer — OWNER) et `operate_workspace` (pause/reprise — OWNER **et**
+  HUMAN_OPERATOR). La route `/status` unique est devenue cinq routes explicites (`/pause`, `/resume`,
+  `/archive`, `/unarchive`, `/delete`) : chacune porte une seule intention et une seule permission,
+  déclarativement, au lieu d'une autorisation qui aurait dû dépendre du corps de la requête.
+- **`GET /auth/me`** retournait `{actorType, actorId}` : une UI ne pouvait pas afficher qui est connecté.
+  Renvoie désormais aussi `displayName` et `email` pour un humain.
+- **`PATCH /organizations/:id`** : on restait coincé à vie avec le nom d'organisation dérivé du
+  displayName à l'inscription.
+
+### Sémantique de suppression, vérifiée entité par entité
+
+Elle était déjà cohérente et reste inchangée : **logique là où l'audit compte** (Workspace → `DELETED`,
+Goal → `CANCELLED`, credential → `revokedAt`), **physique là où la ligne n'est qu'un lien sans histoire
+propre** (membership). Aucune entité n'a de `DELETE` qui détruirait une trace.
+
+### Report explicite
+
+**Routes de credentials d'acteurs** (émission/révocation de jetons agents) : volontairement différées au
+module agent. Émettre un jeton pour un agent qui n'existe dans aucun registre créerait des orphelins —
+c'est le module qui possède l'entité Agent qui doit exposer son onboarding. En attendant, les acteurs
+non humains restent rattachables à un workspace par référence explicite.

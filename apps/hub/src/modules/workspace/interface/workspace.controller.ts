@@ -28,12 +28,8 @@ import { CreateWorkspaceUseCase } from "../application/create-workspace.use-case
 import { GetWorkspaceUseCase } from "../application/get-workspace.use-case";
 import { ListWorkspacesForActorUseCase } from "../application/list-workspaces-for-actor.use-case";
 import { UpdateWorkspaceDetailsUseCase } from "../application/update-workspace-details.use-case";
-import { Workspace } from "../domain/workspace";
-import {
-  ChangeWorkspaceStatusDto,
-  CreateWorkspaceDto,
-  UpdateWorkspaceDto,
-} from "./dto/workspace.dtos";
+import { Workspace, WorkspaceStatus } from "../domain/workspace";
+import { CreateWorkspaceDto, UpdateWorkspaceDto } from "./dto/workspace.dtos";
 
 interface WorkspaceView {
   id: string;
@@ -122,7 +118,7 @@ export class WorkspaceController {
   }
 
   @Patch("workspaces/:workspaceId")
-  @RequirePermission("manage_policies")
+  @RequirePermission("manage_workspace")
   async update(
     @Param("workspaceId") workspaceId: string,
     @Body() dto: UpdateWorkspaceDto,
@@ -137,24 +133,60 @@ export class WorkspaceController {
     return { ok: true };
   }
 
-  @Post("workspaces/:workspaceId/status")
+  /**
+   * The operational lever: freezing and resuming execution is piloting, so a
+   * human operator holds it — an incident must not wait for the owner.
+   */
+  @Post("workspaces/:workspaceId/pause")
   @HttpCode(200)
-  @RequirePermission("manage_policies")
-  async status(
-    @Param("workspaceId") workspaceId: string,
-    @Body() dto: ChangeWorkspaceStatusDto,
+  @RequirePermission("operate_workspace")
+  async pause(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "PAUSED");
+  }
+
+  @Post("workspaces/:workspaceId/resume")
+  @HttpCode(200)
+  @RequirePermission("operate_workspace")
+  async resume(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ACTIVE");
+  }
+
+  /** End-of-life is ownership-level, never operational. */
+  @Post("workspaces/:workspaceId/archive")
+  @HttpCode(200)
+  @RequirePermission("manage_workspace")
+  async archive(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ARCHIVED");
+  }
+
+  @Post("workspaces/:workspaceId/unarchive")
+  @HttpCode(200)
+  @RequirePermission("manage_workspace")
+  async unarchive(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ACTIVE");
+  }
+
+  @Post("workspaces/:workspaceId/delete")
+  @HttpCode(200)
+  @RequirePermission("manage_workspace")
+  async remove(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "DELETED");
+  }
+
+  private async transition(
+    workspaceId: string,
+    status: WorkspaceStatus,
   ): Promise<{ ok: true }> {
-    const result = await this.changeStatus.execute({ workspaceId, status: dto.status });
+    const result = await this.changeStatus.execute({ workspaceId, status });
     if (result.isFailure) {
       if (result.error.name === "WorkspaceNotFoundError") {
         throw new NotFoundException(result.error.message);
       }
       const transition = result.error as InvalidStateTransitionError;
       // fromTerminal distinguishes "gone for good" (410) from "conflict" (409).
-      if (transition.fromTerminal) {
-        throw new GoneException(transition.message);
-      }
-      throw new ConflictException(transition.message);
+      throw transition.fromTerminal
+        ? new GoneException(transition.message)
+        : new ConflictException(transition.message);
     }
     return { ok: true };
   }

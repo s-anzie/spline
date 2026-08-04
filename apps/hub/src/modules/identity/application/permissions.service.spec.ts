@@ -31,7 +31,7 @@ describe("PermissionsService", () => {
     const service = await makeService();
 
     await expect(
-      service.can({ actorType: "HUMAN", actorId: "u-owner" }, "manage_policies", "w-1"),
+      service.can({ actorType: "HUMAN", actorId: "u-owner" }, "manage_workspace", "w-1"),
     ).resolves.toBe(true);
     await expect(
       service.can({ actorType: "AGENT", actorId: "a-contrib" }, "execute_tasks", "w-1"),
