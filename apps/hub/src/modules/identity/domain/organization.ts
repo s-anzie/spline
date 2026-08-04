@@ -2,6 +2,7 @@ import { AggregateRoot } from "../../../kernel/domain/aggregate-root";
 import { Guard, GuardViolation } from "../../../kernel/domain/guard";
 import { Result } from "../../../kernel/domain/result";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
+import { slugify } from "../../../kernel/domain/slug";
 import { OrganizationCreated } from "./identity-events";
 import { InvalidOrganizationNameError } from "./identity.errors";
 
@@ -16,13 +17,6 @@ export interface CreateOrganizationInput {
   name: string;
   ownerId: string;
   now: Date;
-}
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 /**

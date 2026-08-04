@@ -37,6 +37,20 @@ describe("identity repositories (integration)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // Memberships now carry a real FK to workspaces (workspace module's
+    // migration) — the rows the membership tests reference must exist.
+    await prisma.organization.create({
+      data: { id: "org-1", name: "Org", slug: "org", ownerId: "fixture-owner" },
+    });
+    await prisma.workspace.create({
+      data: {
+        id: "w-1",
+        organizationId: "org-1",
+        name: "W",
+        slug: "w",
+        updatedAt: now,
+      },
+    });
   });
 
   afterAll(async () => {

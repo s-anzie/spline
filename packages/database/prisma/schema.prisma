@@ -42,14 +42,42 @@ model User {
 /// Top of the v3 hierarchy (§4.1). Slugs are display conveniences, not
 /// identifiers — ids are the identifiers, so slug carries no unique index.
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String
-  ownerId   String
-  createdAt DateTime @default(now())
+  id         String      @id @default(uuid())
+  name       String
+  slug       String
+  ownerId    String
+  createdAt  DateTime    @default(now())
+  workspaces Workspace[]
 
   @@index([ownerId])
   @@map("organizations")
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+  DELETED
+}
+
+/// Main isolation unit (§4.2). Deletion is logical (status DELETED);
+/// updatedAt is set by the domain through the injected clock, on purpose
+/// not @updatedAt. settings always carries a non-empty policies key.
+model Workspace {
+  id             String                @id @default(uuid())
+  organizationId String
+  name           String
+  slug           String
+  description    String?
+  status         WorkspaceStatus       @default(ACTIVE)
+  settings       Json                  @default("{}")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships    WorkspaceMembership[]
+
+  @@index([organizationId])
+  @@map("workspaces")
 }
 
 model WorkspaceMembership {
@@ -59,6 +87,7 @@ model WorkspaceMembership {
   workspaceId String
   role        WorkspaceRole
   createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([actorType, actorId, workspaceId])
   @@index([workspaceId])

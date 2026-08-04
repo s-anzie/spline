@@ -198,11 +198,11 @@ malformé) ; persistance de l'agrégat complet prouvée par test d'intégration 
 
 Reports explicites (décidés, pas oubliés) :
 
-- **Consommation de `@BootstrapOperation` par le guard** : le contrôle « ressource ∈ workspace » n'existe
-  pas encore (aucune ressource n'existe) ; le registre et le décorateur sont posés, le guard les consommera
-  quand le module workspace introduira la première vérification de rattachement.
-- **Routes Organization (liste/lecture)** : viendront avec le module workspace, qui possède la navigation
-  org → workspaces ; le port (`listByOwnerId`) est prêt.
+- **Consommation de `@BootstrapOperation` par le guard** : le contrôle « ressource ∈ workspace »
+  n'existera qu'avec les premières ressources filles (goals/tasks) ; le registre et le décorateur sont
+  posés (et `workspace-create` est marqué sur sa route depuis le module workspace).
+- ~~Routes Organization~~ : **soldé** — `GET /organizations` livrée avec le module workspace
+  (`OrganizationController`, e2e couverte), comme prévu ici.
 - **Changement d'email / de mot de passe, réinitialisation** : produit réel mais non exigé par la spec V1 ;
   backlog du module, les ports suffisent déjà.
 - **Rate-limiting du login** : appartient à la couche gateway/API (§20), pas au module.

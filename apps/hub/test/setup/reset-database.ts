@@ -7,6 +7,7 @@ import { PrismaClient } from "@repo/db";
 const TABLES = [
   "users",
   "organizations",
+  "workspaces",
   "workspace_memberships",
   "actor_credentials",
 ];

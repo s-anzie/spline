@@ -35,6 +35,7 @@ import {
 } from "./infrastructure/prisma-identity.repositories";
 import { ActorAuthGuard } from "./interface/actor-auth.guard";
 import { AuthController } from "./interface/auth.controller";
+import { OrganizationController } from "./interface/organization.controller";
 import { PermissionsGuard } from "./interface/permissions.guard";
 
 @Module({
@@ -50,7 +51,7 @@ import { PermissionsGuard } from "./interface/permissions.guard";
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, OrganizationController],
   providers: [
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: PrismaOrganizationRepository },
@@ -85,6 +86,7 @@ import { PermissionsGuard } from "./interface/permissions.guard";
     ChangeMembershipRoleUseCase,
     RevokeWorkspaceMembershipUseCase,
     WORKSPACE_MEMBERSHIP_REPOSITORY,
+    ORGANIZATION_REPOSITORY,
     TOKEN_SIGNER,
   ],
 })
