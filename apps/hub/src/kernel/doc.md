@@ -81,7 +81,7 @@ kernel/
 │   └── domain-error.mapping.ts   toHttpException(error, mapping)
 ├── infrastructure/       # implémentations par défaut (peuvent importer Nest)
 │   ├── system-clock.ts                   Clock → new Date()
-│   └── event-emitter-event-publisher.ts  EventPublisher → EventEmitter2
+│   └── event-emitter-event-publisher.ts  EventPublisher → EventEmitter2 (non liée : voir §7)
 ├── testing/              # doubles pour les tests des autres modules
 │   ├── fake-clock.ts             horloge gelée, set/advance explicites
 │   └── fake-event-publisher.ts   capture les événements publiés
@@ -314,11 +314,18 @@ Les tests d'application les remplacent par les doubles de `testing/`.
 
 ## 7. Évolutions prévues
 
-- **Event Bus persistant (§14)** : `EventPublisher` gagnera une implémentation qui persiste avant d'émettre
-  (outbox). Le port ne change pas — c'est le critère de réussite de son design. **Dette nommée** : tant
-  qu'il n'existe pas, toute réaction inter-modules branchée sur un événement (aujourd'hui : l'annulation
-  en cascade des tâches d'un objectif) est « au mieux » — un processus qui meurt entre la publication et
-  le traitement perd la réaction. Aucun module ne doit supposer le contraire.
+- ~~**Event Bus persistant (§14)**~~ : **livré** par le module event. Deux corrections que cette section
+  avait prédites à tort, et qui valent d'être gardées :
+  - elle affirmait « **le port ne change pas** — c'est le critère de réussite de son design ». Faux :
+    persister est une E/S, et une signature `void` ne peut l'honorer qu'en jetant les erreurs. Le port est
+    devenu `Promise<void>`. Le critère de réussite n'était pas le bon — ce n'est pas « le port ne change
+    pas », c'est « le changement est trouvé par le compilateur et non par la production ». Il l'a été :
+    six sites.
+  - `DomainEvent` a dû déclarer `workspaceId` (nullable — certains faits sont au-dessus des workspaces),
+    parce que §4.20 l'exige de tout Event. Il n'était porté que par 9 des 33 classes d'événements, ajouté
+    au coup par coup là où un listener en avait eu besoin.
+  La dette de durabilité est donc close à hauteur de ce qui est vrai : écriture avant émission. Reste
+  l'atomicité avec l'écriture de l'agrégat, nommée dans `modules/event/doc.md` §1.7.
 - **`Lease` (§4.13)** : le bail est une entité à part entière (owner, resource, expires_at, renew) — elle
   vivra dans le module qui la possède (Lock Manager ou Runtime), construite sur `isExpired` du kernel.
   Elle n'entre pas au kernel : elle a une identité et un propriétaire, ce n'est pas une primitive.

@@ -22,23 +22,23 @@ class TestAggregate extends AggregateRoot<Props> {
 }
 
 describe("flushDomainEvents", () => {
-  it("publishes every collected event, then clears the aggregate", () => {
+  it("publishes every collected event, then clears the aggregate", async () => {
     const aggregate = new TestAggregate({ name: "a" });
     const publisher = new FakeEventPublisher();
     aggregate.act(new Date("2026-08-04T09:00:00Z"));
     aggregate.act(new Date("2026-08-04T09:01:00Z"));
 
-    flushDomainEvents(aggregate, publisher);
+    await flushDomainEvents(aggregate, publisher);
 
     expect(publisher.published).toHaveLength(2);
     expect(aggregate.domainEvents).toHaveLength(0);
   });
 
-  it("is a no-op on an aggregate with no pending events", () => {
+  it("is a no-op on an aggregate with no pending events", async () => {
     const aggregate = new TestAggregate({ name: "a" });
     const publisher = new FakeEventPublisher();
 
-    flushDomainEvents(aggregate, publisher);
+    await flushDomainEvents(aggregate, publisher);
 
     expect(publisher.published).toHaveLength(0);
   });

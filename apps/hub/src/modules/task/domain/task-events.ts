@@ -8,16 +8,20 @@ export class TaskCreated extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly goalId: string,
     readonly assignee: ActorRef,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
 export class TaskUpdated extends BaseDomainEvent {
   readonly eventName = "task.updated";
+
+  constructor(aggregateId: string, occurredAt: Date, workspaceId: string) {
+    super(aggregateId, occurredAt, workspaceId);
+  }
 }
 
 export class TaskAssigned extends BaseDomainEvent {
@@ -26,9 +30,10 @@ export class TaskAssigned extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly assignee: ActorRef,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -38,11 +43,12 @@ export class TaskStatusChanged extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly goalId: string,
     readonly from: TaskStatus,
     readonly to: TaskStatus,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -52,10 +58,11 @@ export class TaskBlockerReported extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly blockerId: string,
     readonly blockerType: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -65,9 +72,10 @@ export class TaskBlockerResolved extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly blockerId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -77,9 +85,10 @@ export class TaskDependencyAdded extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly dependsOnTaskId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -89,8 +98,9 @@ export class TaskDependencyRemoved extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly dependsOnTaskId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }

@@ -15,6 +15,8 @@ const TABLES = [
   "artifacts",
   "artifact_versions",
   "decisions",
+  "events",
+  "event_receipts",
 ];
 
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {

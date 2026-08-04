@@ -225,7 +225,7 @@ export class Goal extends AggregateRoot<GoalProps> {
       this.props.priority = patch.priority;
     }
     this.props.updatedAt = now;
-    this.addDomainEvent(new GoalUpdated(this.id.value, now));
+    this.addDomainEvent(new GoalUpdated(this.id.value, now, this.props.workspaceId));
     return Result.ok(undefined);
   }
 
@@ -273,7 +273,7 @@ export class Goal extends AggregateRoot<GoalProps> {
 
     this.props.dependsOnGoalIds.push(dependsOnGoalId);
     this.props.updatedAt = now;
-    this.addDomainEvent(new GoalDependencyAdded(this.id.value, now, dependsOnGoalId));
+    this.addDomainEvent(new GoalDependencyAdded(this.id.value, now, this.props.workspaceId, dependsOnGoalId));
     return Result.ok(undefined);
   }
 
@@ -291,7 +291,7 @@ export class Goal extends AggregateRoot<GoalProps> {
 
     this.props.dependsOnGoalIds.splice(index, 1);
     this.props.updatedAt = now;
-    this.addDomainEvent(new GoalDependencyRemoved(this.id.value, now, dependsOnGoalId));
+    this.addDomainEvent(new GoalDependencyRemoved(this.id.value, now, this.props.workspaceId, dependsOnGoalId));
     return Result.ok(undefined);
   }
 
@@ -304,7 +304,7 @@ export class Goal extends AggregateRoot<GoalProps> {
     }
     this.props.progress = value;
     this.props.updatedAt = now;
-    this.addDomainEvent(new GoalProgressUpdated(this.id.value, now, value));
+    this.addDomainEvent(new GoalProgressUpdated(this.id.value, now, this.props.workspaceId, value));
     return Result.ok(undefined);
   }
 

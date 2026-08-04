@@ -79,6 +79,7 @@ model Workspace {
   tasks          Task[]
   artifacts      Artifact[]
   decisions      Decision[]
+  events         Event[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -320,4 +321,66 @@ model Decision {
   @@index([workspaceId])
   @@index([taskId])
   @@map("decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Events (§4.20, §14) — the nervous system. Facts, never intentions:
+// deliberately no updatedAt and no mutation path. `sequence` gives the total
+// order §14.1 requires — a timestamp cannot, two facts share a millisecond.
+// ---------------------------------------------------------------------------
+
+enum EventSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+model Event {
+  id          String        @id @default(uuid())
+  /// Nullable: some facts sit above workspaces (a user registering).
+  workspaceId String?
+  type        String
+  severity    EventSeverity @default(INFO)
+  actorType   ActorType?
+  actorId     String?
+  targetType  String
+  targetId    String
+  payload     Json          @default("{}")
+  sequence    BigInt        @default(autoincrement())
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  receipts  EventReceipt[]
+
+  @@index([workspaceId, sequence])
+  @@index([type])
+  @@index([targetType, targetId])
+  @@map("events")
+}
+
+enum EventReceiptStatus {
+  PENDING
+  SEEN
+  ACKNOWLEDGED
+  ACTED
+}
+
+/// §4.21 — taking notice is individual, so it never lives on the Event.
+model EventReceipt {
+  id             String             @id @default(uuid())
+  eventId        String
+  actorType      ActorType
+  actorId        String
+  status         EventReceiptStatus @default(PENDING)
+  seenAt         DateTime?
+  acknowledgedAt DateTime?
+  actedAt        DateTime?
+  createdAt      DateTime           @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, actorType, actorId])
+  @@index([actorType, actorId, status])
+  @@map("event_receipts")
 }

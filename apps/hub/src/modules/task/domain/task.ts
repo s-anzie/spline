@@ -296,7 +296,7 @@ export class Task extends AggregateRoot<TaskProps> {
 
     this.props.assignee = assignee;
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskAssigned(this.id.value, now, assignee));
+    this.addDomainEvent(new TaskAssigned(this.id.value, now, this.props.workspaceId, assignee));
     return Result.ok(undefined);
   }
 
@@ -353,7 +353,7 @@ export class Task extends AggregateRoot<TaskProps> {
       this.props.repositoryId = patch.repositoryId || null;
     }
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskUpdated(this.id.value, now));
+    this.addDomainEvent(new TaskUpdated(this.id.value, now, this.props.workspaceId));
     return Result.ok(undefined);
   }
 
@@ -406,7 +406,13 @@ export class Task extends AggregateRoot<TaskProps> {
     this.props.blockers.push(blocker);
     this.props.updatedAt = now;
     this.addDomainEvent(
-      new TaskBlockerReported(this.id.value, now, blocker.id, blocker.type),
+      new TaskBlockerReported(
+        this.id.value,
+        now,
+        this.props.workspaceId,
+        blocker.id,
+        blocker.type,
+      ),
     );
     return Result.ok(blocker.id);
   }
@@ -427,7 +433,7 @@ export class Task extends AggregateRoot<TaskProps> {
     blocker.resolvedAt = now;
     blocker.resolution = resolution.trim() || null;
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskBlockerResolved(this.id.value, now, blockerId));
+    this.addDomainEvent(new TaskBlockerResolved(this.id.value, now, this.props.workspaceId, blockerId));
 
     // The last obstacle cleared: resume where the work actually stood.
     if (this.openBlockers.length === 0 && this.props.status === "BLOCKED") {
@@ -435,7 +441,14 @@ export class Task extends AggregateRoot<TaskProps> {
       this.props.statusBeforeBlock = null;
       this.props.status = restored;
       this.addDomainEvent(
-        new TaskStatusChanged(this.id.value, now, this.props.goalId, "BLOCKED", restored),
+        new TaskStatusChanged(
+          this.id.value,
+          now,
+          this.props.workspaceId,
+          this.props.goalId,
+          "BLOCKED",
+          restored,
+        ),
       );
     }
     return Result.ok(undefined);
@@ -457,7 +470,7 @@ export class Task extends AggregateRoot<TaskProps> {
 
     this.props.dependsOnTaskIds.push(dependsOnTaskId);
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskDependencyAdded(this.id.value, now, dependsOnTaskId));
+    this.addDomainEvent(new TaskDependencyAdded(this.id.value, now, this.props.workspaceId, dependsOnTaskId));
     return Result.ok(undefined);
   }
 
@@ -475,7 +488,7 @@ export class Task extends AggregateRoot<TaskProps> {
 
     this.props.dependsOnTaskIds.splice(index, 1);
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskDependencyRemoved(this.id.value, now, dependsOnTaskId));
+    this.addDomainEvent(new TaskDependencyRemoved(this.id.value, now, this.props.workspaceId, dependsOnTaskId));
     return Result.ok(undefined);
   }
 
@@ -504,7 +517,14 @@ export class Task extends AggregateRoot<TaskProps> {
         }
         this.props.updatedAt = now;
         this.addDomainEvent(
-          new TaskStatusChanged(this.id.value, now, this.props.goalId, from, outcome.to),
+          new TaskStatusChanged(
+            this.id.value,
+            now,
+            this.props.workspaceId,
+            this.props.goalId,
+            from,
+            outcome.to,
+          ),
         );
         return Result.ok(undefined);
       }

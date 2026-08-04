@@ -5,11 +5,11 @@ import { EventPublisher } from "../domain/ports/event-publisher.port";
 export class FakeEventPublisher implements EventPublisher {
   readonly published: DomainEvent[] = [];
 
-  publish(event: DomainEvent): void {
+  async publish(event: DomainEvent): Promise<void> {
     this.published.push(event);
   }
 
-  publishAll(events: readonly DomainEvent[]): void {
+  async publishAll(events: readonly DomainEvent[]): Promise<void> {
     this.published.push(...events);
   }
 }

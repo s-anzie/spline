@@ -12,7 +12,10 @@ interface EventSource {
  * `repository.save(aggregate)` then `flushDomainEvents(aggregate, publisher)`
  * — never publish by hand, so the order cannot be accidentally inverted.
  */
-export function flushDomainEvents(source: EventSource, publisher: EventPublisher): void {
-  publisher.publishAll(source.domainEvents);
+export async function flushDomainEvents(
+  source: EventSource,
+  publisher: EventPublisher,
+): Promise<void> {
+  await publisher.publishAll(source.domainEvents);
   source.clearDomainEvents();
 }

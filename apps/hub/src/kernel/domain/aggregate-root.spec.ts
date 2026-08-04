@@ -4,6 +4,7 @@ import { DomainEvent } from "./domain-event";
 class TestEvent implements DomainEvent {
   readonly eventName = "test.happened";
   readonly occurredAt = new Date();
+  readonly workspaceId = null;
   constructor(readonly aggregateId: string) {}
 }
 

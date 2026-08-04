@@ -9,11 +9,14 @@ import { DomainEvent } from "./domain-event";
 export abstract class BaseDomainEvent implements DomainEvent {
   abstract readonly eventName: string;
   readonly occurredAt: Date;
+  readonly workspaceId: string | null;
 
   constructor(
     readonly aggregateId: string,
     occurredAt: Date,
+    workspaceId: string | null = null,
   ) {
     this.occurredAt = new Date(occurredAt);
+    this.workspaceId = workspaceId;
   }
 }

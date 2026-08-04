@@ -7,10 +7,10 @@ export class GoalCreated extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly parentGoalId: string | null,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -24,11 +24,11 @@ export class GoalStatusChanged extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly from: GoalStatus,
     readonly to: GoalStatus,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -38,9 +38,10 @@ export class GoalProgressUpdated extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly progress: number,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -50,9 +51,10 @@ export class GoalDependencyAdded extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly dependsOnGoalId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -62,8 +64,9 @@ export class GoalDependencyRemoved extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly dependsOnGoalId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }

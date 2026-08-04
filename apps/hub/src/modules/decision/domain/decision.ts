@@ -173,7 +173,12 @@ export class Decision extends AggregateRoot<DecisionProps> {
     }
 
     this.props.supersededByDecisionId = replacement.value;
-    this.addDomainEvent(new DecisionSuperseded(this.id.value, now, replacement.value));
+    this.addDomainEvent(new DecisionSuperseded(
+      this.id.value,
+      now,
+      this.props.workspaceId,
+      replacement.value,
+    ));
     return Result.ok(undefined);
   }
 }

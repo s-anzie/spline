@@ -6,10 +6,10 @@ export class DecisionRecorded extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly taskId: string | null,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -19,8 +19,9 @@ export class DecisionSuperseded extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
+    workspaceId: string,
     readonly supersededByDecisionId: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }

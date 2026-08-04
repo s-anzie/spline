@@ -288,7 +288,13 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
     });
     this.props.updatedAt = now;
     this.addDomainEvent(
-      new ArtifactVersioned(this.id.value, now, next, checksum.value),
+      new ArtifactVersioned(
+        this.id.value,
+        now,
+        this.props.workspaceId,
+        next,
+        checksum.value,
+      ),
     );
     return Result.ok(next);
   }
@@ -321,7 +327,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
       this.props.metadata = { ...this.props.metadata, ...patch.metadata };
     }
     this.props.updatedAt = now;
-    this.addDomainEvent(new ArtifactUpdated(this.id.value, now));
+    this.addDomainEvent(new ArtifactUpdated(this.id.value, now, this.props.workspaceId));
     return Result.ok(undefined);
   }
 
@@ -350,7 +356,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
     }
 
     this.props.updatedAt = now;
-    this.addDomainEvent(new ArtifactLinked(this.id.value, now));
+    this.addDomainEvent(new ArtifactLinked(this.id.value, now, this.props.workspaceId));
     return Result.ok(undefined);
   }
 
@@ -375,7 +381,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
     }
 
     this.props.updatedAt = now;
-    this.addDomainEvent(new ArtifactUnlinked(this.id.value, now));
+    this.addDomainEvent(new ArtifactUnlinked(this.id.value, now, this.props.workspaceId));
     return Result.ok(undefined);
   }
 

@@ -8,13 +8,13 @@ import { EventPublisher } from "../domain/ports/event-publisher.port";
 export class EventEmitterEventPublisher implements EventPublisher {
   constructor(private readonly emitter: EventEmitter2) {}
 
-  publish(event: DomainEvent): void {
+  async publish(event: DomainEvent): Promise<void> {
     this.emitter.emit(event.eventName, event);
   }
 
-  publishAll(events: readonly DomainEvent[]): void {
+  async publishAll(events: readonly DomainEvent[]): Promise<void> {
     for (const event of events) {
-      this.publish(event);
+      await this.publish(event);
     }
   }
 }

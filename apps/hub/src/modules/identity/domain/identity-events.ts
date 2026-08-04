@@ -2,6 +2,11 @@ import { BaseDomainEvent } from "../../../kernel/domain/base-domain-event";
 import { ActorRef } from "./actor";
 import { WorkspaceRole } from "./permission-matrix";
 
+/**
+ * Identity facts about users and organizations sit ABOVE any workspace, so
+ * they carry no workspace — §4.20's field is nullable precisely for them.
+ * Membership facts do belong to a workspace and say so.
+ */
 export class UserRegistered extends BaseDomainEvent {
   readonly eventName = "identity.user_registered";
 
@@ -10,7 +15,7 @@ export class UserRegistered extends BaseDomainEvent {
     occurredAt: Date,
     readonly email: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, null);
   }
 }
 
@@ -23,7 +28,7 @@ export class OrganizationCreated extends BaseDomainEvent {
     readonly ownerId: string,
     readonly slug: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, null);
   }
 }
 
@@ -35,7 +40,7 @@ export class OrganizationRenamed extends BaseDomainEvent {
     occurredAt: Date,
     readonly slug: string,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, null);
   }
 }
 
@@ -45,11 +50,11 @@ export class MembershipGranted extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly actor: ActorRef,
     readonly role: WorkspaceRole,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -59,11 +64,11 @@ export class MembershipRoleChanged extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly previousRole: WorkspaceRole,
     readonly newRole: WorkspaceRole,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -73,10 +78,10 @@ export class MembershipRevoked extends BaseDomainEvent {
   constructor(
     aggregateId: string,
     occurredAt: Date,
-    readonly workspaceId: string,
+    workspaceId: string,
     readonly actor: ActorRef,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, workspaceId);
   }
 }
 
@@ -88,7 +93,7 @@ export class CredentialIssued extends BaseDomainEvent {
     occurredAt: Date,
     readonly actor: ActorRef,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, null);
   }
 }
 
@@ -100,6 +105,6 @@ export class CredentialRevoked extends BaseDomainEvent {
     occurredAt: Date,
     readonly actor: ActorRef,
   ) {
-    super(aggregateId, occurredAt);
+    super(aggregateId, occurredAt, null);
   }
 }

@@ -29,6 +29,11 @@ export class CancelTasksOnGoalCancelledListener {
     if (event.to !== "CANCELLED") {
       return;
     }
+    // A goal always belongs to a workspace; the contract is nullable because
+    // some facts sit above workspaces, so the narrowing is explicit here.
+    if (event.workspaceId === null) {
+      return;
+    }
 
     const now = this.clock.now();
     for (const task of await this.tasks.list({

@@ -7,6 +7,7 @@ import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { DecisionModule } from "./modules/decision/decision.module";
+import { EventModule } from "./modules/event/event.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
@@ -29,6 +30,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     TaskModule,
     ArtifactModule,
     DecisionModule,
+    EventModule,
     WorkloadModule,
   ],
 })
