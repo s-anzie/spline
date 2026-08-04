@@ -76,6 +76,7 @@ model Workspace {
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships    WorkspaceMembership[]
   goals          Goal[]
+  tasks          Task[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -139,6 +140,7 @@ model Goal {
   // children — cancellation is the normal path.
   parentGoal Goal?     @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Restrict)
   subGoals   Goal[]    @relation("GoalHierarchy")
+  tasks      Task[]
 
   @@index([workspaceId, status])
   @@index([parentGoalId])
@@ -157,4 +159,53 @@ model ActorCredential {
 
   @@index([actorType, actorId])
   @@map("actor_credentials")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks (§4.6) — the atomic unit of work. Assignee is NOT NULL: a task is
+// assigned from its first instant, never left up for grabs.
+// ---------------------------------------------------------------------------
+
+enum TaskStatus {
+  PLANNED
+  READY
+  ASSIGNED
+  RUNNING
+  BLOCKED
+  VALIDATING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Task {
+  id                       String      @id @default(uuid())
+  workspaceId              String
+  goalId                   String
+  /// Opaque and nullable — the Repository Engine owns it when it lands (§4.6).
+  repositoryId             String?
+  title                    String
+  description              String?
+  acceptanceCriteria       Json        @default("[]")
+  dependsOnTaskIds         Json        @default("[]")
+  /// Blockers have no life outside their task (§4.22): stored in the aggregate.
+  blockers                 Json        @default("[]")
+  assigneeType             ActorType
+  assigneeId               String
+  priority                 Priority    @default(NORMAL)
+  status                   TaskStatus  @default(PLANNED)
+  /// Where work stood when blocked, so it resumes instead of restarting.
+  statusBeforeBlock        TaskStatus?
+  estimatedCost            Float?
+  estimatedDurationMinutes Int?
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([goalId])
+  @@index([assigneeType, assigneeId])
+  @@map("tasks")
 }

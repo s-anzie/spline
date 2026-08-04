@@ -45,6 +45,12 @@ export class OpenChildrenError extends DomainError {
   }
 }
 
+export class OpenTasksError extends DomainError {
+  constructor() {
+    super("A goal cannot be completed while its tasks are still open");
+  }
+}
+
 export class GoalDependencyError extends DomainError {
   constructor(reason: string) {
     super(`Invalid goal dependency: ${reason}`);

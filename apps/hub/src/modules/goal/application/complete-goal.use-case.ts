@@ -9,7 +9,12 @@ import {
   EventPublisher,
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
-import { GoalNotFoundError, OpenChildrenError } from "../domain/goal.errors";
+import {
+  GoalNotFoundError,
+  OpenChildrenError,
+  OpenTasksError,
+} from "../domain/goal.errors";
+import { GOAL_WORKLOAD, GoalWorkloadPort } from "../domain/ports/goal-workload.port";
 import { GOAL_REPOSITORY, GoalRepository } from "../domain/ports/goal.repository.port";
 
 export interface CompleteGoalInput {
@@ -20,6 +25,7 @@ export interface CompleteGoalInput {
 export type CompleteGoalError =
   | GoalNotFoundError
   | OpenChildrenError
+  | OpenTasksError
   | InvalidStateTransitionError;
 
 /**
@@ -34,6 +40,7 @@ export class CompleteGoalUseCase
     @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(GOAL_WORKLOAD) private readonly workload: GoalWorkloadPort,
   ) {}
 
   async execute(input: CompleteGoalInput): Promise<Result<void, CompleteGoalError>> {
@@ -43,6 +50,10 @@ export class CompleteGoalUseCase
     }
     if (await this.goals.hasOpenChildren(goal.id.value)) {
       return Result.fail(new OpenChildrenError());
+    }
+    // An objective whose work is still running is not an achieved result.
+    if (await this.workload.hasOpenTasks(goal.id.value)) {
+      return Result.fail(new OpenTasksError());
     }
 
     const completed = goal.complete(this.clock.now());

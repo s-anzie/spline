@@ -31,7 +31,9 @@ async function makeContext() {
     list: new ListGoalsUseCase(goals),
     update: new UpdateGoalDetailsUseCase(goals, clock, publisher),
     changeStatus: new ChangeGoalStatusUseCase(goals, clock, publisher),
-    complete: new CompleteGoalUseCase(goals, clock, publisher),
+    complete: new CompleteGoalUseCase(goals, clock, publisher, {
+      hasOpenTasks: async () => false,
+    }),
     updateProgress: new UpdateGoalProgressUseCase(goals, clock, publisher),
   };
 }
@@ -304,5 +306,45 @@ describe("goal use-cases", () => {
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("GoalNotFoundError");
     });
+  });
+});
+
+/**
+ * Found by the task module's completeness pass: a goal could be declared
+ * achieved while the work serving it was still running.
+ */
+describe("CompleteGoalUseCase — open tasks block completion", () => {
+  async function reviewedGoal(withOpenTasks: boolean) {
+    const goals = new InMemoryGoalRepository();
+    const workspaces = new InMemoryWorkspaceRepository();
+    const clock = new FakeClock(now);
+    const publisher = new FakeEventPublisher();
+    const workspace = Workspace.create({ organizationId: "org-1", name: "W", now }).value;
+    await workspaces.save(workspace);
+    const create = new CreateGoalUseCase(goals, workspaces, clock, publisher);
+    const changeStatus = new ChangeGoalStatusUseCase(goals, clock, publisher);
+    const created = await create.execute(baseInput(workspace.id.value));
+    await changeStatus.execute({ goalId: created.value.goalId, status: "ACTIVE" });
+    await changeStatus.execute({ goalId: created.value.goalId, status: "REVIEW" });
+
+    const complete = new CompleteGoalUseCase(goals, clock, publisher, {
+      hasOpenTasks: async () => withOpenTasks,
+    });
+    return { complete, goalId: created.value.goalId };
+  }
+
+  it("refuses while tasks are still open", async () => {
+    const { complete, goalId } = await reviewedGoal(true);
+
+    const result = await complete.execute({ goalId });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error.name).toBe("OpenTasksError");
+  });
+
+  it("allows completion once every task is settled", async () => {
+    const { complete, goalId } = await reviewedGoal(false);
+
+    expect((await complete.execute({ goalId })).isSuccess).toBe(true);
   });
 });

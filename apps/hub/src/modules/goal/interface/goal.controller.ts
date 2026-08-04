@@ -210,7 +210,10 @@ export class GoalController {
       if (result.error.name === "GoalNotFoundError") {
         throw new NotFoundException(result.error.message);
       }
-      if (result.error.name === "OpenChildrenError") {
+      if (
+        result.error.name === "OpenChildrenError" ||
+        result.error.name === "OpenTasksError"
+      ) {
         throw new ConflictException(result.error.message);
       }
       const transition = result.error as InvalidStateTransitionError;

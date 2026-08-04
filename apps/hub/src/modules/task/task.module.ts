@@ -1,0 +1,40 @@
+import { Module } from "@nestjs/common";
+
+import { GoalModule } from "../goal/goal.module";
+import { IdentityModule } from "../identity/identity.module";
+import { WorkspaceModule } from "../workspace/workspace.module";
+import { AssignTaskUseCase } from "./application/assign-task.use-case";
+import { ChangeTaskStatusUseCase } from "./application/change-task-status.use-case";
+import { CompleteTaskUseCase } from "./application/complete-task.use-case";
+import { CreateTaskUseCase } from "./application/create-task.use-case";
+import { GetTaskUseCase } from "./application/get-task.use-case";
+import { GoalProgressSyncService } from "./application/goal-progress-sync.service";
+import { ListTasksUseCase } from "./application/list-tasks.use-case";
+import { ManageTaskDependencyUseCase } from "./application/manage-task-dependency.use-case";
+import { ReportBlockerUseCase } from "./application/report-blocker.use-case";
+import { ResolveBlockerUseCase } from "./application/resolve-blocker.use-case";
+import { UpdateTaskDetailsUseCase } from "./application/update-task-details.use-case";
+import { TASK_REPOSITORY } from "./domain/ports/task.repository.port";
+import { PrismaTaskRepository } from "./infrastructure/prisma-task.repository";
+import { TaskController } from "./interface/task.controller";
+
+@Module({
+  imports: [IdentityModule, WorkspaceModule, GoalModule],
+  controllers: [TaskController],
+  providers: [
+    { provide: TASK_REPOSITORY, useClass: PrismaTaskRepository },
+    CreateTaskUseCase,
+    GetTaskUseCase,
+    ListTasksUseCase,
+    UpdateTaskDetailsUseCase,
+    AssignTaskUseCase,
+    ChangeTaskStatusUseCase,
+    CompleteTaskUseCase,
+    ReportBlockerUseCase,
+    ResolveBlockerUseCase,
+    ManageTaskDependencyUseCase,
+    GoalProgressSyncService,
+  ],
+  exports: [TASK_REPOSITORY, GetTaskUseCase],
+})
+export class TaskModule {}

@@ -7,6 +7,8 @@ import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { GoalWorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
+import { TaskModule } from "./modules/task/task.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 import { PrismaModule } from "./prisma/prisma.module";
 
@@ -22,6 +24,8 @@ import { PrismaModule } from "./prisma/prisma.module";
     IdentityModule,
     WorkspaceModule,
     GoalModule,
+    TaskModule,
+    GoalWorkloadModule,
   ],
 })
 export class AppModule {}
