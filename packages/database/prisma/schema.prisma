@@ -86,6 +86,7 @@ model Workspace {
   locks          ResourceLock[]
   auditEntries   AuditEntry[]
   memoryEntries  MemoryEntry[]
+  repositories   Repository[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -659,4 +660,131 @@ model MemoryEntry {
   /// repeatable without piling up duplicates.
   @@unique([workspaceId, scopeType, scopeId, sourceType, sourceId])
   @@map("memory_entries")
+}
+
+enum RepositoryStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum BranchKind {
+  TASK
+  GOAL
+  AGENT
+  PROTECTED
+}
+
+enum BranchStatus {
+  OPEN
+  MERGED
+  CLOSED
+}
+
+enum WorktreeStatus {
+  OPEN
+  ARCHIVED
+}
+
+enum MergeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  MERGED
+}
+
+/// Spec 8.2. The hub holds the model and the rules; the Worker holds the
+/// clone — a control plane has no working copy (spec 3), so nothing here runs
+/// Git. A workspace works perfectly without any of this (spec 26).
+model Repository {
+  id                     String           @id @default(uuid())
+  workspaceId            String
+  name                   String
+  origin                 String
+  defaultBranch          String           @default("main")
+  extraProtectedBranches Json             @default("[]")
+  status                 RepositoryStatus @default(ACTIVE)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  branches  Branch[]
+  worktrees Worktree[]
+  merges    MergeRequest[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, status])
+  @@map("repositories")
+}
+
+/// Spec 8.3. The name is derived from what the branch is for, never supplied.
+model Branch {
+  id           String       @id @default(uuid())
+  repositoryId String
+  workspaceId  String?
+  name         String
+  kind         BranchKind
+  taskId       String?
+  goalId       String?
+  status       BranchStatus @default(OPEN)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, name])
+  @@index([repositoryId, status])
+  @@map("branches")
+}
+
+/// Spec 8.4 — "deux tâches ne partagent jamais le même Worktree".
+///
+/// `openForTask` carries the task id while the worktree is open and NULL once
+/// archived; Postgres treats NULLs as distinct, so the unique index applies to
+/// open worktrees only. Two concurrent requests cannot both win, and the
+/// history survives. Same mechanism as a lock's activeKey.
+model Worktree {
+  id           String         @id @default(uuid())
+  repositoryId String
+  workspaceId  String?
+  branchId     String
+  taskId       String
+  openForTask  String?
+  path         String
+  status       WorktreeStatus @default(OPEN)
+  createdAt    DateTime       @default(now())
+  archivedAt   DateTime?
+  updatedAt    DateTime       @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, openForTask])
+  @@index([repositoryId, status])
+  @@map("worktrees")
+}
+
+/// Spec 8.7 — never performed by an agent, and only once its four conditions
+/// hold. The hub decides; the Worker performs.
+model MergeRequest {
+  id             String      @id @default(uuid())
+  repositoryId   String
+  workspaceId    String?
+  sourceBranchId String
+  targetBranchId String
+  taskId         String
+  status         MergeStatus @default(PENDING)
+  requestedByType ActorType
+  requestedById   String
+  decidedByType   ActorType?
+  decidedById     String?
+  decisionReason String?
+  createdAt      DateTime    @default(now())
+  decidedAt      DateTime?
+  mergedAt       DateTime?
+  updatedAt      DateTime    @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, status])
+  @@index([taskId])
+  @@map("merge_requests")
 }

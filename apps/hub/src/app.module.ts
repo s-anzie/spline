@@ -14,6 +14,7 @@ import { IdentityModule } from "./modules/identity/identity.module";
 import { NotificationModule } from "./modules/notification/notification.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
 import { TaskModule } from "./modules/task/task.module";
+import { RepositoryModule } from "./modules/repository/repository.module";
 import { ObservabilityModule } from "./modules/observability/observability.module";
 import { MemoryModule } from "./modules/memory/memory.module";
 import { LockModule } from "./modules/lock/lock.module";
@@ -44,6 +45,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     LockModule,
     MemoryModule,
     ObservabilityModule,
+    RepositoryModule,
     ValidationModule,
     WorkloadModule,
   ],
