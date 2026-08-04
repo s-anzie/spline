@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { IdentityModule } from "../identity/identity.module";
 import { LOCK_TTL_POLICY } from "../lock/domain/ports/lock-ttl-policy.port";
+import { STALENESS_THRESHOLDS } from "../observability/domain/ports/staleness-thresholds.port";
 import { MANDATED_VALIDATIONS } from "../validation/domain/ports/mandated-validations.port";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { DisablePolicyUseCase } from "./application/disable-policy.use-case";
@@ -14,6 +15,7 @@ import { ResolveEffectivePoliciesUseCase } from "./application/resolve-effective
 import { SetPolicyUseCase } from "./application/set-policy.use-case";
 import { POLICY_REPOSITORY } from "./domain/ports/policy.repository.port";
 import { PolicyLockTtl } from "./infrastructure/policy-lock-ttl.adapter";
+import { PolicyStalenessThresholds } from "./infrastructure/policy-staleness-thresholds.adapter";
 import { PolicyMandatedValidations } from "./infrastructure/policy-mandated-validations.adapter";
 import { PrismaPolicyRepository } from "./infrastructure/prisma-policy.repository";
 import { PolicyController } from "./interface/policy.controller";
@@ -29,6 +31,7 @@ import { PolicyController } from "./interface/policy.controller";
     { provide: POLICY_REPOSITORY, useClass: PrismaPolicyRepository },
     { provide: MANDATED_VALIDATIONS, useClass: PolicyMandatedValidations },
     { provide: LOCK_TTL_POLICY, useClass: PolicyLockTtl },
+    { provide: STALENESS_THRESHOLDS, useClass: PolicyStalenessThresholds },
     SetPolicyUseCase,
     DisablePolicyUseCase,
     ListPoliciesUseCase,
@@ -39,6 +42,7 @@ import { PolicyController } from "./interface/policy.controller";
   exports: [
     MANDATED_VALIDATIONS,
     LOCK_TTL_POLICY,
+    STALENESS_THRESHOLDS,
     ResolveEffectivePoliciesUseCase,
     ReportViolationUseCase,
   ],

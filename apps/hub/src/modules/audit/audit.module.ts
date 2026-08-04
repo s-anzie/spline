@@ -11,6 +11,7 @@ import {
 import { AUDIT_REPOSITORY } from "./domain/ports/audit.repository.port";
 import { PrismaAuditRepository } from "./infrastructure/prisma-audit.repository";
 import { AuditController } from "./interface/audit.controller";
+import { AuditHealthProbe } from "./infrastructure/audit-health.probe";
 
 /**
  * @Global because AUDIT_TRAIL is consumed by identity, policy and workspace,
@@ -23,6 +24,7 @@ import { AuditController } from "./interface/audit.controller";
   imports: [IdentityModule],
   controllers: [AuditController],
   providers: [
+    AuditHealthProbe,
     { provide: AUDIT_REPOSITORY, useClass: PrismaAuditRepository },
     RecordAuditEntryUseCase,
     { provide: AUDIT_TRAIL, useExisting: RecordAuditEntryUseCase },
@@ -30,6 +32,7 @@ import { AuditController } from "./interface/audit.controller";
     GetAuditEntryUseCase,
     VerifyAuditChainUseCase,
   ],
-  exports: [AUDIT_TRAIL],
+  exports: [
+    AuditHealthProbe,AUDIT_TRAIL],
 })
 export class AuditModule {}

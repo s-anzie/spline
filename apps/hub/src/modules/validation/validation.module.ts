@@ -15,6 +15,7 @@ import { VALIDATION_REPOSITORY } from "./domain/ports/validation.repository.port
 import { PrismaValidationRepository } from "./infrastructure/prisma-validation.repository";
 import { ValidationTaskProofAdapter } from "./infrastructure/validation-task-proof.adapter";
 import { ValidationController } from "./interface/validation.controller";
+import { ValidationHealthProbe } from "./infrastructure/validation-health.probe";
 
 /**
  * @Global for TASK_PROOF only, and for the reason learnt twice already
@@ -28,6 +29,7 @@ import { ValidationController } from "./interface/validation.controller";
   imports: [IdentityModule, TaskModule, PolicyModule],
   controllers: [ValidationController],
   providers: [
+    ValidationHealthProbe,
     { provide: VALIDATION_REPOSITORY, useClass: PrismaValidationRepository },
     { provide: TASK_PROOF, useClass: ValidationTaskProofAdapter },
     RequestValidationUseCase,
@@ -36,6 +38,7 @@ import { ValidationController } from "./interface/validation.controller";
     GetValidationUseCase,
     InvalidateValidationsUseCase,
   ],
-  exports: [TASK_PROOF, RequestValidationUseCase],
+  exports: [
+    ValidationHealthProbe,TASK_PROOF, RequestValidationUseCase],
 })
 export class ValidationModule {}

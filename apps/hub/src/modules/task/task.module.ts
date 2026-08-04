@@ -18,11 +18,13 @@ import { UpdateTaskDetailsUseCase } from "./application/update-task-details.use-
 import { TASK_REPOSITORY } from "./domain/ports/task.repository.port";
 import { PrismaTaskRepository } from "./infrastructure/prisma-task.repository";
 import { TaskController } from "./interface/task.controller";
+import { TaskHealthProbe } from "./infrastructure/task-health.probe";
 
 @Module({
   imports: [IdentityModule, WorkspaceModule, GoalModule],
   controllers: [TaskController],
   providers: [
+    TaskHealthProbe,
     { provide: TASK_REPOSITORY, useClass: PrismaTaskRepository },
     CreateTaskUseCase,
     GetTaskUseCase,
@@ -37,6 +39,7 @@ import { TaskController } from "./interface/task.controller";
     GoalProgressSyncService,
     CancelTasksOnGoalCancelledListener,
   ],
-  exports: [TASK_REPOSITORY, GetTaskUseCase],
+  exports: [
+    TaskHealthProbe,TASK_REPOSITORY, GetTaskUseCase],
 })
 export class TaskModule {}
