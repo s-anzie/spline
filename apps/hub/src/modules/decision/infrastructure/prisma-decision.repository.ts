@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Decision as DecisionRow, Prisma } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { ConsideredAlternative } from "../domain/considered-alternative";
@@ -82,6 +83,9 @@ export class PrismaDecisionRepository implements DecisionRepository {
         ...(!filter.includeSuperseded && { supersededByDecisionId: null }),
       },
       orderBy: { decidedAt: "desc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => DecisionMapper.toDomain(row));
   }

@@ -7,7 +7,10 @@ import { AlertOnLeaseExpiredListener } from "./application/alert-on-lease-expire
 import { AlertOnPolicyViolatedListener } from "./application/alert-on-policy-violated.listener";
 import { AlertOnValidationFailedListener } from "./application/alert-on-validation-failed.listener";
 import { AdvanceRecipientUseCase } from "./application/advance-recipient.use-case";
-import { ListNotificationsUseCase } from "./application/list-notifications.use-case";
+import {
+  GetNotificationUseCase,
+  ListNotificationsUseCase,
+} from "./application/list-notifications.use-case";
 import { ListUnreadUseCase } from "./application/list-unread.use-case";
 import { NotifyAssigneeOnTaskAssignedListener } from "./application/notify-assignee.listener";
 import { SendNotificationUseCase } from "./application/send-notification.use-case";
@@ -38,6 +41,7 @@ import { NotificationController } from "./interface/notification.controller";
     },
     SendNotificationUseCase,
     ListNotificationsUseCase,
+    GetNotificationUseCase,
     ListUnreadUseCase,
     AdvanceRecipientUseCase,
     NotifyAssigneeOnTaskAssignedListener,

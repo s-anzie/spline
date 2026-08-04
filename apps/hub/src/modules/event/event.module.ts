@@ -3,7 +3,10 @@ import { Global, Module } from "@nestjs/common";
 import { EVENT_PUBLISHER } from "../../kernel/domain/ports/event-publisher.port";
 import { IdentityModule } from "../identity/identity.module";
 import { AdvanceEventReceiptUseCase } from "./application/advance-event-receipt.use-case";
-import { ListEventsUseCase } from "./application/list-events.use-case";
+import {
+  GetEventUseCase,
+  ListEventsUseCase,
+} from "./application/list-events.use-case";
 import { ListPendingReceiptsUseCase } from "./application/list-pending-receipts.use-case";
 import { RecordEventUseCase } from "./application/record-event.use-case";
 import { RequireEventReceiptsUseCase } from "./application/require-event-receipts.use-case";
@@ -38,6 +41,7 @@ import { EventController } from "./interface/event.controller";
     { provide: EVENT_PUBLISHER, useClass: PersistentEventPublisher },
     RecordEventUseCase,
     ListEventsUseCase,
+    GetEventUseCase,
     RequireEventReceiptsUseCase,
     AdvanceEventReceiptUseCase,
     ListPendingReceiptsUseCase,

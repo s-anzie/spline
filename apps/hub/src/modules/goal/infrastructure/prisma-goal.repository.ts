@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Goal as GoalRow, Prisma } from "@repo/db";
 
 import { Priority } from "../../../kernel/domain/priority";
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Goal, GoalStatus } from "../domain/goal";
@@ -83,6 +84,9 @@ export class PrismaGoalRepository implements GoalRepository {
         ...(filter.statuses && { status: { in: [...filter.statuses] } }),
       },
       orderBy: { createdAt: "asc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => GoalMapper.toDomain(row));
   }

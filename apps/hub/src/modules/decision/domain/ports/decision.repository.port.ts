@@ -8,6 +8,8 @@ export interface ListDecisionsFilter {
   confidences?: readonly DecisionConfidence[];
   /** Superseded reasoning is history: it is asked for, never returned by default. */
   includeSuperseded?: boolean;
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface DecisionRepository {

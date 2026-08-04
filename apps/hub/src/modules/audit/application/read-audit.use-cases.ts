@@ -6,6 +6,7 @@ import { Guard, GuardViolation } from "../../../kernel/domain/guard";
 import { Result } from "../../../kernel/domain/result";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { AuditEntry } from "../domain/audit-entry";
+import { AuditEntryNotFoundError } from "../domain/audit.errors";
 import { ChainVerification, verifyChain } from "../domain/audit-signature";
 import {
   AUDIT_REPOSITORY,
@@ -70,5 +71,34 @@ export class VerifyAuditChainUseCase
     return Result.ok(
       verifyChain(chain, this.config.getOrThrow<string>("AUDIT_SIGNING_KEY")),
     );
+  }
+}
+
+/**
+ * Verification reports `brokenAt.id` — the entry where the chain fails. An
+ * investigator told which entry broke it must be able to read that entry;
+ * otherwise the detection stops one step short of being usable (§17.8).
+ */
+@Injectable()
+export class GetAuditEntryUseCase
+  implements
+    UseCase<
+      { workspaceId: string; entryId: string },
+      Result<AuditEntry, AuditEntryNotFoundError>
+    >
+{
+  constructor(
+    @Inject(AUDIT_REPOSITORY) private readonly entries: AuditRepository,
+  ) {}
+
+  async execute(input: {
+    workspaceId: string;
+    entryId: string;
+  }): Promise<Result<AuditEntry, AuditEntryNotFoundError>> {
+    const entry = await this.entries.findById(input.entryId);
+    if (!entry || entry.workspaceId !== input.workspaceId) {
+      return Result.fail(new AuditEntryNotFoundError(input.entryId));
+    }
+    return Result.ok(entry);
   }
 }

@@ -8,6 +8,8 @@ export interface ListLocksFilter {
   owner?: ActorRef;
   /** Released and expired locks stay on record; asking for them is explicit. */
   includeInactive?: boolean;
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface LockRepository {

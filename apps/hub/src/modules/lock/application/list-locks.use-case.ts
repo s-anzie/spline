@@ -4,6 +4,7 @@ import { UseCase } from "../../../kernel/application/use-case";
 import { Guard, GuardViolation } from "../../../kernel/domain/guard";
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
 import { Result } from "../../../kernel/domain/result";
+import { LockNotFoundError } from "../domain/lock.errors";
 import { ResourceLock } from "../domain/resource-lock";
 import {
   ListLocksFilter,
@@ -36,5 +37,32 @@ export class ListLocksUseCase
     return Result.ok(
       locks.map((lock) => ({ lock, active: lock.isActiveAt(now) })),
     );
+  }
+}
+
+/**
+ * An identifier the API hands out must be resolvable through the API. This
+ * one is: acquiring returns a `lockId`, and following it up
+ * should not require listing everything and filtering client-side.
+ */
+@Injectable()
+export class GetLockUseCase
+  implements
+    UseCase<{ workspaceId: string; lockId: string }, Result<ListedLock, LockNotFoundError>>
+{
+  constructor(
+    @Inject(LOCK_REPOSITORY) private readonly locks: LockRepository,
+    @Inject(CLOCK) private readonly clock: Clock,
+  ) {}
+
+  async execute(input: {
+    workspaceId: string;
+    lockId: string;
+  }): Promise<Result<ListedLock, LockNotFoundError>> {
+    const lock = await this.locks.findById(input.lockId);
+    if (!lock || lock.workspaceId !== input.workspaceId) {
+      return Result.fail(new LockNotFoundError(input.lockId));
+    }
+    return Result.ok({ lock, active: lock.isActiveAt(this.clock.now()) });
   }
 }

@@ -18,7 +18,10 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { DisablePolicyUseCase } from "../application/disable-policy.use-case";
-import { ListPoliciesUseCase } from "../application/list-policies.use-case";
+import {
+  GetPolicyUseCase,
+  ListPoliciesUseCase,
+} from "../application/list-policies.use-case";
 import { ResolveEffectivePoliciesUseCase } from "../application/resolve-effective-policies.use-case";
 import { SetPolicyUseCase } from "../application/set-policy.use-case";
 import { Policy } from "../domain/policy";
@@ -50,6 +53,7 @@ export class PolicyController {
     private readonly setPolicy: SetPolicyUseCase,
     private readonly disablePolicy: DisablePolicyUseCase,
     private readonly listPolicies: ListPoliciesUseCase,
+    private readonly getPolicy: GetPolicyUseCase,
     private readonly resolve: ResolveEffectivePoliciesUseCase,
   ) {}
 
@@ -117,6 +121,19 @@ export class PolicyController {
       throw toHttpException(result.error);
     }
     return result.value;
+  }
+
+  @Get(":policyId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("policyId") policyId: string,
+  ) {
+    const result = await this.getPolicy.execute({ workspaceId, policyId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
   }
 
   /** No delete route: §18.7 forbids erasing what governed past decisions. */

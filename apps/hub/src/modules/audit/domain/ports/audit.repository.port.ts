@@ -32,6 +32,7 @@ export interface AuditRepository {
     entry: AuditEntry,
     sign: (entry: AuditEntry, previousSignature: string) => string,
   ): Promise<AuditEntry>;
+  findById(id: string): Promise<AuditEntry | null>;
   list(filter: ListAuditFilter): Promise<AuditEntry[]>;
   /** The whole chain of a workspace, in order, for verification. */
   listChain(workspaceId: string): Promise<AuditEntry[]>;

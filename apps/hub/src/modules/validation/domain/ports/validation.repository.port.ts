@@ -6,6 +6,8 @@ export interface ListValidationsFilter {
   taskId?: string;
   statuses?: readonly ValidationStatus[];
   mandatoryOnly?: boolean;
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface ValidationRepository {

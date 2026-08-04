@@ -50,8 +50,10 @@ fondation, précisément pour que les modules ne puissent pas naître sans elles
 - Transport (aucun import HTTP/WebSocket).
 - Logique métier d'un module (un module qui aurait besoin de « personnaliser » une primitive du kernel doit
   composer, pas modifier le kernel).
-- Pagination, DTOs, mapping — conventions de la couche interface, définies quand le premier contrôleur
-  existera, pas ici.
+- DTOs et mapping — conventions de la couche interface.
+- ~~Pagination~~ : les bornes de page **sont** montées ici après l'audit du §5.4 — onze modules en
+  dépendaient et aucun ne portait de connaissance métier. La phrase précédente disait « définies quand le
+  premier contrôleur existera » ; quatorze modules plus tard, huit d'entre eux n'en avaient aucune.
 
 ## 3. Structure
 
@@ -71,12 +73,15 @@ kernel/
 │   ├── state-machine.ts      StateMachine<S> + TransitionOutcome<S>       (§22.6)
 │   ├── dependency-graph.ts   DependencyGraph + DependencyCycleError       (§9.5)
 │   ├── staleness.ts          ageMs, isExpired, isStale                    (§17.7)
+│   ├── pagination.ts         pageSize — aucune liste ne rend une table entière (§5.4)
 │   └── ports/
 │       ├── clock.port.ts             Clock + jeton CLOCK
-│       └── event-publisher.port.ts   EventPublisher + jeton EVENT_PUBLISHER
+│       ├── event-publisher.port.ts   EventPublisher + jeton EVENT_PUBLISHER
+│       └── audit-trail.port.ts       AuditTrail + jeton AUDIT_TRAIL (non lié : §18.1)
 ├── application/          # conventions de la couche application
 │   ├── use-case.ts               UseCase<Input, Output> (une classe = une opération)
-│   └── flush-domain-events.ts    flushDomainEvents(aggregate, publisher)
+│   ├── flush-domain-events.ts    flushDomainEvents(aggregate, publisher)
+│   └── reaction-depth.ts         borne une cascade de réactions (§5.2)
 ├── interface/            # conventions de la couche interface
 │   └── domain-error.mapping.ts   toHttpException(error, mapping)
 ├── infrastructure/       # implémentations par défaut (peuvent importer Nest)
@@ -84,8 +89,9 @@ kernel/
 │   └── event-emitter-event-publisher.ts  EventPublisher → EventEmitter2 (non liée : voir §7)
 ├── testing/              # doubles pour les tests des autres modules
 │   ├── fake-clock.ts             horloge gelée, set/advance explicites
-│   └── fake-event-publisher.ts   capture les événements publiés
-└── kernel.module.ts      # module Nest @Global : bind CLOCK et EVENT_PUBLISHER
+│   ├── fake-event-publisher.ts   capture les événements publiés
+│   └── fake-audit-trail.ts       capture ce qui aurait été audité
+└── kernel.module.ts      # module Nest @Global : bind CLOCK (et lui seul — §7)
 ```
 
 Règle de dépendance stricte : `domain/` n'importe rien hors de lui-même (exception assumée : `node:crypto`
@@ -361,6 +367,53 @@ Le lint du hub est donc **typé** (`projectService`) pour deux règles : `no-flo
 `await-thenable`. Le commentaire du §7 disait que le critère de réussite du changement de port était
 « que le changement soit trouvé par le compilateur et non par la production ». Il l'a été à moitié :
 le compilateur ne pouvait pas voir cette moitié-là.
+
+### 5.4 Audit transversal des quatorze modules — ce qu'il a trouvé
+
+Fait après le module memory, sur l'ensemble livré : inventaire des 80 routes avec leurs permissions,
+graphe de dépendances entre modules, ports d'inversion, granularité CRUD, bornes de lecture.
+
+**Ce qui allait bien, et qui vaut d'être dit parce que c'était le but** : aucun cycle entre modules ;
+chaque port d'inversion est déclaré par le consommateur et fourni par le fournisseur, sans exception ;
+chaque module a son `doc.md` ; l'isolation par workspace tient partout depuis la correction dédiée.
+
+**Trois défauts réels, et le point commun est instructif** : aucun n'était visible depuis un module pris
+isolément. Ils n'apparaissent qu'en regardant l'ensemble.
+
+1. **Deux rôles nommés « lecture seule » pouvaient écrire.** `POST /memory`, `POST /memory/:id/forget` et
+   `POST /notifications` étaient gardés par `read_workspace_state` — donc un `VIEWER` et un
+   `READ_ONLY_AGENT` écrivaient dans la mémoire d'un workspace et diffusaient des messages à tous. Le
+   test de la matrice ne pouvait pas le voir : la matrice était juste, la faute était **sur les routes**.
+   Une permission `contribute_knowledge` a été ajoutée, accordée partout où `record_decisions` l'est —
+   noter ce qu'on a appris et le rapporter sont la même catégorie d'acte que consigner son raisonnement —
+   et refusée au seul `VIEWER`.
+
+2. **Sept agrégats rendaient des identifiants que l'API ne savait pas résoudre.** `MissingProofError`
+   nomme des validations, `/policies/effective` nomme la politique qui a décidé, `/audit/verify` nomme
+   l'entrée où la chaîne se rompt, une entrée de mémoire nomme celle qui l'a remplacée — et aucun de ces
+   identifiants n'avait de route de lecture. Le critère retenu, vérifiable : **un identifiant que l'API
+   rend doit être résolvable par l'API**. Sept routes `GET /:id` ajoutées.
+
+3. **Onze listes renvoyaient une table entière.** La convention de plafonnement existait dans trois
+   modules et manquait dans huit. Invisible tant que les tables sont petites, mur ensuite, et un appelant
+   ne peut même pas savoir qu'il reçoit plus qu'il n'a demandé. `pagination.ts` est monté au kernel — onze
+   modules en dépendent, aucune connaissance métier — et l'absence de limite vaut désormais une page.
+
+**Trois invariants structurels ajoutés**, parce qu'un correctif ponctuel ne protège que le passé :
+
+| Invariant | Ce qu'il rend impossible |
+| --- | --- |
+| `write-permissions.spec.ts` | qu'une route POST/PATCH/DELETE repose sur une permission de lecture |
+| `bounded-queries.spec.ts` | qu'un `findMany` reparte sans borne |
+| `route-shadowing.spec.ts` | qu'une route paramétrique déclarée trop tôt avale une route statique |
+
+Les trois portent une **liste d'exceptions nommées avec leur raison**, jamais une désactivation générale —
+la forme que §18.8 demande explicitement. Chacun vérifie aussi qu'il trouve bien quelque chose à
+inspecter : un glob cassé ferait passer la suite en n'examinant rien, ce qui se lit exactement comme un
+succès.
+
+Le troisième n'était pas une hypothèse : ajouter `GET /:entryId` au contrôleur d'audit a fait passer
+`GET /audit/verify` en 404, et une seule assertion e2e l'a remarqué.
 
 ## 6. Décisions notables (et leurs raisons)
 

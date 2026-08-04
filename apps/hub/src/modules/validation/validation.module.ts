@@ -5,7 +5,10 @@ import { PolicyModule } from "../policy/policy.module";
 import { TASK_PROOF } from "../task/domain/ports/task-proof.port";
 import { TaskModule } from "../task/task.module";
 import { InvalidateValidationsUseCase } from "./application/invalidate-validations.use-case";
-import { ListValidationsUseCase } from "./application/list-validations.use-case";
+import {
+  GetValidationUseCase,
+  ListValidationsUseCase,
+} from "./application/list-validations.use-case";
 import { RequestValidationUseCase } from "./application/request-validation.use-case";
 import { SettleValidationUseCase } from "./application/settle-validation.use-case";
 import { VALIDATION_REPOSITORY } from "./domain/ports/validation.repository.port";
@@ -30,6 +33,7 @@ import { ValidationController } from "./interface/validation.controller";
     RequestValidationUseCase,
     SettleValidationUseCase,
     ListValidationsUseCase,
+    GetValidationUseCase,
     InvalidateValidationsUseCase,
   ],
   exports: [TASK_PROOF, RequestValidationUseCase],

@@ -201,3 +201,30 @@ export class SearchMemoryUseCase
     );
   }
 }
+
+/**
+ * An identifier the API hands out must be resolvable through the API. This
+ * one is: a view reports `supersededById`, so the entry that
+ * replaced this one has to be reachable.
+ */
+@Injectable()
+export class GetMemoryEntryUseCase
+  implements
+    UseCase<
+      { workspaceId: string; entryId: string },
+      Result<MemoryEntry, MemoryEntryNotFoundError>
+    >
+{
+  constructor(@Inject(MEMORY_REPOSITORY) private readonly memory: MemoryRepository) {}
+
+  async execute(input: {
+    workspaceId: string;
+    entryId: string;
+  }): Promise<Result<MemoryEntry, MemoryEntryNotFoundError>> {
+    const entry = await this.memory.findById(input.entryId);
+    if (!entry || entry.workspaceId !== input.workspaceId) {
+      return Result.fail(new MemoryEntryNotFoundError(input.entryId));
+    }
+    return Result.ok(entry);
+  }
+}

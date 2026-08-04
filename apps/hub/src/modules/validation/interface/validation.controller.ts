@@ -18,7 +18,10 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { InvalidateValidationsUseCase } from "../application/invalidate-validations.use-case";
-import { ListValidationsUseCase } from "../application/list-validations.use-case";
+import {
+  GetValidationUseCase,
+  ListValidationsUseCase,
+} from "../application/list-validations.use-case";
 import { RequestValidationUseCase } from "../application/request-validation.use-case";
 import { SettleValidationUseCase } from "../application/settle-validation.use-case";
 import { Validation } from "../domain/validation";
@@ -66,6 +69,7 @@ export class ValidationController {
     private readonly request: RequestValidationUseCase,
     private readonly settle: SettleValidationUseCase,
     private readonly listValidations: ListValidationsUseCase,
+    private readonly getValidation: GetValidationUseCase,
     private readonly invalidate: InvalidateValidationsUseCase,
   ) {}
 
@@ -106,6 +110,19 @@ export class ValidationController {
       throw toHttpException(result.error);
     }
     return result.value.map(toView);
+  }
+
+  @Get("validations/:validationId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("validationId") validationId: string,
+  ) {
+    const result = await this.getValidation.execute({ workspaceId, validationId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
   }
 
   /**

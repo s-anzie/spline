@@ -4,7 +4,10 @@ import { IdentityModule } from "../identity/identity.module";
 import { PolicyModule } from "../policy/policy.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { AcquireLockUseCase } from "./application/acquire-lock.use-case";
-import { ListLocksUseCase } from "./application/list-locks.use-case";
+import {
+  GetLockUseCase,
+  ListLocksUseCase,
+} from "./application/list-locks.use-case";
 import { ManageLockUseCase } from "./application/manage-lock.use-case";
 import { LOCK_REPOSITORY } from "./domain/ports/lock.repository.port";
 import { PrismaLockRepository } from "./infrastructure/prisma-lock.repository";
@@ -19,6 +22,7 @@ import { LockController } from "./interface/lock.controller";
     AcquireLockUseCase,
     ManageLockUseCase,
     ListLocksUseCase,
+    GetLockUseCase,
   ],
 })
 export class LockModule {}

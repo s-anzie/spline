@@ -88,6 +88,11 @@ export class PrismaAuditRepository implements AuditRepository {
     });
   }
 
+  async findById(id: string): Promise<AuditEntry | null> {
+    const row = await this.prisma.auditEntry.findUnique({ where: { id } });
+    return row ? AuditMapper.toDomain(row) : null;
+  }
+
   async list(filter: ListAuditFilter): Promise<AuditEntry[]> {
     const rows = await this.prisma.auditEntry.findMany({
       where: {
@@ -106,6 +111,18 @@ export class PrismaAuditRepository implements AuditRepository {
     return rows.map((row) => AuditMapper.toDomain(row));
   }
 
+  /**
+   * The one query in the codebase that is deliberately unbounded, and it has
+   * to be: a signature chain verified over a page is a chain verified over a
+   * page. Capping it would let verification answer "intact" about a fragment
+   * — a detection mechanism that lies by omission is worse than none.
+   *
+   * The limit that follows from this is real and named: a very large trail
+   * cannot be verified in a single request. Closing it needs incremental
+   * verification from a known-good checkpoint, which needs somewhere
+   * trustworthy to keep that checkpoint — the external anchor the module doc
+   * already names as absent.
+   */
   async listChain(workspaceId: string): Promise<AuditEntry[]> {
     const rows = await this.prisma.auditEntry.findMany({
       where: { workspaceId },

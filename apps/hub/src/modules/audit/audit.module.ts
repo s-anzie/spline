@@ -4,6 +4,7 @@ import { AUDIT_TRAIL } from "../../kernel/domain/ports/audit-trail.port";
 import { IdentityModule } from "../identity/identity.module";
 import { RecordAuditEntryUseCase } from "./application/record-audit-entry.use-case";
 import {
+  GetAuditEntryUseCase,
   ListAuditEntriesUseCase,
   VerifyAuditChainUseCase,
 } from "./application/read-audit.use-cases";
@@ -26,6 +27,7 @@ import { AuditController } from "./interface/audit.controller";
     RecordAuditEntryUseCase,
     { provide: AUDIT_TRAIL, useExisting: RecordAuditEntryUseCase },
     ListAuditEntriesUseCase,
+    GetAuditEntryUseCase,
     VerifyAuditChainUseCase,
   ],
   exports: [AUDIT_TRAIL],

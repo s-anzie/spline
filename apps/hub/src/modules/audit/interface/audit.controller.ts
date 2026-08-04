@@ -7,6 +7,7 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import {
+  GetAuditEntryUseCase,
   ListAuditEntriesUseCase,
   VerifyAuditChainUseCase,
 } from "../application/read-audit.use-cases";
@@ -39,6 +40,7 @@ function toView(entry: AuditEntry) {
 export class AuditController {
   constructor(
     private readonly listEntries: ListAuditEntriesUseCase,
+    private readonly getEntry: GetAuditEntryUseCase,
     private readonly verify: VerifyAuditChainUseCase,
   ) {}
 
@@ -85,5 +87,18 @@ export class AuditController {
           }
         : null,
     };
+  }
+
+  @Get(":entryId")
+  @RequirePermission("manage_workspace")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("entryId") entryId: string,
+  ) {
+    const result = await this.getEntry.execute({ workspaceId, entryId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
   }
 }

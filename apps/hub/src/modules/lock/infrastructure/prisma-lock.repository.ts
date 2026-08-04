@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma, ResourceLock as LockRow } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { LockStatus, ResourceLock } from "../domain/resource-lock";
@@ -97,6 +98,9 @@ export class PrismaLockRepository implements LockRepository {
         ...(filter.includeInactive ? {} : { status: "HELD" }),
       },
       orderBy: { acquiredAt: "desc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => LockMapper.toDomain(row));
   }

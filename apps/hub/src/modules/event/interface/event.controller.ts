@@ -19,7 +19,10 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { AdvanceEventReceiptUseCase } from "../application/advance-event-receipt.use-case";
-import { ListEventsUseCase } from "../application/list-events.use-case";
+import {
+  GetEventUseCase,
+  ListEventsUseCase,
+} from "../application/list-events.use-case";
 import { ListPendingReceiptsUseCase } from "../application/list-pending-receipts.use-case";
 import { RecordEventUseCase } from "../application/record-event.use-case";
 import { RequireEventReceiptsUseCase } from "../application/require-event-receipts.use-case";
@@ -80,6 +83,7 @@ export class EventController {
   constructor(
     private readonly recordEvent: RecordEventUseCase,
     private readonly listEvents: ListEventsUseCase,
+    private readonly getEvent: GetEventUseCase,
     private readonly requireReceipts: RequireEventReceiptsUseCase,
     private readonly advanceReceipt: AdvanceEventReceiptUseCase,
     private readonly listPending: ListPendingReceiptsUseCase,
@@ -124,6 +128,19 @@ export class EventController {
       ...(query.limit !== undefined && { limit: query.limit }),
     });
     return result.value.map(toView);
+  }
+
+  @Get("workspaces/:workspaceId/events/:eventId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("eventId") eventId: string,
+  ): Promise<EventView> {
+    const result = await this.getEvent.execute({ workspaceId, eventId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
   }
 
   @Post("workspaces/:workspaceId/events/:eventId/receipts")

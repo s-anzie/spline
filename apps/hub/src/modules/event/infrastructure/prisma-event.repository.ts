@@ -5,6 +5,7 @@ import {
   Prisma,
 } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Event } from "../domain/event";
@@ -174,6 +175,9 @@ export class PrismaEventReceiptRepository implements EventReceiptRepository {
         ...(filter.statuses && { status: { in: [...filter.statuses] } }),
       },
       orderBy: { createdAt: "asc" },
+      // An absent limit is a page, never everything an actor ever owed an
+      // answer to (kernel pagination).
+      take: pageSize(undefined),
     });
     return rows.map((row) => EventReceiptMapper.toDomain(row));
   }

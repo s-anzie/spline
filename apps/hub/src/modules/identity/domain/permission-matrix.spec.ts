@@ -1,9 +1,9 @@
 import { PERMISSIONS, roleHasPermission, WORKSPACE_ROLES } from "./permission-matrix";
 
 describe("permission matrix (§18.3)", () => {
-  it("exposes the six workspace roles and fourteen permissions", () => {
+  it("exposes the six workspace roles and sixteen permissions", () => {
     expect(WORKSPACE_ROLES).toHaveLength(6);
-    expect(PERMISSIONS).toHaveLength(15);
+    expect(PERMISSIONS).toHaveLength(16);
   });
 
   it("OWNER holds every permission", () => {
@@ -52,9 +52,12 @@ describe("permission matrix (§18.3)", () => {
     expect(roleHasPermission("AGENT_CONTRIBUTOR", "manage_goals")).toBe(false);
   });
 
-  it("READ_ONLY_AGENT reads and records decisions only", () => {
+  it("READ_ONLY_AGENT observes and reports, but changes no work", () => {
     expect(roleHasPermission("READ_ONLY_AGENT", "read_workspace_state")).toBe(true);
     expect(roleHasPermission("READ_ONLY_AGENT", "record_decisions")).toBe(true);
+    // Noting what it learned and reporting it are the same category as
+    // recording its reasoning: observing and saying so, without touching work.
+    expect(roleHasPermission("READ_ONLY_AGENT", "contribute_knowledge")).toBe(true);
     expect(roleHasPermission("READ_ONLY_AGENT", "execute_tasks")).toBe(false);
     expect(roleHasPermission("READ_ONLY_AGENT", "acquire_locks")).toBe(false);
   });

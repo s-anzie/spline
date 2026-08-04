@@ -201,6 +201,44 @@ describe("Audit (e2e)", () => {
     expect((await auth(request(http).get(`${ctx.base}/verify`))).body.intact).toBe(false);
   });
 
+  /**
+   * Detection that stops one step short of being usable is not detection:
+   * an investigator told which entry broke the chain must be able to read it.
+   */
+  it("resolves the entry that verification says broke the chain", async () => {
+    const ctx = await setup();
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+    for (const value of [100, 200]) {
+      await auth(request(http).post(`/workspaces/${ctx.workspaceId}/policies`))
+        .send({
+          scopeType: "WORKSPACE",
+          scopeId: ctx.workspaceId,
+          type: "COST",
+          rule: `max_${value}`,
+          value,
+        })
+        .expect(201);
+    }
+    const second = await prisma.auditEntry.findFirst({
+      where: { workspaceId: ctx.workspaceId },
+      orderBy: { sequence: "asc" },
+      skip: 1,
+    });
+    await prisma.auditEntry.update({
+      where: { id: second!.id },
+      data: { after: { tampered: true } },
+    });
+
+    const broken = await auth(request(http).get(`${ctx.base}/verify`)).expect(200);
+    const culprit = await auth(
+      request(http).get(`${ctx.base}/${broken.body.brokenAt.id}`),
+    ).expect(200);
+
+    expect(culprit.body.after).toEqual({ tampered: true });
+    // The static route is not swallowed by the parametric one.
+    expect((await auth(request(http).get(`${ctx.base}/verify`))).body.intact).toBe(false);
+  });
+
   it("offers no way to write, change or erase an entry", async () => {
     const ctx = await setup();
     const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);

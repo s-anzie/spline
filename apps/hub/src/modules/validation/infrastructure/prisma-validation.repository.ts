@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Validation as ValidationRow } from "@repo/db";
 
+import { MAX_PAGE_SIZE, pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Validation, ValidationStatus } from "../domain/validation";
@@ -87,6 +88,9 @@ export class PrismaValidationRepository implements ValidationRepository {
         ...(filter.mandatoryOnly && { mandatory: true }),
       },
       orderBy: { createdAt: "asc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => ValidationMapper.toDomain(row));
   }
@@ -95,6 +99,10 @@ export class PrismaValidationRepository implements ValidationRepository {
     const rows = await this.prisma.validation.findMany({
       where: { taskId },
       orderBy: { createdAt: "asc" },
+      // Feeds the completion check (§11.7), so it must see everything a task
+      // actually has — bounded high rather than unbounded: a task with more
+      // than five hundred validations is a bug, not a workload.
+      take: pageSize(undefined, { fallback: MAX_PAGE_SIZE }),
     });
     return rows.map((row) => ValidationMapper.toDomain(row));
   }

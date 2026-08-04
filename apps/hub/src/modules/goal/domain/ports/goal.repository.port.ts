@@ -6,6 +6,8 @@ export interface ListGoalsFilter {
   /** `null` selects root goals only; omitted means "no filter". */
   parentGoalId?: string | null;
   statuses?: readonly GoalStatus[];
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface GoalRepository {

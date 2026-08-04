@@ -280,6 +280,36 @@ describe("Policy (e2e)", () => {
     ).toHaveLength(0);
   });
 
+  /** An identifier the API hands out must be resolvable through the API. */
+  it("resolves the policy that /effective says decided a rule", async () => {
+    const ctx = await setup();
+    const asOwner = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+    await asOwner(request(http).post(ctx.base))
+      .send({
+        scopeType: "WORKSPACE",
+        scopeId: ctx.workspaceId,
+        type: "RUNTIME",
+        rule: "timeout",
+        value: 600,
+      })
+      .expect(201);
+
+    const effective = await asOwner(request(http).get(`${ctx.base}/effective`)).expect(200);
+    const decidedBy = effective.body[0].decidedBy.policyId;
+
+    const resolved = await asOwner(request(http).get(`${ctx.base}/${decidedBy}`)).expect(200);
+    expect(resolved.body.rule).toBe("timeout");
+    expect(resolved.body.value).toBe(600);
+
+    // And never across workspaces.
+    const other = await asOwner(request(http).post("/workspaces"))
+      .send({ organizationId: ctx.organizationId, name: "Elsewhere" })
+      .expect(201);
+    await asOwner(
+      request(http).get(`/workspaces/${other.body.workspaceId}/policies/${decidedBy}`),
+    ).expect(404);
+  });
+
   it("requires authentication and membership", async () => {
     const ctx = await setup();
     await request(http).get(ctx.base).expect(401);

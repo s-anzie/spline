@@ -5,6 +5,7 @@ import {
   Prisma,
 } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Artifact, ArtifactStatus, StoredArtifactVersion } from "../domain/artifact";
@@ -148,6 +149,9 @@ export class PrismaArtifactRepository implements ArtifactRepository {
       },
       include: { versions: true },
       orderBy: { createdAt: "desc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
 
     const artifacts = rows.map((row) => ArtifactMapper.toDomain(row));

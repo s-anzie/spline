@@ -24,6 +24,19 @@ export const PERMISSIONS = [
   "request_validation",
   "approve_validation",
   "record_decisions",
+  /**
+   * Writing a memory note, sending a message: contributing knowledge and
+   * communication without changing the state of any work. Separate from
+   * `read_workspace_state` because a VIEWER and a READ_ONLY_AGENT are named
+   * for reading and were able to write — a least-privilege violation (§18.1)
+   * a matrix test could not see, since the mistake was on the routes.
+   *
+   * Granted wherever `record_decisions` is: recording one's reasoning,
+   * noting what one learned and reporting it are the same category of act.
+   * Withheld from VIEWER, which is the only role that observes without
+   * participating.
+   */
+  "contribute_knowledge",
   "manage_workspace",
   "operate_workspace",
   "manage_members",
@@ -45,6 +58,7 @@ const MATRIX: Record<WorkspaceRole, readonly Permission[]> = {
     "request_validation",
     "approve_validation",
     "record_decisions",
+    "contribute_knowledge",
     "operate_workspace",
     "manage_machines",
     "manage_providers",
@@ -58,6 +72,7 @@ const MATRIX: Record<WorkspaceRole, readonly Permission[]> = {
     "manage_processes",
     "request_validation",
     "record_decisions",
+    "contribute_knowledge",
   ],
   AGENT_CONTRIBUTOR: [
     "read_workspace_state",
@@ -66,8 +81,13 @@ const MATRIX: Record<WorkspaceRole, readonly Permission[]> = {
     "manage_processes",
     "request_validation",
     "record_decisions",
+    "contribute_knowledge",
   ],
-  READ_ONLY_AGENT: ["read_workspace_state", "record_decisions"],
+  READ_ONLY_AGENT: [
+    "read_workspace_state",
+    "record_decisions",
+    "contribute_knowledge",
+  ],
   VIEWER: ["read_workspace_state"],
 };
 

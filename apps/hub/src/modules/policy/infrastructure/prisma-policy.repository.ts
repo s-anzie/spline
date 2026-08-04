@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Policy as PolicyRow } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Policy, PolicyScopeType, PolicyType } from "../domain/policy";
@@ -82,6 +83,9 @@ export class PrismaPolicyRepository implements PolicyRepository {
         ...(filter.includeDisabled ? {} : { enabled: true }),
       },
       orderBy: [{ scopeType: "asc" }, { rule: "asc" }],
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => PolicyMapper.toDomain(row));
   }

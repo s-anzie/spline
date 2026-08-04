@@ -6,6 +6,7 @@ import { IdentityModule } from "../identity/identity.module";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import {
   ForgetUseCase,
+  GetMemoryEntryUseCase,
   ReadContextUseCase,
   RememberUseCase,
   SearchMemoryUseCase,
@@ -27,6 +28,7 @@ import { MemoryController } from "./interface/memory.controller";
     { provide: MEMORY_REPOSITORY, useClass: PrismaMemoryRepository },
     RememberUseCase,
     ForgetUseCase,
+    GetMemoryEntryUseCase,
     ReadContextUseCase,
     SearchMemoryUseCase,
     ReconstructMemoryUseCase,

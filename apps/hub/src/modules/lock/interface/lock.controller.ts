@@ -18,7 +18,10 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { AcquireLockUseCase } from "../application/acquire-lock.use-case";
-import { ListLocksUseCase } from "../application/list-locks.use-case";
+import {
+  GetLockUseCase,
+  ListLocksUseCase,
+} from "../application/list-locks.use-case";
 import { ManageLockUseCase } from "../application/manage-lock.use-case";
 import { ResourceLock } from "../domain/resource-lock";
 import { AcquireLockDto, ListLocksQueryDto, ManageLockDto } from "./dto/lock.dtos";
@@ -46,6 +49,7 @@ export class LockController {
     private readonly acquire: AcquireLockUseCase,
     private readonly manage: ManageLockUseCase,
     private readonly listLocks: ListLocksUseCase,
+    private readonly getLock: GetLockUseCase,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -92,6 +96,19 @@ export class LockController {
       throw toHttpException(result.error);
     }
     return result.value.map((entry) => toView(entry.lock, entry.active));
+  }
+
+  @Get(":lockId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("lockId") lockId: string,
+  ) {
+    const result = await this.getLock.execute({ workspaceId, lockId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value.lock, result.value.active);
   }
 
   /**

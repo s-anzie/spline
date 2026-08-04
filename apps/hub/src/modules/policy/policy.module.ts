@@ -5,7 +5,10 @@ import { LOCK_TTL_POLICY } from "../lock/domain/ports/lock-ttl-policy.port";
 import { MANDATED_VALIDATIONS } from "../validation/domain/ports/mandated-validations.port";
 import { WorkspaceModule } from "../workspace/workspace.module";
 import { DisablePolicyUseCase } from "./application/disable-policy.use-case";
-import { ListPoliciesUseCase } from "./application/list-policies.use-case";
+import {
+  GetPolicyUseCase,
+  ListPoliciesUseCase,
+} from "./application/list-policies.use-case";
 import { ReportViolationUseCase } from "./application/report-violation.use-case";
 import { ResolveEffectivePoliciesUseCase } from "./application/resolve-effective-policies.use-case";
 import { SetPolicyUseCase } from "./application/set-policy.use-case";
@@ -29,6 +32,7 @@ import { PolicyController } from "./interface/policy.controller";
     SetPolicyUseCase,
     DisablePolicyUseCase,
     ListPoliciesUseCase,
+    GetPolicyUseCase,
     ResolveEffectivePoliciesUseCase,
     ReportViolationUseCase,
   ],

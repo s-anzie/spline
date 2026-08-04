@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma, Task as TaskRow } from "@repo/db";
 
 import { Priority } from "../../../kernel/domain/priority";
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { Blocker } from "../domain/blocker";
@@ -135,6 +136,9 @@ export class PrismaTaskRepository implements TaskRepository {
         }),
       },
       orderBy: { createdAt: "asc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => TaskMapper.toDomain(row));
   }

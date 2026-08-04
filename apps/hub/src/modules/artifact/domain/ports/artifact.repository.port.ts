@@ -17,6 +17,8 @@ export interface ListArtifactsFilter {
   statuses?: readonly ArtifactStatus[];
   createdAfter?: Date;
   createdBefore?: Date;
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface ArtifactRepository {

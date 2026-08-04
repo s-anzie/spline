@@ -1,8 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { MemoryEntry as MemoryRow } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
+import { PER_SCOPE_LIMIT } from "../domain/context-builder";
 import { MemoryEntry, MemoryScopeType } from "../domain/memory-entry";
 import {
   DEFAULT_MEMORY_PAGE,
@@ -100,7 +102,10 @@ export class PrismaMemoryRepository implements MemoryRepository {
       orderBy: { createdAt: "desc" },
       // Memory accumulates and nothing prunes it: an unfiltered read is a
       // page, never the whole of it.
-      take: Math.min(filter.limit ?? DEFAULT_MEMORY_PAGE, MAX_MEMORY_PAGE),
+      take: pageSize(filter.limit, {
+        fallback: DEFAULT_MEMORY_PAGE,
+        ceiling: MAX_MEMORY_PAGE,
+      }),
     });
     return rows.map((row) => MemoryMapper.toDomain(row));
   }
@@ -123,6 +128,10 @@ export class PrismaMemoryRepository implements MemoryRepository {
         })),
       },
       orderBy: { createdAt: "asc" },
+      // Bounded by what the context builder can keep anyway: fetching a
+      // workspace's whole memory to retain 25 entries per level is work
+      // nobody sees and everybody pays for.
+      take: pageSize(scopes.length * PER_SCOPE_LIMIT, { ceiling: MAX_MEMORY_PAGE }),
     });
     return rows.map((row) => MemoryMapper.toDomain(row));
   }

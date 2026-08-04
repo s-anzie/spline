@@ -6,6 +6,8 @@ export interface ListPoliciesFilter {
   type?: PolicyType;
   scopeType?: PolicyScopeType;
   includeDisabled?: boolean;
+  /** Absent means one page, never the whole table (kernel pagination). */
+  limit?: number;
 }
 
 export interface PolicyRepository {

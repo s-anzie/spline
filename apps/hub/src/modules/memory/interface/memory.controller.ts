@@ -19,6 +19,7 @@ import {
 } from "../../identity/interface/permissions.guard";
 import {
   ForgetUseCase,
+  GetMemoryEntryUseCase,
   ReadContextUseCase,
   RememberUseCase,
   SearchMemoryUseCase,
@@ -63,15 +64,18 @@ export class MemoryController {
     private readonly forget: ForgetUseCase,
     private readonly readContext: ReadContextUseCase,
     private readonly search: SearchMemoryUseCase,
+    private readonly getEntry: GetMemoryEntryUseCase,
     private readonly reconstruct: ReconstructMemoryUseCase,
   ) {}
 
   /**
    * Writing to memory is ordinary work, not administration: an agent noting
-   * what it learned is the point of the module (§10.7-10.8).
+   * what it learned is the point of the module (§10.7-10.8). But it IS a
+   * write — `read_workspace_state` here let a VIEWER and a READ_ONLY_AGENT
+   * add to a workspace's memory (§18.1).
    */
   @Post()
-  @RequirePermission("read_workspace_state")
+  @RequirePermission("contribute_knowledge")
   async write(
     @Param("workspaceId") workspaceId: string,
     @CurrentActor() actor: ActorIdentity,
@@ -147,10 +151,23 @@ export class MemoryController {
     return result.value.map(toView);
   }
 
+  @Get(":entryId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("entryId") entryId: string,
+  ) {
+    const result = await this.getEntry.execute({ workspaceId, entryId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
+  }
+
   /** Safe by construction — nothing in the domain depends on a note. */
   @Post(":entryId/forget")
   @HttpCode(200)
-  @RequirePermission("read_workspace_state")
+  @RequirePermission("contribute_knowledge")
   async drop(
     @Param("workspaceId") workspaceId: string,
     @Param("entryId") entryId: string,

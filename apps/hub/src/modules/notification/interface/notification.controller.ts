@@ -18,7 +18,10 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import { AdvanceRecipientUseCase } from "../application/advance-recipient.use-case";
-import { ListNotificationsUseCase } from "../application/list-notifications.use-case";
+import {
+  GetNotificationUseCase,
+  ListNotificationsUseCase,
+} from "../application/list-notifications.use-case";
 import { ListUnreadUseCase } from "../application/list-unread.use-case";
 import { SendNotificationUseCase } from "../application/send-notification.use-case";
 import { NotificationRecipient } from "../domain/notification-recipient";
@@ -72,13 +75,18 @@ export class NotificationController {
   constructor(
     private readonly send: SendNotificationUseCase,
     private readonly listNotifications: ListNotificationsUseCase,
+    private readonly getNotification: GetNotificationUseCase,
     private readonly listUnread: ListUnreadUseCase,
     private readonly advance: AdvanceRecipientUseCase,
   ) {}
 
-  /** Sending is an act of collaboration, not of administration (§10.12). */
+  /**
+   * Sending is an act of collaboration, not of administration (§10.12) — but
+   * still a write: `read_workspace_state` here let a VIEWER broadcast to the
+   * whole workspace (§18.1).
+   */
   @Post()
-  @RequirePermission("read_workspace_state")
+  @RequirePermission("contribute_knowledge")
   async post(
     @Param("workspaceId") workspaceId: string,
     @CurrentActor() actor: ActorIdentity,
@@ -146,6 +154,19 @@ export class NotificationController {
     return result.value.map((entry) =>
       toRecipientView(entry.recipient, entry.notification),
     );
+  }
+
+  @Get(":notificationId")
+  @RequirePermission("read_workspace_state")
+  async one(
+    @Param("workspaceId") workspaceId: string,
+    @Param("notificationId") notificationId: string,
+  ) {
+    const result = await this.getNotification.execute({ workspaceId, notificationId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return toView(result.value);
   }
 
   /** An actor declares for their own row; nobody declares on their behalf. */

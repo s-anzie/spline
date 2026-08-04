@@ -4,6 +4,7 @@ import {
   NotificationRecipient as RecipientRow,
 } from "@repo/db";
 
+import { MAX_PAGE_SIZE, pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import {
@@ -126,7 +127,7 @@ export class PrismaNotificationRepository implements NotificationRepository {
         ...(filter.taskId && { taskId: filter.taskId }),
       },
       orderBy: { createdAt: "desc" },
-      take: filter.limit ?? 100,
+      take: pageSize(filter.limit),
     });
     return rows.map((row) => NotificationMapper.toDomain(row));
   }
@@ -185,6 +186,9 @@ export class PrismaNotificationRecipientRepository
       },
       include: { notification: true },
       orderBy: { createdAt: "desc" },
+      // An actor with thousands unread must still get an answer (§10.4 makes
+      // this the first call of an agent's cycle).
+      take: pageSize(undefined),
     });
     return rows.map((row) => ({
       recipient: RecipientMapper.toDomain(row, workspaceId),
@@ -199,6 +203,9 @@ export class PrismaNotificationRecipientRepository
     const rows = await this.prisma.notificationRecipient.findMany({
       where: { notificationId, notification: { workspaceId } },
       orderBy: { createdAt: "asc" },
+      // A broadcast fans out to the workspace's members: bounded, but with
+      // room for a large one.
+      take: pageSize(undefined, { fallback: MAX_PAGE_SIZE }),
     });
     return rows.map((row) => RecipientMapper.toDomain(row, workspaceId));
   }

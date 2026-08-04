@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma, Workspace as WorkspaceRow } from "@repo/db";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { WorkspaceRepository } from "../domain/ports/workspace.repository.port";
 import {
@@ -66,6 +67,9 @@ export class PrismaWorkspaceRepository implements WorkspaceRepository {
     const rows = await this.prisma.workspace.findMany({
       where: { id: { in: [...ids] } },
       orderBy: { createdAt: "asc" },
+    
+      // An absent limit is a page, never the whole table (kernel pagination).
+      take: pageSize(undefined),
     });
     return rows.map((row) => WorkspaceMapper.toDomain(row));
   }
