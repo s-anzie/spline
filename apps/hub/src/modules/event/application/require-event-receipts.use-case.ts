@@ -20,6 +20,7 @@ import {
 } from "../domain/ports/event.repository.port";
 
 export interface RequireEventReceiptsInput {
+  workspaceId: string;
   eventId: string;
   actors: readonly { actorType: ActorType; actorId: string }[];
 }
@@ -50,7 +51,9 @@ export class RequireEventReceiptsUseCase
     input: RequireEventReceiptsInput,
   ): Promise<Result<{ receiptIds: string[] }, EventNotFoundError | GuardViolation>> {
     const event = await this.events.findById(input.eventId);
-    if (!event) {
+    // A fact from another workspace is reported as absent, not as forbidden:
+    // saying "it exists but is not yours" already leaks that it exists (§4.2).
+    if (!event || event.workspaceId !== input.workspaceId) {
       return Result.fail(new EventNotFoundError(input.eventId));
     }
 
@@ -63,6 +66,7 @@ export class RequireEventReceiptsUseCase
       }
       // Asking twice must not produce two receipts for the same actor.
       const existing = await this.receipts.findByEventAndActor(
+        input.workspaceId,
         input.eventId,
         actor.value,
       );

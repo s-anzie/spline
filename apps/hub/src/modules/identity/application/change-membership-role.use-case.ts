@@ -20,6 +20,7 @@ import {
 } from "../domain/ports/identity.repository.ports";
 
 export interface ChangeMembershipRoleInput {
+  workspaceId: string;
   membershipId: string;
   role: WorkspaceRole;
 }
@@ -45,7 +46,11 @@ export class ChangeMembershipRoleUseCase
     input: ChangeMembershipRoleInput,
   ): Promise<Result<void, ChangeMembershipRoleError>> {
     const membership = await this.memberships.findById(input.membershipId);
-    if (!membership) {
+    // Reachable from any workspace before this check: the guard proved the
+    // caller owns the workspace in the URL, never that the membership is in
+    // it. It was refused only when the target happened to be the last owner
+    // of the other workspace — an accident, not isolation (§4.2).
+    if (!membership || membership.workspaceId !== input.workspaceId) {
       return Result.fail(new MembershipNotFoundError(input.membershipId));
     }
 

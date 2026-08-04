@@ -129,10 +129,12 @@ export class EventController {
   @Post("workspaces/:workspaceId/events/:eventId/receipts")
   @RequirePermission("manage_tasks")
   async require(
+    @Param("workspaceId") workspaceId: string,
     @Param("eventId") eventId: string,
     @Body() dto: RequireReceiptsDto,
   ): Promise<{ receiptIds: string[] }> {
     const result = await this.requireReceipts.execute({
+      workspaceId,
       eventId,
       actors: dto.actorIds.map((actorId) => ({
         actorType: dto.actorType as ActorType,
@@ -150,11 +152,13 @@ export class EventController {
   @HttpCode(200)
   @RequirePermission("read_workspace_state")
   async advance(
+    @Param("workspaceId") workspaceId: string,
     @Param("eventId") eventId: string,
     @CurrentActor() actor: ActorIdentity,
     @Body() dto: AdvanceReceiptDto,
   ): Promise<{ ok: true }> {
     const result = await this.advanceReceipt.execute({
+      workspaceId,
       eventId,
       actorType: actor.actorType,
       actorId: actor.actorId,
@@ -167,13 +171,19 @@ export class EventController {
   }
 
   /**
-   * Deliberately NOT workspace-scoped: an actor asks what they still have to
-   * take notice of, and isolation is preserved by scoping to the caller
-   * themselves rather than to a workspace.
+   * What the caller still has to take notice of, in one workspace. Scoping to
+   * the caller alone was NOT enough: an actor in two workspaces got a single
+   * mixed list, and the route carried no permission guard, so it kept
+   * answering after a membership was revoked (§4.2, §20.4).
    */
-  @Get("event-receipts/mine")
-  async mine(@CurrentActor() actor: ActorIdentity) {
+  @Get("workspaces/:workspaceId/event-receipts/mine")
+  @RequirePermission("read_workspace_state")
+  async mine(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ) {
     const result = await this.listPending.execute({
+      workspaceId,
       actorType: actor.actorType,
       actorId: actor.actorId,
     });

@@ -147,16 +147,16 @@ export class PrismaEventReceiptRepository implements EventReceiptRepository {
   }
 
   async findByEventAndActor(
+    workspaceId: string,
     eventId: string,
     actor: ActorRef,
   ): Promise<EventReceipt | null> {
-    const row = await this.prisma.eventReceipt.findUnique({
+    const row = await this.prisma.eventReceipt.findFirst({
       where: {
-        eventId_actorType_actorId: {
-          eventId,
-          actorType: actor.type,
-          actorId: actor.actorId,
-        },
+        eventId,
+        actorType: actor.type,
+        actorId: actor.actorId,
+        event: { workspaceId },
       },
     });
     return row ? EventReceiptMapper.toDomain(row) : null;
@@ -165,6 +165,7 @@ export class PrismaEventReceiptRepository implements EventReceiptRepository {
   async list(filter: ListReceiptsFilter): Promise<EventReceipt[]> {
     const rows = await this.prisma.eventReceipt.findMany({
       where: {
+        event: { workspaceId: filter.workspaceId },
         actorType: filter.actor.type,
         actorId: filter.actor.actorId,
         ...(filter.statuses && { status: { in: [...filter.statuses] } }),

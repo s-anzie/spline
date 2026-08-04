@@ -55,7 +55,7 @@ describe("workspace membership use-cases", () => {
     const granted = await grant.execute(owner);
     await grant.execute({ ...owner, actorId: "u-2", role: "OWNER" });
 
-    const result = await changeRole.execute({
+    const result = await changeRole.execute({ workspaceId: "w-1",
       membershipId: granted.value.membershipId,
       role: "HUMAN_OPERATOR",
     });
@@ -69,7 +69,7 @@ describe("workspace membership use-cases", () => {
     const { grant, changeRole } = makeUseCases();
     const granted = await grant.execute(owner);
 
-    const result = await changeRole.execute({
+    const result = await changeRole.execute({ workspaceId: "w-1",
       membershipId: granted.value.membershipId,
       role: "VIEWER",
     });
@@ -82,7 +82,7 @@ describe("workspace membership use-cases", () => {
     const { grant, revoke } = makeUseCases();
     const granted = await grant.execute(owner);
 
-    const result = await revoke.execute({ membershipId: granted.value.membershipId });
+    const result = await revoke.execute({ workspaceId: "w-1", membershipId: granted.value.membershipId });
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("CannotRemoveLastOwnerError");
@@ -93,7 +93,7 @@ describe("workspace membership use-cases", () => {
     await grant.execute(owner);
     const viewer = await grant.execute({ ...owner, actorId: "u-2", role: "VIEWER" });
 
-    const result = await revoke.execute({ membershipId: viewer.value.membershipId });
+    const result = await revoke.execute({ workspaceId: "w-1", membershipId: viewer.value.membershipId });
 
     expect(result.isSuccess).toBe(true);
     expect(await memberships.findById(viewer.value.membershipId)).toBeNull();
@@ -107,7 +107,7 @@ describe("workspace membership use-cases", () => {
     const first = await grant.execute(owner);
     await grant.execute({ ...owner, actorId: "u-2" });
 
-    const result = await revoke.execute({ membershipId: first.value.membershipId });
+    const result = await revoke.execute({ workspaceId: "w-1", membershipId: first.value.membershipId });
 
     expect(result.isSuccess).toBe(true);
   });
@@ -115,7 +115,7 @@ describe("workspace membership use-cases", () => {
   it("fails cleanly on an unknown membership", async () => {
     const { changeRole } = makeUseCases();
 
-    const result = await changeRole.execute({ membershipId: "nope", role: "VIEWER" });
+    const result = await changeRole.execute({ workspaceId: "w-1", membershipId: "nope", role: "VIEWER" });
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("MembershipNotFoundError");
@@ -145,7 +145,7 @@ describe("revoking a member who still owns live work", () => {
   it("is refused while the actor owns open work", async () => {
     const { revoke, membershipId } = await contextWithWorkload(true);
 
-    const result = await revoke.execute({ membershipId });
+    const result = await revoke.execute({ workspaceId: "w-1", membershipId });
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("ActorStillOwnsWorkError");
@@ -154,6 +154,6 @@ describe("revoking a member who still owns live work", () => {
   it("succeeds once their work has been reassigned or settled", async () => {
     const { revoke, membershipId } = await contextWithWorkload(false);
 
-    expect((await revoke.execute({ membershipId })).isSuccess).toBe(true);
+    expect((await revoke.execute({ workspaceId: "w-1", membershipId })).isSuccess).toBe(true);
   });
 });

@@ -186,13 +186,13 @@ describe("task use-cases", () => {
       const input = baseInput(ctx.workspace.id.value, ctx.goal.id.value);
       const blocker = await ctx.create.execute(input);
       const dependent = await ctx.create.execute(input);
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         taskId: dependent.value.taskId,
         dependsOnTaskId: blocker.value.taskId,
         operation: "add",
       });
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         taskId: dependent.value.taskId,
         status: "READY",
       });
@@ -206,17 +206,17 @@ describe("task use-cases", () => {
       const input = baseInput(ctx.workspace.id.value, ctx.goal.id.value);
       const first = await ctx.create.execute(input);
       const second = await ctx.create.execute(input);
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         taskId: second.value.taskId,
         dependsOnTaskId: first.value.taskId,
         operation: "add",
       });
       for (const status of ["READY", "ASSIGNED", "RUNNING", "VALIDATING"] as const) {
-        await ctx.changeStatus.execute({ taskId: first.value.taskId, status });
+        await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId, status });
       }
-      await ctx.complete.execute({ taskId: first.value.taskId });
+      await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId });
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         taskId: second.value.taskId,
         status: "READY",
       });
@@ -228,13 +228,13 @@ describe("task use-cases", () => {
       const ctx = await makeContext();
       const input = baseInput(ctx.workspace.id.value, ctx.goal.id.value);
       const [a, b] = [await ctx.create.execute(input), await ctx.create.execute(input)];
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         taskId: b.value.taskId,
         dependsOnTaskId: a.value.taskId,
         operation: "add",
       });
 
-      const result = await ctx.dependency.execute({
+      const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         taskId: a.value.taskId,
         dependsOnTaskId: b.value.taskId,
         operation: "add",
@@ -253,9 +253,9 @@ describe("task use-cases", () => {
       await ctx.create.execute(input);
 
       for (const status of ["READY", "ASSIGNED", "RUNNING", "VALIDATING"] as const) {
-        await ctx.changeStatus.execute({ taskId: first.value.taskId, status });
+        await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId, status });
       }
-      await ctx.complete.execute({ taskId: first.value.taskId });
+      await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId });
 
       const goal = await ctx.goals.findById(ctx.goal.id.value);
       expect(goal?.progress).toBe(50);
@@ -267,11 +267,11 @@ describe("task use-cases", () => {
       const first = await ctx.create.execute(input);
       const doomed = await ctx.create.execute(input);
 
-      await ctx.changeStatus.execute({ taskId: doomed.value.taskId, status: "CANCELLED" });
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, taskId: doomed.value.taskId, status: "CANCELLED" });
       for (const status of ["READY", "ASSIGNED", "RUNNING", "VALIDATING"] as const) {
-        await ctx.changeStatus.execute({ taskId: first.value.taskId, status });
+        await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId, status });
       }
-      await ctx.complete.execute({ taskId: first.value.taskId });
+      await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, taskId: first.value.taskId });
 
       const goal = await ctx.goals.findById(ctx.goal.id.value);
       expect(goal?.progress).toBe(100);
@@ -285,10 +285,10 @@ describe("task use-cases", () => {
         baseInput(ctx.workspace.id.value, ctx.goal.id.value),
       );
       for (const status of ["READY", "ASSIGNED", "RUNNING"] as const) {
-        await ctx.changeStatus.execute({ taskId: created.value.taskId, status });
+        await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, taskId: created.value.taskId, status });
       }
 
-      const reported = await ctx.reportBlocker.execute({
+      const reported = await ctx.reportBlocker.execute({ workspaceId: ctx.workspace.id.value,
         taskId: created.value.taskId,
         type: "TECHNICAL",
         description: "port bound",
@@ -298,7 +298,7 @@ describe("task use-cases", () => {
       expect(reported.isSuccess).toBe(true);
       expect((await ctx.tasks.findById(created.value.taskId))?.status).toBe("BLOCKED");
 
-      const resolved = await ctx.resolveBlocker.execute({
+      const resolved = await ctx.resolveBlocker.execute({ workspaceId: ctx.workspace.id.value,
         taskId: created.value.taskId,
         blockerId: reported.value.blockerId,
         resolution: "freed",
@@ -316,7 +316,7 @@ describe("task use-cases", () => {
         baseInput(ctx.workspace.id.value, ctx.goal.id.value),
       );
 
-      const result = await ctx.assign.execute({
+      const result = await ctx.assign.execute({ workspaceId: ctx.workspace.id.value,
         taskId: created.value.taskId,
         assigneeType: "HUMAN",
         assigneeId: "u-1",
@@ -332,7 +332,7 @@ describe("task use-cases", () => {
         baseInput(ctx.workspace.id.value, ctx.goal.id.value),
       );
 
-      const result = await ctx.assign.execute({
+      const result = await ctx.assign.execute({ workspaceId: ctx.workspace.id.value,
         taskId: created.value.taskId,
         assigneeType: "HUMAN",
         assigneeId: "stranger",
@@ -367,7 +367,7 @@ describe("task use-cases", () => {
     it("fails cleanly on an unknown task", async () => {
       const ctx = await makeContext();
 
-      const result = await ctx.get.execute({ taskId: "ghost" });
+      const result = await ctx.get.execute({ workspaceId: ctx.workspace.id.value, taskId: "ghost" });
 
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("TaskNotFoundError");
@@ -381,7 +381,7 @@ describe("task use-cases", () => {
         baseInput(ctx.workspace.id.value, ctx.goal.id.value),
       );
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         taskId: created.value.taskId,
         status: "COMPLETED",
       });
@@ -398,9 +398,9 @@ describe("task use-cases", () => {
         baseInput(ctx.workspace.id.value, ctx.goal.id.value),
       );
 
-      await ctx.update.execute({ taskId: created.value.taskId, title: "Renamed" });
+      await ctx.update.execute({ workspaceId: ctx.workspace.id.value, taskId: created.value.taskId, title: "Renamed" });
 
-      expect((await ctx.get.execute({ taskId: created.value.taskId })).value.title).toBe(
+      expect((await ctx.get.execute({ workspaceId: ctx.workspace.id.value, taskId: created.value.taskId })).value.title).toBe(
         "Renamed",
       );
     });

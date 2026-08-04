@@ -45,7 +45,7 @@ describe("goal dependency use-cases (§5.6)", () => {
     const ctx = await makeContext();
     const [first, second] = [await ctx.makeGoal("first"), await ctx.makeGoal("second")];
 
-    const result = await ctx.dependency.execute({
+    const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
       goalId: second,
       dependsOnGoalId: first,
       operation: "add",
@@ -70,7 +70,7 @@ describe("goal dependency use-cases (§5.6)", () => {
       })
     ).value.goalId;
 
-    const result = await ctx.dependency.execute({
+    const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
       goalId: mine,
       dependsOnGoalId: foreign,
       operation: "add",
@@ -84,7 +84,7 @@ describe("goal dependency use-cases (§5.6)", () => {
     const ctx = await makeContext();
     const goal = await ctx.makeGoal("g");
 
-    const result = await ctx.dependency.execute({
+    const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
       goalId: goal,
       dependsOnGoalId: "ghost",
       operation: "add",
@@ -97,9 +97,9 @@ describe("goal dependency use-cases (§5.6)", () => {
   it("rejects a direct cycle (A→B then B→A)", async () => {
     const ctx = await makeContext();
     const [a, b] = [await ctx.makeGoal("a"), await ctx.makeGoal("b")];
-    await ctx.dependency.execute({ goalId: b, dependsOnGoalId: a, operation: "add" });
+    await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value, goalId: b, dependsOnGoalId: a, operation: "add" });
 
-    const result = await ctx.dependency.execute({
+    const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
       goalId: a,
       dependsOnGoalId: b,
       operation: "add",
@@ -116,10 +116,10 @@ describe("goal dependency use-cases (§5.6)", () => {
       await ctx.makeGoal("b"),
       await ctx.makeGoal("c"),
     ];
-    await ctx.dependency.execute({ goalId: b, dependsOnGoalId: a, operation: "add" });
-    await ctx.dependency.execute({ goalId: c, dependsOnGoalId: b, operation: "add" });
+    await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value, goalId: b, dependsOnGoalId: a, operation: "add" });
+    await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value, goalId: c, dependsOnGoalId: b, operation: "add" });
 
-    const result = await ctx.dependency.execute({
+    const result = await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
       goalId: a,
       dependsOnGoalId: c,
       operation: "add",
@@ -131,9 +131,9 @@ describe("goal dependency use-cases (§5.6)", () => {
   it("removes a dependency", async () => {
     const ctx = await makeContext();
     const [a, b] = [await ctx.makeGoal("a"), await ctx.makeGoal("b")];
-    await ctx.dependency.execute({ goalId: b, dependsOnGoalId: a, operation: "add" });
+    await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value, goalId: b, dependsOnGoalId: a, operation: "add" });
 
-    await ctx.dependency.execute({ goalId: b, dependsOnGoalId: a, operation: "remove" });
+    await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value, goalId: b, dependsOnGoalId: a, operation: "remove" });
 
     expect((await ctx.goals.findById(b))?.dependsOnGoalIds).toEqual([]);
   });
@@ -142,13 +142,13 @@ describe("goal dependency use-cases (§5.6)", () => {
     it("refuses ACTIVE while a dependency is not completed", async () => {
       const ctx = await makeContext();
       const [blocker, dependent] = [await ctx.makeGoal("blocker"), await ctx.makeGoal("dep")];
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         dependsOnGoalId: blocker,
         operation: "add",
       });
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         status: "ACTIVE",
       });
@@ -160,7 +160,7 @@ describe("goal dependency use-cases (§5.6)", () => {
     it("allows ACTIVE once every dependency is completed", async () => {
       const ctx = await makeContext();
       const [blocker, dependent] = [await ctx.makeGoal("blocker"), await ctx.makeGoal("dep")];
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         dependsOnGoalId: blocker,
         operation: "add",
@@ -171,7 +171,7 @@ describe("goal dependency use-cases (§5.6)", () => {
       blockerGoal.complete(now);
       await ctx.goals.save(blockerGoal);
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         status: "ACTIVE",
       });
@@ -182,14 +182,14 @@ describe("goal dependency use-cases (§5.6)", () => {
     it("a cancelled dependency does not block activation — it will never complete", async () => {
       const ctx = await makeContext();
       const [blocker, dependent] = [await ctx.makeGoal("blocker"), await ctx.makeGoal("dep")];
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         dependsOnGoalId: blocker,
         operation: "add",
       });
-      await ctx.changeStatus.execute({ goalId: blocker, status: "CANCELLED" });
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, goalId: blocker, status: "CANCELLED" });
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         status: "ACTIVE",
       });
@@ -200,13 +200,13 @@ describe("goal dependency use-cases (§5.6)", () => {
     it("does not gate transitions other than ACTIVE", async () => {
       const ctx = await makeContext();
       const [blocker, dependent] = [await ctx.makeGoal("blocker"), await ctx.makeGoal("dep")];
-      await ctx.dependency.execute({
+      await ctx.dependency.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         dependsOnGoalId: blocker,
         operation: "add",
       });
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: dependent,
         status: "CANCELLED",
       });

@@ -60,6 +60,7 @@ describe("Event (e2e)", () => {
     return {
       token,
       agentToken: issued.value.token,
+      organizationId: registered.body.organizationId as string,
       workspaceId,
       base: `/workspaces/${workspaceId}/events`,
     };
@@ -187,7 +188,7 @@ describe("Event (e2e)", () => {
       .expect(201);
 
     const asAgent = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.agentToken}`);
-    let mine = await asAgent(request(http).get("/event-receipts/mine")).expect(200);
+    let mine = await asAgent(request(http).get(`/workspaces/${ctx.workspaceId}/event-receipts/mine`)).expect(200);
     expect(mine.body).toHaveLength(1);
     expect(mine.body[0].status).toBe("PENDING");
     expect(mine.body[0].allowedStatusTargets).toEqual(["SEEN"]);
@@ -204,8 +205,80 @@ describe("Event (e2e)", () => {
         .expect(200);
     }
 
-    mine = await asAgent(request(http).get("/event-receipts/mine")).expect(200);
+    mine = await asAgent(request(http).get(`/workspaces/${ctx.workspaceId}/event-receipts/mine`)).expect(200);
     expect(mine.body).toHaveLength(0); // settled, out of the queue
+  });
+
+  /**
+   * §4.2 / §20.4: workspace isolation admits no exception, not even for a
+   * "what do I still owe an answer to?" query. An actor who belongs to two
+   * workspaces must never receive one list mixing both.
+   */
+  it("never mixes two workspaces in an actor's own pending receipts", async () => {
+    const ctx = await setup();
+
+    const second = await request(http)
+      .post("/workspaces")
+      .set("Authorization", `Bearer ${ctx.token}`)
+      .send({ organizationId: ctx.organizationId, name: "Other" })
+      .expect(201);
+    const otherId = second.body.workspaceId as string;
+    await app.get(GrantWorkspaceMembershipUseCase).execute({
+      actorType: "AGENT",
+      actorId: "a-1",
+      workspaceId: otherId,
+      role: "AGENT_CONTRIBUTOR",
+    });
+
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+    const asAgent = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.agentToken}`);
+
+    // One fact demanding an acknowledgement in each workspace.
+    for (const [base, title] of [
+      [ctx.base, "here"],
+      [`/workspaces/${otherId}/events`, "elsewhere"],
+    ] as const) {
+      const created = await auth(request(http).post(base))
+        .send({ type: "policy.changed", targetType: "policy", targetId: title })
+        .expect(201);
+      await auth(request(http).post(`${base}/${created.body.eventId}/receipts`))
+        .send({ actorType: "AGENT", actorIds: ["a-1"] })
+        .expect(201);
+    }
+
+    const here = await asAgent(
+      request(http).get(`/workspaces/${ctx.workspaceId}/event-receipts/mine`),
+    ).expect(200);
+    expect(here.body).toHaveLength(1);
+    expect(here.body[0].event.target.id).toBe("here");
+
+    const elsewhere = await asAgent(
+      request(http).get(`/workspaces/${otherId}/event-receipts/mine`),
+    ).expect(200);
+    expect(elsewhere.body).toHaveLength(1);
+    expect(elsewhere.body[0].event.target.id).toBe("elsewhere");
+
+    // The workspace in the URL must govern the object acted upon, not just the
+    // permission check: acknowledging an "elsewhere" receipt through the "here"
+    // URL would pass a guard for one workspace while touching another.
+    const elsewhereEventId = elsewhere.body[0].eventId as string;
+    await asAgent(
+      request(http).post(`${ctx.base}/${elsewhereEventId}/receipts/mine`),
+    )
+      .send({ status: "SEEN" })
+      .expect(404);
+
+    // A workspace the agent is not a member of is refused outright.
+    const outsider = await request(http)
+      .post("/workspaces")
+      .set("Authorization", `Bearer ${ctx.token}`)
+      .send({ organizationId: ctx.organizationId, name: "Closed" })
+      .expect(201);
+    await asAgent(
+      request(http).get(
+        `/workspaces/${outsider.body.workspaceId}/event-receipts/mine`,
+      ),
+    ).expect(403);
   });
 
   it("isolates per workspace and requires authentication", async () => {

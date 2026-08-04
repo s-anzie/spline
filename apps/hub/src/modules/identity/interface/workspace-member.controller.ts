@@ -93,10 +93,11 @@ export class WorkspaceMemberController {
   @Patch(":membershipId")
   @RequirePermission("manage_members")
   async setRole(
+    @Param("workspaceId") workspaceId: string,
     @Param("membershipId") membershipId: string,
     @Body() dto: ChangeMemberRoleDto,
   ): Promise<{ ok: true }> {
-    const result = await this.changeRole.execute({ membershipId, role: dto.role });
+    const result = await this.changeRole.execute({ workspaceId, membershipId, role: dto.role });
     if (result.isFailure) {
       // Losing the last owner would leave the workspace unadministrable.
       throw toHttpException(result.error, { conflicts: ["CannotRemoveLastOwnerError"] });
@@ -107,8 +108,11 @@ export class WorkspaceMemberController {
   @Delete(":membershipId")
   @HttpCode(200)
   @RequirePermission("manage_members")
-  async remove(@Param("membershipId") membershipId: string): Promise<{ ok: true }> {
-    const result = await this.revoke.execute({ membershipId });
+  async remove(
+    @Param("workspaceId") workspaceId: string,
+    @Param("membershipId") membershipId: string,
+  ): Promise<{ ok: true }> {
+    const result = await this.revoke.execute({ workspaceId, membershipId });
     if (result.isFailure) {
       // Both refusals are state conflicts, not malformed requests: the caller
       // must settle something first, then retry the very same call.

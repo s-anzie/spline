@@ -20,7 +20,12 @@ export interface ManageTaskDependencyInput {
   taskId: string;
   dependsOnTaskId: string;
   operation: "add" | "remove";
-  workspaceId?: string;
+  /**
+   * Mandatory (§4.2): isolation must not be opt-in. While this was optional,
+   * a caller that omitted it silently reached every workspace — which is what
+   * happened on three routes.
+   */
+  workspaceId: string;
 }
 
 export type ManageTaskDependencyError =

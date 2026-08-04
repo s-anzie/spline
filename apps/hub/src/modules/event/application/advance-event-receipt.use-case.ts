@@ -19,6 +19,7 @@ import {
 } from "../domain/ports/event.repository.port";
 
 export interface AdvanceEventReceiptInput {
+  workspaceId: string;
   eventId: string;
   actorType: ActorType;
   actorId: string;
@@ -49,7 +50,11 @@ export class AdvanceEventReceiptUseCase
     if (actor.isFailure) {
       return Result.fail(actor.error);
     }
-    const receipt = await this.receipts.findByEventAndActor(input.eventId, actor.value);
+    const receipt = await this.receipts.findByEventAndActor(
+      input.workspaceId,
+      input.eventId,
+      actor.value,
+    );
     if (!receipt) {
       return Result.fail(new EventReceiptNotFoundError(input.eventId));
     }

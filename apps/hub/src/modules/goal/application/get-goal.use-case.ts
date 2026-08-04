@@ -8,8 +8,12 @@ import { GOAL_REPOSITORY, GoalRepository } from "../domain/ports/goal.repository
 
 export interface GetGoalInput {
   goalId: string;
-  /** When provided, a goal from another workspace is reported as not found. */
-  workspaceId?: string;
+  /**
+   * Mandatory (§4.2): isolation must not be opt-in. While this was optional,
+   * a caller that omitted it silently reached every workspace — which is what
+   * happened on three routes.
+   */
+  workspaceId: string;
 }
 
 @Injectable()

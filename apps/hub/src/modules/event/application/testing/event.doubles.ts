@@ -61,6 +61,9 @@ export class InMemoryEventRepository implements EventRepository {
 export class InMemoryEventReceiptRepository implements EventReceiptRepository {
   readonly receipts = new Map<string, EventReceipt>();
 
+  /** A receipt inherits its workspace from the fact, so the fake needs both. */
+  constructor(private readonly events: InMemoryEventRepository) {}
+
   async save(receipt: EventReceipt): Promise<void> {
     this.receipts.set(receipt.id.value, receipt);
   }
@@ -70,11 +73,14 @@ export class InMemoryEventReceiptRepository implements EventReceiptRepository {
   }
 
   async findByEventAndActor(
+    workspaceId: string,
     eventId: string,
     actor: ActorRef,
   ): Promise<EventReceipt | null> {
     for (const receipt of this.receipts.values()) {
-      if (receipt.eventId === eventId && receipt.actor.equals(actor)) return receipt;
+      if (receipt.eventId !== eventId || !receipt.actor.equals(actor)) continue;
+      const event = this.events.events.find((e) => e.id.value === eventId);
+      if (event?.workspaceId === workspaceId) return receipt;
     }
     return null;
   }
@@ -83,7 +89,8 @@ export class InMemoryEventReceiptRepository implements EventReceiptRepository {
     return [...this.receipts.values()].filter((receipt) => {
       if (!receipt.actor.equals(filter.actor)) return false;
       if (filter.statuses && !filter.statuses.includes(receipt.status)) return false;
-      return true;
+      const event = this.events.events.find((e) => e.id.value === receipt.eventId);
+      return event?.workspaceId === filter.workspaceId;
     });
   }
 }

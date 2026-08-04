@@ -11,7 +11,7 @@ import { RecomputeGoalProgressUseCase } from "../../goal/application/recompute-g
 export class GoalProgressSyncService {
   constructor(private readonly recompute: RecomputeGoalProgressUseCase) {}
 
-  async sync(goalId: string): Promise<void> {
-    await this.recompute.execute({ goalId });
+  async sync(workspaceId: string, goalId: string): Promise<void> {
+    await this.recompute.execute({ workspaceId, goalId });
   }
 }

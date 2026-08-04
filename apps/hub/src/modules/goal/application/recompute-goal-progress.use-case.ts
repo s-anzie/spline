@@ -6,6 +6,8 @@ import { GOAL_WORKLOAD, GoalWorkloadPort } from "../domain/ports/goal-workload.p
 import { UpdateGoalProgressUseCase } from "./update-goal-progress.use-case";
 
 export interface RecomputeGoalProgressInput {
+  /** Carried through from the work item: the recompute writes to a goal. */
+  workspaceId: string;
   goalId: string;
 }
 
@@ -29,6 +31,7 @@ export class RecomputeGoalProgressUseCase
       return Result.ok(undefined);
     }
     await this.updateProgress.execute({
+      workspaceId: input.workspaceId,
       goalId: input.goalId,
       progress: Math.round((tally.completed / tally.total) * 100),
     });

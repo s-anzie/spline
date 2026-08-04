@@ -222,7 +222,7 @@ describe("decision use-cases", () => {
     it("fails cleanly on an unknown decision", async () => {
       const ctx = await makeContext();
 
-      expect((await ctx.get.execute({ decisionId: "ghost" })).error.name).toBe(
+      expect((await ctx.get.execute({ workspaceId: ctx.workspace.id.value, decisionId: "ghost" })).error.name).toBe(
         "DecisionNotFoundError",
       );
     });

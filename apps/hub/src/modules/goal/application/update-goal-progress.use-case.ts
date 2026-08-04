@@ -13,6 +13,7 @@ import { GoalNotFoundError } from "../domain/goal.errors";
 import { GOAL_REPOSITORY, GoalRepository } from "../domain/ports/goal.repository.port";
 
 export interface UpdateGoalProgressInput {
+  workspaceId: string;
   goalId: string;
   progress: number;
 }
@@ -36,7 +37,9 @@ export class UpdateGoalProgressUseCase
     input: UpdateGoalProgressInput,
   ): Promise<Result<void, GoalNotFoundError | GuardViolation>> {
     const goal = await this.goals.findById(input.goalId);
-    if (!goal) {
+    // The only write in the codebase that reached another workspace and
+    // succeeded: the route carried a workspace, the use case ignored it.
+    if (!goal || goal.workspaceId !== input.workspaceId) {
       return Result.fail(new GoalNotFoundError(input.goalId));
     }
 
@@ -46,7 +49,7 @@ export class UpdateGoalProgressUseCase
     }
 
     await this.goals.save(goal);
-    flushDomainEvents(goal, this.publisher);
+    await flushDomainEvents(goal, this.publisher);
     return Result.ok(undefined);
   }
 }

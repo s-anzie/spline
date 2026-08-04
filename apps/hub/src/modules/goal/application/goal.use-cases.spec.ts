@@ -123,7 +123,7 @@ describe("goal use-cases", () => {
       it("rejects a terminal parent", async () => {
         const ctx = await makeContext();
         const parent = await ctx.create.execute(baseInput(ctx.workspace.id.value));
-        await ctx.changeStatus.execute({
+        await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
           goalId: parent.value.goalId,
           status: "CANCELLED",
         });
@@ -187,7 +187,7 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: created.value.goalId,
         status: "ACTIVE",
       });
@@ -202,7 +202,7 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      const result = await ctx.changeStatus.execute({
+      const result = await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         goalId: created.value.goalId,
         status: "COMPLETED",
       });
@@ -215,8 +215,8 @@ describe("goal use-cases", () => {
   describe("CompleteGoalUseCase", () => {
     async function reviewedGoal(ctx: Awaited<ReturnType<typeof makeContext>>) {
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
-      await ctx.changeStatus.execute({ goalId: created.value.goalId, status: "ACTIVE" });
-      await ctx.changeStatus.execute({ goalId: created.value.goalId, status: "REVIEW" });
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId, status: "ACTIVE" });
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId, status: "REVIEW" });
       return created.value.goalId;
     }
 
@@ -224,7 +224,7 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const goalId = await reviewedGoal(ctx);
 
-      const result = await ctx.complete.execute({ goalId });
+      const result = await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, goalId });
 
       expect(result.isSuccess).toBe(true);
       const goal = await ctx.goals.findById(goalId);
@@ -241,7 +241,7 @@ describe("goal use-cases", () => {
         parentGoalId: goalId,
       });
 
-      const result = await ctx.complete.execute({ goalId });
+      const result = await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, goalId });
 
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("OpenChildrenError");
@@ -255,9 +255,9 @@ describe("goal use-cases", () => {
         title: "child",
         parentGoalId: goalId,
       });
-      await ctx.changeStatus.execute({ goalId: child.value.goalId, status: "CANCELLED" });
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, goalId: child.value.goalId, status: "CANCELLED" });
 
-      const result = await ctx.complete.execute({ goalId });
+      const result = await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, goalId });
 
       expect(result.isSuccess).toBe(true);
     });
@@ -266,7 +266,7 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      const result = await ctx.complete.execute({ goalId: created.value.goalId });
+      const result = await ctx.complete.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId });
 
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("InvalidStateTransitionError");
@@ -278,9 +278,9 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      await ctx.updateProgress.execute({ goalId: created.value.goalId, progress: 60 });
+      await ctx.updateProgress.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId, progress: 60 });
       const before = ctx.publisher.published.length;
-      await ctx.updateProgress.execute({ goalId: created.value.goalId, progress: 60 });
+      await ctx.updateProgress.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId, progress: 60 });
 
       const goal = await ctx.goals.findById(created.value.goalId);
       expect(goal?.progress).toBe(60);
@@ -293,16 +293,16 @@ describe("goal use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      await ctx.update.execute({ goalId: created.value.goalId, title: "Renamed" });
+      await ctx.update.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId, title: "Renamed" });
 
-      const goal = await ctx.get.execute({ goalId: created.value.goalId });
+      const goal = await ctx.get.execute({ workspaceId: ctx.workspace.id.value, goalId: created.value.goalId });
       expect(goal.value.title).toBe("Renamed");
     });
 
     it("fails cleanly on an unknown goal", async () => {
       const ctx = await makeContext();
 
-      const result = await ctx.get.execute({ goalId: "ghost" });
+      const result = await ctx.get.execute({ workspaceId: ctx.workspace.id.value, goalId: "ghost" });
 
       expect(result.isFailure).toBe(true);
       expect(result.error.name).toBe("GoalNotFoundError");
@@ -325,28 +325,29 @@ describe("CompleteGoalUseCase — open tasks block completion", () => {
     const create = new CreateGoalUseCase(goals, workspaces, clock, publisher);
     const changeStatus = new ChangeGoalStatusUseCase(goals, clock, publisher);
     const created = await create.execute(baseInput(workspace.id.value));
-    await changeStatus.execute({ goalId: created.value.goalId, status: "ACTIVE" });
-    await changeStatus.execute({ goalId: created.value.goalId, status: "REVIEW" });
+    const workspaceId = workspace.id.value;
+    await changeStatus.execute({ workspaceId, goalId: created.value.goalId, status: "ACTIVE" });
+    await changeStatus.execute({ workspaceId, goalId: created.value.goalId, status: "REVIEW" });
 
     const complete = new CompleteGoalUseCase(goals, clock, publisher, {
       hasOpenTasks: async () => withOpenTasks,
       tally: async () => ({ total: 0, completed: 0 }),
     });
-    return { complete, goalId: created.value.goalId };
+    return { complete, goalId: created.value.goalId, workspaceId };
   }
 
   it("refuses while tasks are still open", async () => {
-    const { complete, goalId } = await reviewedGoal(true);
+    const { complete, goalId, workspaceId } = await reviewedGoal(true);
 
-    const result = await complete.execute({ goalId });
+    const result = await complete.execute({ workspaceId, goalId });
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("OpenTasksError");
   });
 
   it("allows completion once every task is settled", async () => {
-    const { complete, goalId } = await reviewedGoal(false);
+    const { complete, goalId, workspaceId } = await reviewedGoal(false);
 
-    expect((await complete.execute({ goalId })).isSuccess).toBe(true);
+    expect((await complete.execute({ workspaceId, goalId })).isSuccess).toBe(true);
   });
 });

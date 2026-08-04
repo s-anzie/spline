@@ -113,7 +113,7 @@ describe("artifact use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      const result = await ctx.addVersion.execute({
+      const result = await ctx.addVersion.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         checksum: "sha256:bbb",
         storageRef: "s3://bucket/b",
@@ -133,7 +133,7 @@ describe("artifact use-cases", () => {
         baseInput(ctx.workspace.id.value, { immutable: true }),
       );
 
-      const result = await ctx.addVersion.execute({
+      const result = await ctx.addVersion.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         checksum: "c",
         storageRef: "s",
@@ -177,11 +177,11 @@ describe("artifact use-cases", () => {
     it("hides DELETED artifacts unless asked for explicitly", async () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
-      await ctx.changeStatus.execute({
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         status: "ARCHIVED",
       });
-      await ctx.changeStatus.execute({
+      await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         status: "DELETED",
       });
@@ -202,14 +202,14 @@ describe("artifact use-cases", () => {
       const ctx = await makeContext();
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-      await ctx.link.execute({
+      await ctx.link.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         operation: "link",
         taskId: "t-9",
       });
       expect((await ctx.artifacts.findById(created.value.artifactId))?.taskId).toBe("t-9");
 
-      await ctx.link.execute({
+      await ctx.link.execute({ workspaceId: ctx.workspace.id.value,
         artifactId: created.value.artifactId,
         operation: "unlink",
         task: true,
@@ -225,11 +225,11 @@ describe("artifact use-cases", () => {
       );
 
       expect(
-        (await ctx.update.execute({ artifactId: mutable.value.artifactId, name: "New" }))
+        (await ctx.update.execute({ workspaceId: ctx.workspace.id.value, artifactId: mutable.value.artifactId, name: "New" }))
           .isSuccess,
       ).toBe(true);
       expect(
-        (await ctx.update.execute({ artifactId: frozen.value.artifactId, name: "New" }))
+        (await ctx.update.execute({ workspaceId: ctx.workspace.id.value, artifactId: frozen.value.artifactId, name: "New" }))
           .isFailure,
       ).toBe(true);
     });
@@ -239,13 +239,13 @@ describe("artifact use-cases", () => {
       const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
       const artifactId = created.value.artifactId;
 
-      expect((await ctx.changeStatus.execute({ artifactId, status: "DELETED" })).isFailure).toBe(
+      expect((await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, artifactId, status: "DELETED" })).isFailure).toBe(
         true,
       );
       expect(
-        (await ctx.changeStatus.execute({ artifactId, status: "ARCHIVED" })).isSuccess,
+        (await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, artifactId, status: "ARCHIVED" })).isSuccess,
       ).toBe(true);
-      expect((await ctx.changeStatus.execute({ artifactId, status: "DELETED" })).isSuccess).toBe(
+      expect((await ctx.changeStatus.execute({ workspaceId: ctx.workspace.id.value, artifactId, status: "DELETED" })).isSuccess).toBe(
         true,
       );
     });
@@ -253,7 +253,7 @@ describe("artifact use-cases", () => {
     it("fails cleanly on an unknown artifact", async () => {
       const ctx = await makeContext();
 
-      expect((await ctx.get.execute({ artifactId: "ghost" })).error.name).toBe(
+      expect((await ctx.get.execute({ workspaceId: ctx.workspace.id.value, artifactId: "ghost" })).error.name).toBe(
         "ArtifactNotFoundError",
       );
     });
@@ -332,7 +332,7 @@ describe("link target validation", () => {
     await ctx.workspaces.save(other);
     const created = await ctx.create.execute(baseInput(ctx.workspace.id.value));
 
-    const result = await ctx.link.execute({
+    const result = await ctx.link.execute({ workspaceId: ctx.workspace.id.value,
       artifactId: created.value.artifactId,
       operation: "link",
       taskId: "ghost-task",
@@ -348,7 +348,7 @@ describe("link target validation", () => {
       baseInput(ctx.workspace.id.value, { goalId: ctx.goalId }),
     );
 
-    const result = await ctx.link.execute({
+    const result = await ctx.link.execute({ workspaceId: ctx.workspace.id.value,
       artifactId: created.value.artifactId,
       operation: "unlink",
       goal: true,

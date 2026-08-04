@@ -24,6 +24,13 @@ export interface EventRepository {
 export const EVENT_REPOSITORY = "event/EventRepository";
 
 export interface ListReceiptsFilter {
+  /**
+   * Mandatory (§4.2, §20.4). Scoping to the actor alone is NOT isolation: an
+   * actor who belongs to two workspaces would get one list mixing both, and
+   * would keep seeing a workspace after losing access to it. Receipts have no
+   * workspace of their own — they inherit the one of the fact they answer to.
+   */
+  workspaceId: string;
   actor: ActorRef;
   statuses?: readonly ReceiptStatus[];
 }
@@ -31,7 +38,16 @@ export interface ListReceiptsFilter {
 export interface EventReceiptRepository {
   save(receipt: EventReceipt): Promise<void>;
   findById(id: string): Promise<EventReceipt | null>;
-  findByEventAndActor(eventId: string, actor: ActorRef): Promise<EventReceipt | null>;
+  /**
+   * `workspaceId` is part of the lookup, not a courtesy: without it the
+   * workspace in a route is decorative — the guard checks membership of one
+   * workspace while the receipt acted upon belongs to another (§4.2).
+   */
+  findByEventAndActor(
+    workspaceId: string,
+    eventId: string,
+    actor: ActorRef,
+  ): Promise<EventReceipt | null>;
   list(filter: ListReceiptsFilter): Promise<EventReceipt[]>;
 }
 export const EVENT_RECEIPT_REPOSITORY = "event/EventReceiptRepository";

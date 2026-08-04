@@ -195,10 +195,15 @@ export class GoalController {
   @HttpCode(200)
   @RequirePermission("manage_goals")
   async progress(
+    @Param("workspaceId") workspaceId: string,
     @Param("goalId") goalId: string,
     @Body() dto: UpdateGoalProgressDto,
   ): Promise<{ ok: true }> {
-    const result = await this.updateProgress.execute({ goalId, progress: dto.progress });
+    const result = await this.updateProgress.execute({
+      workspaceId,
+      goalId,
+      progress: dto.progress,
+    });
     if (result.isFailure) {
       throw toHttpException(result.error, {
         conflicts: ["OpenChildrenError", "OpenTasksError", "UnsatisfiedDependenciesError", "GoalDependencyError"],

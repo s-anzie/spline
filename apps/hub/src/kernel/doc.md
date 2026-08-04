@@ -291,6 +291,47 @@ Les tests d'application les remplacent par les doubles de `testing/`.
    `flushDomainEvents(aggregate, publisher)` — dans cet ordre, toujours, via le helper.
 9. **Seuils nommés** : chaque TTL est une constante exportée et documentée du module concerné (§17.7),
    jamais un littéral enfoui.
+10. **`workspaceId` obligatoire dans toute entrée de use-case qui charge un objet par identifiant**, et
+    comparé au workspace de l'objet chargé. Voir §5.1 : c'est la règle la plus coûteuse à avoir enfreinte.
+
+### 5.1 Isolation par workspace — la garde ne prouve pas ce qu'on croit
+
+`PermissionsGuard` prouve que l'appelant est membre du workspace **nommé dans l'URL**. Il ne prouve
+**rien** sur l'objet vers lequel pointe l'identifiant. Une route qui reçoit les deux et ne vérifie pas
+qu'ils concordent rend le workspace de l'URL décoratif : n'importe quel membre de n'importe quel
+workspace atteint tous les autres en collant un identifiant.
+
+Ce n'était pas une hypothèse. Une passe dédiée a trouvé **six routes livrées** dans cet état :
+
+| Route | Ce qui se passait réellement |
+| --- | --- |
+| `GET /event-receipts/mine` | aucun workspace **et aucune garde** : un seul flux mélangeant tous les workspaces de l'acteur, encore servi après révocation d'une appartenance |
+| `POST …/events/:id/receipts` | exigeait un accusé sur un fait d'un autre workspace |
+| `POST …/events/:id/receipts/mine` | acquittait un fait d'un autre workspace |
+| `POST …/goals/:id/progress` | **écriture cross-workspace réussie, 200** — la seule du code |
+| `PATCH …/members/:id` | changeait un rôle dans un autre workspace |
+| `DELETE …/members/:id` | révoquait un membre d'un autre workspace |
+
+Les deux dernières ne renvoyaient pas 200 : elles butaient sur « on ne retire pas le dernier
+propriétaire ». Refusées par accident, pas par isolation — avec un second propriétaire en face, elles
+passaient.
+
+**Cause commune, et c'est elle qu'il fallait traiter :** `workspaceId` était déclaré `workspaceId?:
+string` dans dix-neuf use-cases, avec un commentaire du genre « quand il est fourni, un objet d'un autre
+workspace est rapporté absent ». L'isolation était donc **optionnelle** — un appelant qui l'omet la
+supprime en silence, sans erreur de compilation, sans test rouge. C'est exactement ce qui est arrivé
+trois fois. Le champ est désormais **obligatoire partout** : l'oublier ne compile plus.
+
+Deux règles qui en découlent :
+
+- **« pas à vous » se répond `404`, jamais `403`.** Un 403 confirme que l'objet existe ; l'appelant
+  apprend quelque chose sur un workspace auquel il n'a pas accès.
+- **`test/workspace-isolation.e2e-spec.ts` est exhaustif, pas illustratif.** Il apparie le préfixe d'un
+  workspace avec les identifiants d'un autre sur **chaque** route, avec un propriétaire des deux côtés —
+  ainsi un refus ne peut venir que du scoping, jamais d'une permission manquante. Toute nouvelle route y
+  entre. Le test se garde aussi contre lui-même : un identifiant `undefined` produirait un 404 qui ne
+  prouve rien et se lirait comme un succès — c'est arrivé pendant l'écriture, et une assertion sur le
+  gréement le rend impossible.
 
 ## 6. Décisions notables (et leurs raisons)
 
