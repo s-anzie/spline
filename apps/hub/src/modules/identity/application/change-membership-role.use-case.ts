@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { AUDIT_TRAIL, AuditTrail } from "../../../kernel/domain/ports/audit-trail.port";
+
 import { flushDomainEvents } from "../../../kernel/application/flush-domain-events";
 import { UseCase } from "../../../kernel/application/use-case";
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
@@ -40,6 +42,7 @@ export class ChangeMembershipRoleUseCase
     private readonly memberships: WorkspaceMembershipRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(AUDIT_TRAIL) private readonly audit: AuditTrail,
   ) {}
 
   async execute(
@@ -65,6 +68,9 @@ export class ChangeMembershipRoleUseCase
       }
     }
 
+    // Captured before the mutation: this is the whole reason an audit entry
+    // cannot be derived from an Event afterwards.
+    const previousRole = membership.role;
     const changed = membership.changeRole(input.role, this.clock.now());
     if (changed.isFailure) {
       return Result.fail(changed.error);
@@ -72,6 +78,17 @@ export class ChangeMembershipRoleUseCase
 
     await this.memberships.save(membership);
     await flushDomainEvents(membership, this.publisher);
+    // §18.7 lists "Permission Change" among what must be audited, and an
+    // Event cannot stand in for it: it does not carry the previous role.
+    await this.audit.record({
+      workspaceId: membership.workspaceId,
+      actor: membership.actor,
+      action: "permission.role_changed",
+      targetType: "membership",
+      targetId: membership.id.value,
+      before: { role: previousRole },
+      after: { role: input.role },
+    });
     return Result.ok(undefined);
   }
 }

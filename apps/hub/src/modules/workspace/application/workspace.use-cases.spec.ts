@@ -1,3 +1,4 @@
+import { FakeAuditTrail } from "../../../kernel/testing/fake-audit-trail";
 import { FakeClock } from "../../../kernel/testing/fake-clock";
 import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher";
 import { GrantWorkspaceMembershipUseCase } from "../../identity/application/grant-workspace-membership.use-case";
@@ -34,7 +35,7 @@ async function makeContext() {
   const get = new GetWorkspaceUseCase(workspaces);
   const list = new ListWorkspacesForActorUseCase(workspaces, memberships);
   const update = new UpdateWorkspaceDetailsUseCase(workspaces, clock, publisher);
-  const changeStatus = new ChangeWorkspaceStatusUseCase(workspaces, clock, publisher);
+  const changeStatus = new ChangeWorkspaceStatusUseCase(workspaces, clock, publisher, new FakeAuditTrail());
   return {
     workspaces,
     memberships,
@@ -160,10 +161,14 @@ describe("workspace use-cases", () => {
       await ctx.changeStatus.execute({
         workspaceId: created.value.workspaceId,
         status: "ARCHIVED",
+        actorType: "HUMAN",
+        actorId: "u-1",
       });
       await ctx.changeStatus.execute({
         workspaceId: created.value.workspaceId,
         status: "DELETED",
+        actorType: "HUMAN",
+        actorId: "u-1",
       });
 
       const deleted = await ctx.get.execute({ workspaceId: created.value.workspaceId });
@@ -188,8 +193,8 @@ describe("workspace use-cases", () => {
         name: "Gone",
         creatorUserId: "u-1",
       });
-      await ctx.changeStatus.execute({ workspaceId: gone.value.workspaceId, status: "ARCHIVED" });
-      await ctx.changeStatus.execute({ workspaceId: gone.value.workspaceId, status: "DELETED" });
+      await ctx.changeStatus.execute({ workspaceId: gone.value.workspaceId, status: "ARCHIVED", actorType: "HUMAN", actorId: "u-1" });
+      await ctx.changeStatus.execute({ workspaceId: gone.value.workspaceId, status: "DELETED", actorType: "HUMAN", actorId: "u-1" });
 
       const result = await ctx.list.execute({ actorType: "HUMAN", actorId: "u-1" });
 
@@ -235,7 +240,7 @@ describe("workspace use-cases", () => {
         name: "Spline Core",
         creatorUserId: "u-1",
       });
-      await ctx.changeStatus.execute({ workspaceId: created.value.workspaceId, status: "PAUSED" });
+      await ctx.changeStatus.execute({ workspaceId: created.value.workspaceId, status: "PAUSED", actorType: "HUMAN", actorId: "u-1" });
 
       const result = await ctx.update.execute({
         workspaceId: created.value.workspaceId,
@@ -259,6 +264,8 @@ describe("workspace use-cases", () => {
       const result = await ctx.changeStatus.execute({
         workspaceId: created.value.workspaceId,
         status: "PAUSED",
+        actorType: "HUMAN",
+        actorId: "u-1",
       });
 
       expect(result.isSuccess).toBe(true);
@@ -278,6 +285,8 @@ describe("workspace use-cases", () => {
       const result = await ctx.changeStatus.execute({
         workspaceId: created.value.workspaceId,
         status: "ACTIVE",
+        actorType: "HUMAN",
+        actorId: "u-1",
       });
 
       expect(result.isSuccess).toBe(true);
@@ -294,6 +303,8 @@ describe("workspace use-cases", () => {
       const result = await ctx.changeStatus.execute({
         workspaceId: created.value.workspaceId,
         status: "DELETED",
+        actorType: "HUMAN",
+        actorId: "u-1",
       });
 
       expect(result.isFailure).toBe(true);

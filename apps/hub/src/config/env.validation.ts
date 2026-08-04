@@ -20,6 +20,15 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   JWT_EXPIRES_IN!: string;
+
+  /**
+   * Separate from JWT_SECRET on purpose: one key signs sessions, the other
+   * makes the audit trail's tampering detectable (§4.23). Rotating or leaking
+   * one must not compromise the other.
+   */
+  @IsString()
+  @IsNotEmpty()
+  AUDIT_SIGNING_KEY!: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

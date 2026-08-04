@@ -37,7 +37,7 @@ lui, révoquer un membre laissait ses tâches orphelines.
 | --- | --- | --- |
 | **Runtime/Worker** (§6.3) | credentials de type `WORKER`, `@BootstrapOperation("machine-link")` | l'entité et le registre existent ; **aucune route d'émission de jeton** — report assumé, voir §8 |
 | **Policy Engine** (§12.2) | l'héritage part de l'Organization | `Organization` existe et porte déjà les workspaces |
-| **Audit** (§18.7) | `ActorRef` sur chaque entrée, `Permission Change` audité | `ActorRef` prêt ; **aucun audit n'est écrit** |
+| **Audit** (§18.7) | `ActorRef` sur chaque entrée, `Permission Change` audité | ~~dette~~ **fermée** : changement de rôle et révocation écrivent une entrée avec l'avant et l'après |
 | **Extensions** (§19.4) | un `publisher` identifiable | `ActorRef` couvre le besoin |
 
 ### 0.5 Ce que l'audit rétroactif a trouvé

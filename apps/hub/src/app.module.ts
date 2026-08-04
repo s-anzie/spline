@@ -5,6 +5,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
+import { AuditModule } from "./modules/audit/audit.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { DecisionModule } from "./modules/decision/decision.module";
 import { EventModule } from "./modules/event/event.module";
@@ -29,6 +30,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     PrismaModule,
     HealthModule,
     IdentityModule,
+    AuditModule,
     WorkspaceModule,
     GoalModule,
     TaskModule,

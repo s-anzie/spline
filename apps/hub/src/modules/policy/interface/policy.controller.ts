@@ -126,8 +126,14 @@ export class PolicyController {
   async disable(
     @Param("workspaceId") workspaceId: string,
     @Param("policyId") policyId: string,
+    @CurrentActor() actor: ActorIdentity,
   ): Promise<{ ok: true }> {
-    const result = await this.disablePolicy.execute({ workspaceId, policyId });
+    const result = await this.disablePolicy.execute({
+      workspaceId,
+      policyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+    });
     if (result.isFailure) {
       throw toHttpException(result.error);
     }

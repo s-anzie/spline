@@ -84,6 +84,7 @@ model Workspace {
   validations    Validation[]
   policies       Policy[]
   locks          ResourceLock[]
+  auditEntries   AuditEntry[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -584,4 +585,33 @@ model ResourceLock {
   @@index([workspaceId, status])
   @@index([ownerType, ownerId])
   @@map("resource_locks")
+}
+
+/// Spec 4.23. Immutable: no updatedAt, and no update path anywhere in the
+/// module. `signature` chains each entry to the previous one, so modifying,
+/// deleting or reordering a row breaks every signature after it.
+///
+/// `targetType`/`targetId` stay opaque, like a lock's resource: a foreign key
+/// would make this table depend on everything it audits.
+model AuditEntry {
+  id          String   @id @default(uuid())
+  /// Nullable: an organisation-level change belongs to no single workspace.
+  workspaceId String?
+  actorType   ActorType
+  actorId     String
+  action      String
+  targetType  String
+  targetId    String
+  before      Json?
+  after       Json?
+  sequence    BigInt   @default(autoincrement())
+  signature   String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, sequence])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@map("audit_entries")
 }

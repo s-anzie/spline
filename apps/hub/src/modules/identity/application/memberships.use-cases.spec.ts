@@ -2,6 +2,7 @@ import { FakeClock } from "../../../kernel/testing/fake-clock";
 import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher";
 import { InMemoryWorkspaceMembershipRepository } from "./testing/identity.doubles";
 import { ChangeMembershipRoleUseCase } from "./change-membership-role.use-case";
+import { FakeAuditTrail } from "../../../kernel/testing/fake-audit-trail";
 import { GrantWorkspaceMembershipUseCase } from "./grant-workspace-membership.use-case";
 import { RevokeWorkspaceMembershipUseCase } from "./revoke-workspace-membership.use-case";
 
@@ -9,12 +10,17 @@ function makeUseCases() {
   const memberships = new InMemoryWorkspaceMembershipRepository();
   const clock = new FakeClock(new Date("2026-08-04T10:00:00Z"));
   const publisher = new FakeEventPublisher();
+  const audit = new FakeAuditTrail();
   const grant = new GrantWorkspaceMembershipUseCase(memberships, clock, publisher);
-  const changeRole = new ChangeMembershipRoleUseCase(memberships, clock, publisher);
-  const revoke = new RevokeWorkspaceMembershipUseCase(memberships, clock, publisher, {
-    hasOpenWork: async () => false,
-  });
-  return { memberships, grant, changeRole, revoke, publisher };
+  const changeRole = new ChangeMembershipRoleUseCase(memberships, clock, publisher, audit);
+  const revoke = new RevokeWorkspaceMembershipUseCase(
+    memberships,
+    clock,
+    publisher,
+    audit,
+    { hasOpenWork: async () => false },
+  );
+  return { memberships, grant, changeRole, revoke, publisher, audit };
 }
 
 const owner = { actorType: "HUMAN" as const, actorId: "u-1", workspaceId: "w-1", role: "OWNER" as const };
@@ -136,9 +142,13 @@ describe("revoking a member who still owns live work", () => {
       workspaceId: "w-1",
       role: "AGENT_CONTRIBUTOR",
     });
-    const revoke = new RevokeWorkspaceMembershipUseCase(memberships, clock, publisher, {
-      hasOpenWork: async () => hasOpenWork,
-    });
+    const revoke = new RevokeWorkspaceMembershipUseCase(
+      memberships,
+      clock,
+      publisher,
+      new FakeAuditTrail(),
+      { hasOpenWork: async () => hasOpenWork },
+    );
     return { revoke, membershipId: worker.value.membershipId };
   }
 

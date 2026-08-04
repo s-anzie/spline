@@ -128,44 +128,65 @@ export class WorkspaceController {
   @Post("workspaces/:workspaceId/pause")
   @HttpCode(200)
   @RequirePermission("operate_workspace")
-  async pause(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
-    return this.transition(workspaceId, "PAUSED");
+  async pause(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "PAUSED", actor);
   }
 
   @Post("workspaces/:workspaceId/resume")
   @HttpCode(200)
   @RequirePermission("operate_workspace")
-  async resume(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
-    return this.transition(workspaceId, "ACTIVE");
+  async resume(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ACTIVE", actor);
   }
 
   /** End-of-life is ownership-level, never operational. */
   @Post("workspaces/:workspaceId/archive")
   @HttpCode(200)
   @RequirePermission("manage_workspace")
-  async archive(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
-    return this.transition(workspaceId, "ARCHIVED");
+  async archive(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ARCHIVED", actor);
   }
 
   @Post("workspaces/:workspaceId/unarchive")
   @HttpCode(200)
   @RequirePermission("manage_workspace")
-  async unarchive(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
-    return this.transition(workspaceId, "ACTIVE");
+  async unarchive(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "ACTIVE", actor);
   }
 
   @Post("workspaces/:workspaceId/delete")
   @HttpCode(200)
   @RequirePermission("manage_workspace")
-  async remove(@Param("workspaceId") workspaceId: string): Promise<{ ok: true }> {
-    return this.transition(workspaceId, "DELETED");
+  async remove(
+    @Param("workspaceId") workspaceId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<{ ok: true }> {
+    return this.transition(workspaceId, "DELETED", actor);
   }
 
   private async transition(
     workspaceId: string,
     status: WorkspaceStatus,
+    actor: ActorIdentity,
   ): Promise<{ ok: true }> {
-    const result = await this.changeStatus.execute({ workspaceId, status });
+    const result = await this.changeStatus.execute({
+      workspaceId,
+      status,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+    });
     if (result.isFailure) {
       throw toHttpException(result.error);
     }

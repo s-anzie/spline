@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { AUDIT_TRAIL, AuditTrail } from "../../../kernel/domain/ports/audit-trail.port";
+
 import { flushDomainEvents } from "../../../kernel/application/flush-domain-events";
 import { UseCase } from "../../../kernel/application/use-case";
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
@@ -41,6 +43,7 @@ export class RevokeWorkspaceMembershipUseCase
     private readonly memberships: WorkspaceMembershipRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(AUDIT_TRAIL) private readonly audit: AuditTrail,
     @Inject(ACTOR_WORKLOAD) private readonly workload: ActorWorkloadPort,
   ) {}
 

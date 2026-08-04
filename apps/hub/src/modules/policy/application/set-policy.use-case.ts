@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { flushDomainEvents } from "../../../kernel/application/flush-domain-events";
+import { AUDIT_TRAIL, AuditTrail } from "../../../kernel/domain/ports/audit-trail.port";
 import { UseCase } from "../../../kernel/application/use-case";
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
 import {
@@ -49,6 +50,7 @@ export class SetPolicyUseCase
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaces: WorkspaceRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(AUDIT_TRAIL) private readonly audit: AuditTrail,
   ) {}
 
   async execute(
@@ -71,9 +73,21 @@ export class SetPolicyUseCase
       input.rule,
     );
     if (existing) {
+      // Captured before the mutation — the previous value is exactly what an
+      // Event cannot carry, and what §18.7's "Policy Update" is about.
+      const previousValue = existing.value;
       existing.changeValue(input.value, now);
       await this.policies.save(existing);
       await flushDomainEvents(existing, this.publisher);
+      await this.audit.record({
+        workspaceId: input.workspaceId,
+        actor: actor.value,
+        action: "policy.updated",
+        targetType: "policy",
+        targetId: existing.id.value,
+        before: { rule: existing.rule, value: previousValue },
+        after: { rule: existing.rule, value: input.value },
+      });
       return Result.ok({ policyId: existing.id.value });
     }
 
@@ -92,6 +106,16 @@ export class SetPolicyUseCase
     }
     await this.policies.save(policy.value);
     await flushDomainEvents(policy.value, this.publisher);
+    await this.audit.record({
+      workspaceId: input.workspaceId,
+      actor: actor.value,
+      action: "policy.updated",
+      targetType: "policy",
+      targetId: policy.value.id.value,
+      // A creation has no before: that is a fact about it, not a gap.
+      before: null,
+      after: { rule: input.rule, value: input.value, scopeType: input.scopeType },
+    });
     return Result.ok({ policyId: policy.value.id.value });
   }
 }
