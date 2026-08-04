@@ -1,1 +1,0 @@
-import { WorkspaceOverview } from "@/features/workspaces/workspace-overview";export default async function WorkspacePage({params}:{params:Promise<{workspaceId:string}>}){const{workspaceId}=await params;return <WorkspaceOverview workspaceId={workspaceId}/>}
