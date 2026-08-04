@@ -52,4 +52,19 @@ export class Result<T, E = never> {
     }
     return Result.ok<U, E>(fn(this.value));
   }
+
+  /** Chains a result-returning operation; short-circuits on failure. */
+  flatMap<U>(fn: (value: T) => Result<U, E>): Result<U, E> {
+    if (this.isFailure) {
+      return Result.fail<U, E>(this.error);
+    }
+    return fn(this.value);
+  }
+
+  mapError<F>(fn: (error: E) => F): Result<T, F> {
+    if (this.isSuccess) {
+      return Result.ok<T, F>(this.value);
+    }
+    return Result.fail<T, F>(fn(this.error));
+  }
 }

@@ -88,4 +88,30 @@ describe("DependencyGraph", () => {
     expect(graph.dependenciesOf("c")).toEqual(["b"]);
     expect(graph.dependenciesOf("a")).toEqual([]);
   });
+
+  it("dependentsOf returns the direct dependents — who is blocked if I fail", () => {
+    const graph = new DependencyGraph();
+    graph.addDependency("b", "a");
+    graph.addDependency("c", "a");
+    graph.addDependency("d", "c");
+
+    expect(graph.dependentsOf("a")).toEqual(["b", "c"]);
+    expect(graph.dependentsOf("d")).toEqual([]);
+  });
+
+  it("nodes lists every known node in insertion order", () => {
+    const graph = new DependencyGraph();
+    graph.addNode("a");
+    graph.addDependency("c", "b");
+
+    expect(graph.nodes()).toEqual(["a", "c", "b"]);
+  });
+
+  it("hasNode reflects registration", () => {
+    const graph = new DependencyGraph();
+    graph.addNode("a");
+
+    expect(graph.hasNode("a")).toBe(true);
+    expect(graph.hasNode("z")).toBe(false);
+  });
 });

@@ -1,31 +1,47 @@
 # Kernel — Conception détaillée
 
 > Module : `apps/hub/src/kernel/`
-> Référence spec : `v3/spline-v3.md` — §1.3 (principes), §4.24 (invariants globaux), §9.5 (DAG), §22.6 (machines à états)
-> Statut : implémenté, 43 tests unitaires verts.
+> Référence spec : `v3/spline-v3.md` — §1.3 (principes), §4.24 (invariants globaux), §5.19 (persistance),
+> §9.5 (DAG), §17.7 (seuils de staleness), §20.6 (contraintes visibles), §22.6 (machines à états)
+> Statut : implémenté, 14 suites / 85 tests unitaires verts, lint et types propres.
 
 ## 1. Rôle
 
-Le kernel est le socle partagé de tous les modules métier du hub. Il fournit les primitives de domaine
-(identité, agrégats, résultats, événements), les règles transversales imposées par la spec v3 (machines à
-états idempotentes, graphe de dépendances acyclique), et les deux ports d'infrastructure que tout le reste du
-système consomme (horloge, publication d'événements).
+Le kernel est le socle partagé de tous les modules métier du hub. Il fournit :
 
-Il ne contient **aucune logique métier** : pas d'entité Spline (Workspace, Task, Agent…), pas de règle produit.
-Tout ce qui s'y trouve doit être vrai pour n'importe quel module, présent ou futur — y compris un Engine
-communautaire (spec §19) qui suivrait les mêmes conventions.
+- les **primitives de domaine** : identité, entités, agrégats, value objects, résultats, erreurs, événements ;
+- les **règles transversales** imposées par la spec v3 : machines à états idempotentes (§22.6), graphe de
+  dépendances acyclique (§9.5), arithmétique canonique de péremption (§17.7) ;
+- les **gardes de validation** que toutes les factories d'entités utilisent ;
+- les **conventions de la couche application** : interface `UseCase`, publication d'événements après
+  persistance ;
+- les deux **ports d'infrastructure** consommés partout : horloge, publication d'événements — avec leurs
+  implémentations par défaut et leurs doubles de test.
+
+Il ne contient **aucune logique métier** : pas d'entité Spline (Workspace, Task, Agent…), pas de règle
+produit. Tout ce qui s'y trouve doit être vrai pour n'importe quel module, présent ou futur — y compris un
+Engine communautaire (spec §19) qui suivrait les mêmes conventions.
+
+**Critère d'entrée au kernel** : une primitive n'y entre que si au moins deux modules distincts en ont
+besoin, et qu'elle ne porte aucune connaissance métier. Une seule exception assumée : les primitives exigées
+nommément par la spec (StateMachine §22.6, DependencyGraph §9.5, staleness §17.7) sont entrées dès la
+fondation, précisément pour que les modules ne puissent pas naître sans elles.
 
 ## 2. Responsabilités / Non-responsabilités
 
 **Responsable de :**
 
 - La convention de retour des échecs attendus (`Result<T, E>`) — jamais d'exception pour un échec métier.
-- L'identité et l'égalité des entités (`UniqueEntityId`, `Entity`).
-- La collecte des événements de domaine par les agrégats (`AggregateRoot`, `DomainEvent`).
-- La règle transversale §22.6 sur les transitions d'état (`StateMachine`) — utilisée par toute machine à
-  états du système, sans exception.
-- Le graphe de dépendances acyclique (`DependencyGraph`) qui servira au Scheduler (§9.5) et à toute autre
-  relation de dépendance (validations en graphe §11.9, dépendances de Goals).
+- L'identité et l'égalité : par identité pour les entités (`Entity`, `UniqueEntityId`), par structure pour
+  les value objects (`ValueObject`).
+- La validation d'arguments des factories (`Guard`) et la hiérarchie d'erreurs (`DomainError`,
+  `GuardViolation`, `InvalidStateTransitionError`, `EntityNotFoundError`).
+- La collecte des événements de domaine (`AggregateRoot`, `DomainEvent`, `BaseDomainEvent`) et leur
+  publication ordonnée (`flushDomainEvents`).
+- La règle transversale §22.6 sur les transitions d'état (`StateMachine`).
+- Le graphe de dépendances acyclique (`DependencyGraph`) — Scheduler (§9.5), graphe de validations (§11.9),
+  dépendances de Goals, propagation de blocage.
+- L'arithmétique de péremption (`staleness.ts`) — TTL, baux, heartbeats (§17.7, §4.13, §6.4).
 - Les ports `Clock` et `EventPublisher`, leurs implémentations par défaut, et leurs doubles de test.
 
 **Jamais responsable de :**
@@ -34,35 +50,45 @@ communautaire (spec §19) qui suivrait les mêmes conventions.
 - Transport (aucun import HTTP/WebSocket).
 - Logique métier d'un module (un module qui aurait besoin de « personnaliser » une primitive du kernel doit
   composer, pas modifier le kernel).
+- Pagination, DTOs, mapping — conventions de la couche interface, définies quand le premier contrôleur
+  existera, pas ici.
 
 ## 3. Structure
 
 ```text
 kernel/
 ├── domain/               # primitives pures, zéro dépendance framework (sauf node:crypto)
-│   ├── result.ts             Result<T, E>
-│   ├── domain-error.ts       DomainError (base des erreurs métier)
+│   ├── result.ts             Result<T, E> : ok/fail, map, flatMap, mapError, combine
+│   ├── domain-error.ts       DomainError (base de toutes les erreurs métier)
+│   ├── errors.ts             InvalidStateTransitionError, EntityNotFoundError (base)
+│   ├── guard.ts              Guard.* + GuardViolation
 │   ├── unique-entity-id.ts   UniqueEntityId
-│   ├── entity.ts             Entity<Props>
-│   ├── aggregate-root.ts     AggregateRoot<Props>
+│   ├── entity.ts             Entity<Props>           (égalité par identité)
+│   ├── value-object.ts       ValueObject<Props>      (égalité structurelle, props gelées)
+│   ├── aggregate-root.ts     AggregateRoot<Props>    (collecte d'événements)
 │   ├── domain-event.ts       DomainEvent (interface)
-│   ├── state-machine.ts      StateMachine<S> + TransitionOutcome<S>   (§22.6)
-│   ├── dependency-graph.ts   DependencyGraph + DependencyCycleError   (§9.5)
+│   ├── base-domain-event.ts  BaseDomainEvent         (occurredAt injecté, copié)
+│   ├── state-machine.ts      StateMachine<S> + TransitionOutcome<S>       (§22.6)
+│   ├── dependency-graph.ts   DependencyGraph + DependencyCycleError       (§9.5)
+│   ├── staleness.ts          ageMs, isExpired, isStale                    (§17.7)
 │   └── ports/
 │       ├── clock.port.ts             Clock + jeton CLOCK
 │       └── event-publisher.port.ts   EventPublisher + jeton EVENT_PUBLISHER
+├── application/          # conventions de la couche application
+│   ├── use-case.ts               UseCase<Input, Output> (une classe = une opération)
+│   └── flush-domain-events.ts    flushDomainEvents(aggregate, publisher)
 ├── infrastructure/       # implémentations par défaut (peuvent importer Nest)
 │   ├── system-clock.ts                   Clock → new Date()
 │   └── event-emitter-event-publisher.ts  EventPublisher → EventEmitter2
 ├── testing/              # doubles pour les tests des autres modules
-│   ├── fake-clock.ts             horloge gelée, avance explicite
+│   ├── fake-clock.ts             horloge gelée, set/advance explicites
 │   └── fake-event-publisher.ts   capture les événements publiés
 └── kernel.module.ts      # module Nest @Global : bind CLOCK et EVENT_PUBLISHER
 ```
 
-La règle de dépendance est stricte : `domain/` n'importe rien en dehors de lui-même (exception assumée :
-`node:crypto` pour générer les UUID). `infrastructure/` importe `domain/` et le framework. `testing/`
-importe `domain/` uniquement.
+Règle de dépendance stricte : `domain/` n'importe rien hors de lui-même (exception assumée : `node:crypto`
+pour les UUID). `application/` importe `domain/` uniquement. `infrastructure/` importe `domain/` et le
+framework. `testing/` importe `domain/` uniquement.
 
 ## 4. Composants
 
@@ -73,93 +99,158 @@ dans une exception. Les exceptions restent réservées aux erreurs de programmat
 lève, volontairement, pour attraper les bugs au plus tôt).
 
 API : `Result.ok(value)`, `Result.fail(error)`, `isSuccess` / `isFailure`, `value` / `error`,
-`Result.combine([...])` (premier échec gagne), `map(fn)`.
+`Result.combine([...])` (premier échec gagne), `map(fn)`, `flatMap(fn)` (chaînage court-circuitant),
+`mapError(fn)` (adaptation d'erreur entre couches).
 
-Convention de consommation dans les use-cases :
+`flatMap` sert les validations en chaîne des factories ; `mapError` sert la couche application quand elle
+traduit une erreur de domaine en erreur applicative sans toucher au succès.
+
+### 4.2 `DomainError` et la hiérarchie d'erreurs
+
+`DomainError` fixe `name` au nom de la classe concrète — les erreurs restent identifiables après
+sérialisation/log. Chaque module déclare ses erreurs dans `domain/<module>.errors.ts` en l'étendant.
+Jamais de `throw new Error("...")` dans le domaine.
+
+Deux erreurs standardisées vivent au kernel parce que leur forme doit être uniforme dans tout le système :
+
+- **`InvalidStateTransitionError`** — construite depuis un `TransitionOutcome` de kind `invalidTransition` ;
+  porte `from`, `to`, `fromTerminal`. La couche interface s'appuie sur `fromTerminal` pour distinguer
+  « conflit » (409) de « parti pour toujours » (410) sans regarder le module concerné.
+- **`EntityNotFoundError`** — abstraite : chaque module la sous-classe (`TaskNotFoundError`…) pour garder
+  des types précis avec un message uniforme (`Task "t-42" was not found`). Porte `entityName` / `entityId`.
+
+### 4.3 `Guard`
+
+Les factories d'entités (`create()`) valident leurs arguments par `Guard` au lieu de réécrire
+trim/null/range à la main — sémantique et messages uniformes partout :
+
+- `Guard.againstEmpty(value, name)` → échec sur null/undefined/vide/blanc, **succès avec la valeur trimée**
+  (la normalisation est le comportement voulu, pas un effet de bord) ;
+- `Guard.againstNullOrUndefined(value, name)` → les valeurs falsy présentes (0, `""`, `false`) passent ;
+- `Guard.againstNegative(value, name)` → zéro et positifs finis seulement (NaN/Infinity rejetés).
+
+Tous retournent `Result<_, GuardViolation>` ; `GuardViolation` porte `argumentName`. Composables avec
+`Result.combine` :
 
 ```ts
-const result = aggregate.doSomething(input);
-if (result.isFailure) return Result.fail(result.error);
+const name = Guard.againstEmpty(input.name, "name");
+const owner = Guard.againstEmpty(input.ownerId, "ownerId");
+const guards = Result.combine([name, owner]);
+if (guards.isFailure) return Result.fail(guards.error);
 ```
 
-### 4.2 `DomainError`
+### 4.4 `UniqueEntityId`, `Entity<Props>`, `ValueObject<Props>`, `AggregateRoot<Props>`
 
-Base de toutes les erreurs métier. Fixe `name` au nom de la classe concrète pour que les erreurs restent
-identifiables après sérialisation/log. Chaque module déclare ses erreurs dans `domain/<module>.errors.ts`
-en étendant cette base — jamais de `throw new Error("...")` dans le domaine.
-
-### 4.3 `UniqueEntityId`, `Entity<Props>`, `AggregateRoot<Props>`
-
-- `UniqueEntityId` : UUID généré si absent, égalité par valeur.
+- `UniqueEntityId` : UUID généré si absent, égalité par valeur, `toString()`.
 - `Entity` : égalité **par identité** (deux entités sont la même ssi leurs ids sont égaux, quelles que
   soient leurs propriétés). Constructeur `protected` : les entités concrètes s'instancient par des factories
-  statiques (`Workspace.create(...)`) qui valident les invariants et retournent un `Result`.
-- `AggregateRoot` : ajoute la collecte d'événements de domaine. `addDomainEvent` est `protected` (seul le
-  comportement de l'agrégat peut lever un événement) ; `domainEvents` retourne une copie (le vidage ultérieur
-  n'affecte pas un instantané déjà pris) ; `clearDomainEvents` est appelé par la couche application **après
-  persistance réussie** — un événement ne part jamais avant que l'état qui le justifie soit durable.
+  statiques (`Workspace.create(...)`) qui valident les invariants et retournent un `Result` — l'entité
+  invalide est inreprésentable.
+- `ValueObject` : égalité **structurelle** (même type concret + mêmes props, les `Date` comparées par
+  valeur), props **gelées** (`Object.freeze`) — un value object ne mute jamais, le comportement retourne une
+  nouvelle instance. Deux types concrets différents ne sont jamais égaux, même à props identiques.
+  Usage prévu : statuts riches, fenêtres de quota (§4.14), critères de succès, contraintes de scheduling.
+- `AggregateRoot` : ajoute la collecte d'événements. `addDomainEvent` est `protected` (seul le comportement
+  de l'agrégat lève un événement) ; `domainEvents` retourne une copie (un instantané pris avant le vidage
+  reste exploitable) ; `clearDomainEvents` est appelé **après persistance réussie** — via
+  `flushDomainEvents`, jamais à la main.
 
-### 4.4 `DomainEvent`
+### 4.5 `DomainEvent` et `BaseDomainEvent`
 
-Un fait accompli, jamais une intention (spec §4.20). `eventName` en segments pointés
-(`workspace.created`, `task.status_changed`) pour permettre les abonnements par joker (`workspace.*`, `**`)
-côté relais temps réel. Porte `occurredAt` et `aggregateId`. Les événements sont des classes simples dans
-`domain/<module>-events.ts`, sans dépendance framework.
+`DomainEvent` (interface) : un fait accompli, jamais une intention (spec §4.20). `eventName` en segments
+pointés (`workspace.created`, `task.status_changed`) pour les abonnements par joker (`workspace.*`, `**`)
+côté relais temps réel. Porte `occurredAt` et `aggregateId`.
 
-### 4.5 `StateMachine<S>` — règle transversale §22.6
+`BaseDomainEvent` (classe abstraite) est la façon **imposée** d'écrire un événement concret : `occurredAt`
+est un argument obligatoire du constructeur — fourni par l'entité, qui le tient du use-case, qui le tient de
+`CLOCK`. Il n'existe aucun défaut `new Date()` : l'horloge ne peut pas fuiter dans le domaine par oubli.
+La date est copiée à la construction — muter l'objet `Date` d'origine après coup ne réécrit pas l'histoire.
 
-**C'est l'ajout structurant de la v3**, né d'un bug réel (arrêt d'une session déjà arrêtée → 500). Toute
-machine à états du système (Task, Session, Worker, Validation, Lock, Extension…) déclare sa table de
-transitions et la fait arbitrer par cette classe :
+### 4.6 `StateMachine<S>` — règle transversale §22.6
+
+**L'ajout structurant de la v3**, né d'un bug réel (arrêt d'une session déjà arrêtée → 500). Toute machine à
+états du système (Task, Session, Worker, Validation, Lock, Extension…) déclare sa table de transitions et la
+fait arbitrer par cette classe :
 
 - transition vers l'état courant → `{ kind: "alreadyInState" }` : **no-op réussi**, jamais une erreur ;
-- transition non déclarée → `{ kind: "invalidTransition", fromTerminal }` : résultat typé, le drapeau
-  `fromTerminal` distingue « impossible depuis un état terminal » (l'appelant peut répondre 409/410 propre)
-  de « transition simplement interdite » ;
+- transition non déclarée → `{ kind: "invalidTransition", fromTerminal }` : résultat typé ; le drapeau
+  distingue « impossible depuis un état terminal » de « transition simplement interdite » ;
 - transition déclarée → `{ kind: "transitioned" }`.
 
-**Rien ne lève jamais.** Un état est terminal ssi sa liste de transitions sortantes est vide — c'est dérivé
-de la table, pas déclaré à part (impossible de désynchroniser les deux).
+**Rien ne lève jamais.** Un état est terminal ssi sa liste de transitions sortantes est vide — dérivé de la
+table, pas déclaré à part (impossible de désynchroniser les deux). `allowedFrom(state)` expose les cibles
+atteignables : c'est la source des affordances que l'interface affiche **avant** que l'utilisateur ne se
+heurte à un refus (§20.6 — la leçon du bouton « Reprendre » affiché sur des sessions non reprenables).
+`can(from, to)` interroge la table sans transiter.
 
 Usage type dans une entité :
 
 ```ts
 private static readonly machine = new StateMachine<TaskState>({ ... });
 
-changeStatus(next: TaskState): Result<void, TaskTransitionError> {
+changeStatus(next: TaskState, now: Date): Result<void, InvalidStateTransitionError> {
   const outcome = Task.machine.transition(this.props.state, next);
   switch (outcome.kind) {
-    case "alreadyInState": return Result.ok(undefined);      // idempotent
-    case "invalidTransition": return Result.fail(new TaskTransitionError(outcome));
-    case "transitioned": /* muter + addDomainEvent */ return Result.ok(undefined);
+    case "alreadyInState":
+      return Result.ok(undefined);                       // idempotent, aucun événement
+    case "invalidTransition":
+      return Result.fail(new InvalidStateTransitionError("Task", outcome));
+    case "transitioned":
+      this.props.state = outcome.to;
+      this.addDomainEvent(new TaskStatusChanged(this.id.value, now, ...));
+      return Result.ok(undefined);
   }
 }
 ```
 
-### 4.6 `DependencyGraph` — §9.5
+### 4.7 `DependencyGraph` — §9.5
 
 DAG à insertion contrôlée : `addDependency(node, dependsOn)` **rejette le cycle au moment de l'insertion**
-(`DependencyCycleError` dans un `Result`), jamais découvert plus tard pendant l'ordonnancement. Auto-dépendance
-rejetée. Les nœuds inconnus sont enregistrés implicitement.
+(`DependencyCycleError` dans un `Result`), jamais découvert plus tard pendant l'ordonnancement.
+Auto-dépendance rejetée. Les nœuds inconnus sont enregistrés implicitement.
 
 - `readyNodes(completed)` : fonction pure de l'ensemble des nœuds accomplis → nœuds exécutables maintenant.
-  C'est la primitive du Scheduler (« une tâche devient exécutable lorsque toutes ses dépendances sont
-  satisfaites »).
-- `topologicalOrder()` : dépendances avant dépendants, ordre d'insertion préservé à égalité (déterminisme).
+  La primitive du Scheduler (« une tâche devient exécutable lorsque toutes ses dépendances sont satisfaites »).
+- `dependentsOf(node)` : qui est bloqué si ce nœud échoue — la primitive de la propagation de blocage
+  (Goal Engine « détection des objectifs bloqués », Scheduler états `BLOCKED`).
 - `dependenciesOf(node)` : dépendances directes uniquement.
+- `topologicalOrder()` : dépendances avant dépendants, ordre d'insertion préservé à égalité (déterminisme).
+- `nodes()`, `hasNode(id)` : inventaire.
 
-### 4.7 Ports `Clock` et `EventPublisher`
+### 4.8 `staleness.ts` — §17.7
+
+Les trois fonctions canoniques de toute décision temporelle. Motivation vécue : une comparaison naïve de
+timestamps (offsets mélangés) a produit un faux diagnostic de machine morte pendant l'exploitation v1 —
+l'arithmétique de dates n'est plus jamais écrite sur un site d'appel.
+
+- `ageMs(since, now)` : âge signé (négatif pour une date future).
+- `isExpired(expiresAt, now)` : expiré **dès l'instant exact** de l'échéance (`>=`) — utilisé par les baux
+  (Lease §4.13), les fenêtres de quota (§4.14), les verrous (§13.5).
+- `isStale(lastSeenAt, ttlMs, now)` : une ressource jamais vue est stale par définition (`null` → `true`) ;
+  sinon stale dès que l'âge atteint le TTL — utilisé par machines/sessions/commandes (§6.4, §17.7).
+
+Chaque module définit **ses seuils** (constantes nommées type `MACHINE_STALE_TTL_MS`) et les passe à ces
+fonctions — le kernel fournit l'arithmétique, jamais les valeurs.
+
+### 4.9 Couche application : `UseCase` et `flushDomainEvents`
+
+- `UseCase<Input, Output>` : une classe = une opération, une seule méthode `execute`. L'interface existe
+  pour l'uniformité (et les tests), pas pour du polymorphisme.
+- `flushDomainEvents(aggregate, publisher)` : encode l'ordre obligatoire **persister → publier → vider** en
+  une seule fonction. Un use-case appelle `repository.save(aggregate)` puis `flushDomainEvents(...)` —
+  jamais `publishAll`/`clearDomainEvents` à la main, l'inversion accidentelle devient impossible.
+
+### 4.10 Ports `Clock` et `EventPublisher`
 
 - `Clock` : le domaine et l'application n'appellent **jamais** `new Date()` — ils reçoivent `CLOCK` par DI.
-  Motivation vécue : tous les calculs de staleness/TTL (spec §17.7) doivent être testables avec une horloge
-  gelée (`FakeClock`), sinon les tests de péremption sont non déterministes.
-- `EventPublisher` : la couche application publie les `domainEvents` d'un agrégat **après** persistance,
-  puis les vide. L'implémentation par défaut émet dans `EventEmitter2` (joker activé dans `AppModule`), ce
-  qui alimentera le relais temps réel et le futur Event Bus persistant (§14) sans changer les producteurs.
+  Tous les calculs de staleness/TTL sont testables avec `FakeClock` (gelée, `set`/`advance` explicites).
+- `EventPublisher` : implémentation par défaut sur `EventEmitter2` (joker activé dans `AppModule`), qui
+  alimentera le relais temps réel et le futur Event Bus persistant (§14) sans changer les producteurs.
 
-Les jetons DI sont des chaînes préfixées (`"kernel/Clock"`) pour éviter toute collision entre modules.
+Les jetons DI sont des chaînes préfixées (`"kernel/Clock"`, `"kernel/EventPublisher"`) — lisibles dans les
+erreurs Nest et sans collision entre modules.
 
-### 4.8 `kernel.module.ts`
+### 4.11 `kernel.module.ts`
 
 Module Nest `@Global()` : chaque module du hub résout `CLOCK` et `EVENT_PUBLISHER` sans les réimporter.
 Les tests d'application les remplacent par les doubles de `testing/`.
@@ -170,16 +261,21 @@ Les tests d'application les remplacent par les doubles de `testing/`.
    (domain → application → infrastructure → interface).
 2. **Un `doc.md` par module** (cette convention) : conception détaillée, responsabilités, décisions, avant
    d'écrire le code du module.
-3. **Échecs attendus en `Result`**, erreurs en sous-classes de `DomainError`.
-4. **Toute machine à états passe par `StateMachine`** — aucun module ne réimplémente sa propre logique de
-   transition (c'est l'application concrète de l'invariant §22.6 « règle transversale »).
-5. **Persistance de l'agrégat complet** (spec §5.19) : les repositories Prisma écriront toujours l'objet
+3. **Échecs attendus en `Result`**, erreurs en sous-classes de `DomainError` ; les « introuvable » étendent
+   `EntityNotFoundError`, les transitions refusées passent par `InvalidStateTransitionError`.
+4. **Factories validantes** : constructeurs protégés, `create(...)` statique validant par `Guard` et
+   retournant `Result`.
+5. **Toute machine à états passe par `StateMachine`** — aucun module ne réimplémente sa propre logique de
+   transition ; l'interface expose les affordances via `allowedFrom` (§20.6).
+6. **Persistance de l'agrégat complet** (spec §5.19) : les repositories Prisma écrivent toujours l'objet
    entier, jamais une liste de champs choisie à la main — la classe de bug « sauvegarde partielle » est
    éliminée par convention, vérifiable en revue.
-6. **Horloge injectée** : tout calcul temporel (péremption, TTL, checkpoint) prend `CLOCK`, jamais
-   `new Date()` en dur.
-7. **Événements après persistance** : `repository.save(aggregate)` puis `publisher.publishAll(...)` puis
-   `aggregate.clearDomainEvents()` — dans cet ordre, toujours.
+7. **Horloge injectée** : tout calcul temporel passe par `CLOCK` puis `staleness.ts` — jamais `new Date()`
+   ni d'arithmétique de dates ad hoc. Les événements reçoivent `occurredAt` en argument (`BaseDomainEvent`).
+8. **Événements après persistance** : `repository.save(aggregate)` puis
+   `flushDomainEvents(aggregate, publisher)` — dans cet ordre, toujours, via le helper.
+9. **Seuils nommés** : chaque TTL est une constante exportée et documentée du module concerné (§17.7),
+   jamais un littéral enfoui.
 
 ## 6. Décisions notables (et leurs raisons)
 
@@ -189,13 +285,25 @@ Les tests d'application les remplacent par les doubles de `testing/`.
 | États terminaux dérivés (liste sortante vide), pas déclarés | Une déclaration séparée peut se désynchroniser de la table ; la dérivation rend l'incohérence impossible. |
 | Cycle rejeté à l'insertion dans `DependencyGraph` | Découvrir un cycle au moment de scheduler est trop tard : l'état invalide est déjà persisté. Échec immédiat, localisé, typé. |
 | Constructeur d'`Entity` protégé | Force les factories statiques validantes (`create() → Result`) ; l'entité invalide est inreprésentable. |
+| `ValueObject.equals` exige le même type concret | Deux concepts métier distincts aux props identiques ne sont pas interchangeables ; l'égalité purement structurelle inter-types serait un piège. |
+| `BaseDomainEvent` sans défaut `new Date()` | La règle « horloge injectée » doit être inviolable par construction, pas par discipline — un défaut serait le trou par lequel elle fuit. |
+| `occurredAt` copié à la construction | Un événement est un fait ; muter la `Date` d'origine après coup ne doit pas pouvoir réécrire l'histoire. |
+| `Guard.againstEmpty` retourne la valeur trimée | La normalisation appartient à la frontière de validation, pas à chaque site d'appel — un seul endroit décide de ce que « vide » veut dire. |
+| `isExpired` inclusif (`>=`) | Une échéance atteinte est une échéance passée ; l'ambiguïté « pile à l'instant T » est tranchée une fois pour toutes, testée, et plus jamais rediscutée. |
+| `isStale(null) === true` | Une ressource qui n'a jamais donné signe de vie ne doit jamais passer pour fraîche — le doute joue contre la disponibilité, pas pour. |
+| `flushDomainEvents` comme fonction, pas comme méthode de repository | L'ordre persister→publier→vider est un invariant applicatif, pas une responsabilité de persistance ; le helper le rend impossible à inverser sans le contourner visiblement. |
 | `domainEvents` retourne une copie | Un instantané pris avant `clearDomainEvents()` reste exploitable ; personne ne peut muter la collection interne. |
 | Jetons DI en chaînes préfixées plutôt que `Symbol` | Lisibles dans les messages d'erreur Nest (« kernel/Clock » vs `Symbol()`), et stables entre rechargements en watch mode. |
+| Pas de pagination/DTO au kernel | Conventions de la couche interface — elles se décident au premier contrôleur, avec un vrai cas sous les yeux, pas en avance de phase. |
+| Pas de base `Repository<T>` générique | Chaque port de repository nomme ses requêtes métier (`findActiveByWorkspace`…) ; une base générique save/findById pousserait vers l'anémie. |
 
 ## 7. Évolutions prévues
 
 - **Event Bus persistant (§14)** : `EventPublisher` gagnera une implémentation qui persiste avant d'émettre
   (outbox). Le port ne change pas — c'est le critère de réussite de son design.
-- **`Lease` (§4.13)** : la primitive de bail (acquisition, renouvellement, expiration par `Clock`) entrera
-  probablement au kernel quand Locks et Scheduler en auront tous deux besoin ; pas avant (règle : rien
-  n'entre au kernel sans deux consommateurs).
+- **`Lease` (§4.13)** : le bail est une entité à part entière (owner, resource, expires_at, renew) — elle
+  vivra dans le module qui la possède (Lock Manager ou Runtime), construite sur `isExpired` du kernel.
+  Elle n'entre pas au kernel : elle a une identité et un propriétaire, ce n'est pas une primitive.
+- **Concurrence optimiste** : si un module en a besoin (agrégats à forte contention), un champ `version`
+  s'ajoutera à `AggregateRoot` et la convention de persistance §5.19 s'étendra — rien dans le design actuel
+  ne s'y oppose.

@@ -74,4 +74,18 @@ describe("StateMachine", () => {
       expect(machine.isTerminal("running")).toBe(false);
     });
   });
+
+  describe("allowedFrom", () => {
+    it("lists the reachable targets — the affordances a client can display (§20.6)", () => {
+      expect(machine.allowedFrom("starting")).toEqual(["running", "crashed"]);
+      expect(machine.allowedFrom("stopped")).toEqual([]);
+    });
+
+    it("returns a copy — mutating it does not corrupt the table", () => {
+      const targets = machine.allowedFrom("starting") as SessionState[];
+      targets.pop();
+
+      expect(machine.allowedFrom("starting")).toEqual(["running", "crashed"]);
+    });
+  });
 });

@@ -36,6 +36,25 @@ export class DependencyGraph {
     return [...(this.dependencies.get(node) ?? [])];
   }
 
+  /** Direct dependents — the nodes blocked if this one fails. */
+  dependentsOf(node: string): string[] {
+    const dependents: string[] = [];
+    for (const [candidate, deps] of this.dependencies) {
+      if (deps.has(node)) {
+        dependents.push(candidate);
+      }
+    }
+    return dependents;
+  }
+
+  nodes(): string[] {
+    return [...this.dependencies.keys()];
+  }
+
+  hasNode(id: string): boolean {
+    return this.dependencies.has(id);
+  }
+
   /** Nodes not yet completed whose dependencies are all completed. */
   readyNodes(completed: ReadonlySet<string>): string[] {
     const ready: string[] = [];

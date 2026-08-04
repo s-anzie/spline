@@ -21,6 +21,14 @@ export class StateMachine<S extends string> {
     return this.transitions[state].length === 0;
   }
 
+  /**
+   * Reachable targets from a state — the affordances an interface can
+   * surface before the user hits a rejection (v3 spec §20.6).
+   */
+  allowedFrom(state: S): readonly S[] {
+    return [...this.transitions[state]];
+  }
+
   transition(from: S, to: S): TransitionOutcome<S> {
     if (from === to) {
       return { kind: "alreadyInState", state: from };
