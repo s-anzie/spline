@@ -87,6 +87,7 @@ model Workspace {
   auditEntries   AuditEntry[]
   memoryEntries  MemoryEntry[]
   repositories   Repository[]
+  sessions       AgentSession[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -787,4 +788,84 @@ model MergeRequest {
   @@index([repositoryId, status])
   @@index([taskId])
   @@map("merge_requests")
+}
+
+enum WorkerStatus {
+  ONLINE
+  OFFLINE
+  DRAINING
+  MAINTENANCE
+}
+
+enum SessionStatus {
+  STARTING
+  IDLE
+  RUNNING
+  WAITING
+  STOPPED
+  CRASHED
+}
+
+/// Spec 4.11. A machine exists above workspaces — it is attached to them
+/// afterwards (6.3) and may serve several — so there is no workspaceId here.
+model WorkerNode {
+  id              String       @id @default(uuid())
+  hostname        String
+  labels          Json         @default("[]")
+  architecture    String
+  operatingSystem String
+  capabilities    Json         @default("[]")
+  workspaceIds    Json         @default("[]")
+  status          WorkerStatus @default(ONLINE)
+  lastHeartbeatAt DateTime?
+  registeredAt    DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  sessions AgentSession[]
+
+  @@unique([hostname])
+  @@index([status])
+  @@map("worker_nodes")
+}
+
+/// Spec 4.12 — "une session est éphémère. L'Agent est permanent."
+model AgentSession {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  agentType       ActorType
+  agentId         String
+  workerId        String
+  provider        String
+  model           String?
+  taskId          String?
+  status          SessionStatus @default(STARTING)
+  lastHeartbeatAt DateTime?
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  endReason       String?
+  updatedAt       DateTime      @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  worker    WorkerNode @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workerId, status])
+  @@map("agent_sessions")
+}
+
+/// Spec 4.14 — a GLOBAL catalogue, deliberately without a workspaceId: a
+/// provider's quota is an account resource shared by every agent on the same
+/// underlying connection (0.3.7). Effective availability is COMPUTED, never
+/// stored: available AND (quotaUnavailableUntil IS NULL OR < now).
+model ProviderProfile {
+  id                    String    @id @default(uuid())
+  provider              String    @unique
+  capabilities          Json      @default("[]")
+  available             Boolean   @default(true)
+  quotaUnavailableUntil DateTime?
+  quotaReason           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("provider_profiles")
 }

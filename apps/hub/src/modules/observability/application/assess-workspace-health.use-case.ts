@@ -72,4 +72,6 @@ const RULES = [
   "staleness_locks_ms",
   "staleness_blocked_tasks_ms",
   "staleness_pending_validations_ms",
+  "staleness_workers_ms",
+  "staleness_sessions_ms",
 ] as const;

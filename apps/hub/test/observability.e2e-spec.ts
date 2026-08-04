@@ -77,12 +77,17 @@ describe("Observability (e2e)", () => {
 
     expect(health.body.level).toBe("HEALTHY");
     expect(health.body.totalDegraded).toBe(0);
-    expect(health.body.signals.map((s: { probe: string }) => s.probe).sort()).toEqual([
+    // Named rather than exhaustive: a module that becomes observable adds a
+    // probe, and that must not break the suites of modules it knows nothing
+    // about. Runtime's two (§17.7) arrived exactly this way.
+    for (const probe of [
       "audit_chain",
       "blocked_tasks",
       "locks",
       "pending_validations",
-    ]);
+    ]) {
+      expect(health.body.signals.map((s: { probe: string }) => s.probe)).toContain(probe);
+    }
   });
 
   /**
@@ -227,10 +232,13 @@ describe("Observability (e2e)", () => {
 
     const health = await ctx.auth(request(http).get(ctx.base)).expect(200);
     expect(health.body.level).toBe("UNHEALTHY");
-    // The other three are still reported healthy, side by side with it.
-    expect(
-      health.body.signals.filter((s: { level: string }) => s.level === "HEALTHY"),
-    ).toHaveLength(3);
+    // Every other probe is still reported healthy, side by side with it —
+    // the worst signal decides the level, it does not hide the rest.
+    const levels = health.body.signals.map((s: { level: string }) => s.level);
+    expect(levels.filter((level: string) => level === "UNHEALTHY")).toHaveLength(1);
+    expect(levels.filter((level: string) => level === "HEALTHY")).toHaveLength(
+      levels.length - 1,
+    );
   });
 
   it("never reports another workspace's health, and requires membership", async () => {

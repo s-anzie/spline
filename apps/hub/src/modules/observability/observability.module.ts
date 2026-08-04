@@ -8,6 +8,9 @@ import { LockHealthProbe } from "../lock/infrastructure/lock-health.probe";
 import { PolicyModule } from "../policy/policy.module";
 import { TaskModule } from "../task/task.module";
 import { TaskHealthProbe } from "../task/infrastructure/task-health.probe";
+import { RuntimeModule } from "../runtime/runtime.module";
+import { SessionHealthProbe } from "../runtime/infrastructure/session-health.probe";
+import { WorkerHealthProbe } from "../runtime/infrastructure/worker-health.probe";
 import { ValidationModule } from "../validation/validation.module";
 import { ValidationHealthProbe } from "../validation/infrastructure/validation-health.probe";
 import { AssessWorkspaceHealthUseCase } from "./application/assess-workspace-health.use-case";
@@ -27,6 +30,7 @@ import { ObservabilityController } from "./interface/observability.controller";
     TaskModule,
     ValidationModule,
     AuditModule,
+    RuntimeModule,
   ],
   controllers: [ObservabilityController],
   providers: [
@@ -34,7 +38,16 @@ import { ObservabilityController } from "./interface/observability.controller";
     {
       provide: HEALTH_PROBES,
       useFactory: (...probes: unknown[]) => probes,
-      inject: [LockHealthProbe, TaskHealthProbe, ValidationHealthProbe, AuditHealthProbe],
+      inject: [
+        LockHealthProbe,
+        TaskHealthProbe,
+        ValidationHealthProbe,
+        AuditHealthProbe,
+        // §17.7 named Machine and Session from the start; their module now
+        // exists, and observability did not have to change to accept them.
+        WorkerHealthProbe,
+        SessionHealthProbe,
+      ],
     },
   ],
 })
