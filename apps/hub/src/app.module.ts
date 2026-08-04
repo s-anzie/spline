@@ -5,6 +5,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
+import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -20,6 +21,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     HealthModule,
     IdentityModule,
     WorkspaceModule,
+    GoalModule,
   ],
 })
 export class AppModule {}

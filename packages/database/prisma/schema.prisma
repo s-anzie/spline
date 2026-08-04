@@ -75,6 +75,7 @@ model Workspace {
   updatedAt      DateTime
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships    WorkspaceMembership[]
+  goals          Goal[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -93,6 +94,55 @@ model WorkspaceMembership {
   @@index([workspaceId])
   @@index([actorType, actorId])
   @@map("workspace_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Goals (§4.5) — observable results. Domain-agnostic: nothing here knows
+// about code, Git or any Engine.
+// ---------------------------------------------------------------------------
+
+enum Priority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+  BACKGROUND
+}
+
+enum GoalStatus {
+  PLANNED
+  ACTIVE
+  BLOCKED
+  REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+model Goal {
+  id               String     @id @default(uuid())
+  workspaceId      String
+  parentGoalId     String?
+  title            String
+  description      String?
+  successCriteria  Json       @default("[]")
+  dependsOnGoalIds Json       @default("[]")
+  priority         Priority   @default(NORMAL)
+  ownerType        ActorType
+  ownerId          String
+  progress         Int        @default(0)
+  status           GoalStatus @default(PLANNED)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Restrict: a parent goal is never physically removed out from under its
+  // children — cancellation is the normal path.
+  parentGoal Goal?     @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Restrict)
+  subGoals   Goal[]    @relation("GoalHierarchy")
+
+  @@index([workspaceId, status])
+  @@index([parentGoalId])
+  @@map("goals")
 }
 
 /// Opaque-token credential for AGENT / WORKER / SERVICE actors (§18.2).

@@ -10,6 +10,7 @@ const TABLES = [
   "workspaces",
   "workspace_memberships",
   "actor_credentials",
+  "goals",
 ];
 
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
