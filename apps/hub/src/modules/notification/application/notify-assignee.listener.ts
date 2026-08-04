@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 
 import { TaskAssigned, TaskCreated } from "../../task/domain/task-events";
@@ -24,6 +24,8 @@ import { SendNotificationUseCase } from "./send-notification.use-case";
  */
 @Injectable()
 export class NotifyAssigneeOnTaskAssignedListener {
+  private readonly logger = new Logger(NotifyAssigneeOnTaskAssignedListener.name);
+
   constructor(private readonly send: SendNotificationUseCase) {}
 
   /**
@@ -41,7 +43,7 @@ export class NotifyAssigneeOnTaskAssignedListener {
       return;
     }
 
-    await this.send.execute({
+    const sent = await this.send.execute({
       workspaceId: event.workspaceId,
       kind: "SYSTEM_ALERT",
       scope: "DIRECT",
@@ -55,5 +57,15 @@ export class NotifyAssigneeOnTaskAssignedListener {
       ],
       payload: { taskId: event.aggregateId },
     });
+
+    // Never discard the Result. Swallowing it is how "the assignee is told"
+    // failed intermittently with no trace at all — the one failure mode this
+    // codebase refuses everywhere else. Logged rather than thrown: not
+    // telling someone must not undo the assignment that did happen.
+    if (sent.isFailure) {
+      this.logger.error(
+        `Assignee not notified for task ${event.aggregateId}: ${sent.error.name} — ${sent.error.message}`,
+      );
+    }
   }
 }

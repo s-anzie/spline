@@ -71,7 +71,7 @@ export class ChangeMembershipRoleUseCase
     }
 
     await this.memberships.save(membership);
-    flushDomainEvents(membership, this.publisher);
+    await flushDomainEvents(membership, this.publisher);
     return Result.ok(undefined);
   }
 }

@@ -40,7 +40,7 @@ export class RevokeActorCredentialUseCase
 
     credential.revoke(this.clock.now());
     await this.credentials.save(credential);
-    flushDomainEvents(credential, this.publisher);
+    await flushDomainEvents(credential, this.publisher);
     return Result.ok(undefined);
   }
 }

@@ -80,7 +80,7 @@ export class AddArtifactVersionUseCase
     }
 
     await this.artifacts.save(artifact);
-    flushDomainEvents(artifact, this.publisher);
+    await flushDomainEvents(artifact, this.publisher);
     return Result.ok({ version: added.value });
   }
 }

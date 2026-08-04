@@ -1,5 +1,7 @@
 import { EventEmitter2 } from "@nestjs/event-emitter";
 
+import { ReactionDepth } from "../../../kernel/application/reaction-depth";
+
 import { DomainEvent } from "../../../kernel/domain/domain-event";
 import { InMemoryEventRepository } from "../application/testing/event.doubles";
 import { PersistentEventPublisher } from "./persistent-event-publisher";
@@ -18,7 +20,7 @@ describe("PersistentEventPublisher", () => {
   function makePublisher() {
     const events = new InMemoryEventRepository();
     const emitter = new EventEmitter2({ wildcard: true, delimiter: "." });
-    return { events, emitter, publisher: new PersistentEventPublisher(events, emitter) };
+    return { events, emitter, publisher: new PersistentEventPublisher(events, emitter, new ReactionDepth()) };
   }
 
   it("writes the fact to the journal, then emits it in process", async () => {

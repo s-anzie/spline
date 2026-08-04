@@ -104,7 +104,7 @@ export class CreateWorkspaceUseCase
       throw error;
     }
 
-    flushDomainEvents(workspace.value, this.publisher);
+    await flushDomainEvents(workspace.value, this.publisher);
     return Result.ok({
       workspaceId: workspace.value.id.value,
       slug: workspace.value.slug,

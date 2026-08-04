@@ -2,10 +2,12 @@ import { ActorRef } from "../../../identity/domain/actor";
 import { Event } from "../../domain/event";
 import { EventReceipt } from "../../domain/event-receipt";
 import {
+  DEFAULT_EVENT_PAGE,
   EventReceiptRepository,
   EventRepository,
   ListEventsFilter,
   ListReceiptsFilter,
+  MAX_EVENT_PAGE,
 } from "../../domain/ports/event.repository.port";
 
 export class InMemoryEventRepository implements EventRepository {
@@ -54,7 +56,7 @@ export class InMemoryEventRepository implements EventRepository {
         return true;
       })
       .sort((a, b) => Number(a.sequence - b.sequence))
-      .slice(0, filter.limit);
+      .slice(0, Math.min(filter.limit ?? DEFAULT_EVENT_PAGE, MAX_EVENT_PAGE));
   }
 }
 

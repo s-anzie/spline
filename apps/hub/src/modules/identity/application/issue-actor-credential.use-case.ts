@@ -74,7 +74,7 @@ export class IssueActorCredentialUseCase
     }
 
     await this.credentials.save(credential.value);
-    flushDomainEvents(credential.value, this.publisher);
+    await flushDomainEvents(credential.value, this.publisher);
 
     return Result.ok({
       token: buildActorToken(input.actorType, credential.value.id.value, secret),

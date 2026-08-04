@@ -120,7 +120,7 @@ export class CreateArtifactUseCase
     }
 
     await this.artifacts.save(artifact.value);
-    flushDomainEvents(artifact.value, this.publisher);
+    await flushDomainEvents(artifact.value, this.publisher);
     return Result.ok({ artifactId: artifact.value.id.value, version: 1 });
   }
 }

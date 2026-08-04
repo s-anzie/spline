@@ -15,6 +15,7 @@ import {
   PrismaEventReceiptRepository,
   PrismaEventRepository,
 } from "./infrastructure/prisma-event.repository";
+import { ReactionDepth } from "../../kernel/application/reaction-depth";
 import { PersistentEventPublisher } from "./infrastructure/persistent-event-publisher";
 import { EventController } from "./interface/event.controller";
 
@@ -29,6 +30,9 @@ import { EventController } from "./interface/event.controller";
   imports: [IdentityModule],
   controllers: [EventController],
   providers: [
+    // A factory, not a class binding: the ceiling is a constructor argument
+    // with a default, and Nest would try to inject a Number for it.
+    { provide: ReactionDepth, useFactory: () => new ReactionDepth() },
     { provide: EVENT_REPOSITORY, useClass: PrismaEventRepository },
     { provide: EVENT_RECEIPT_REPOSITORY, useClass: PrismaEventReceiptRepository },
     { provide: EVENT_PUBLISHER, useClass: PersistentEventPublisher },

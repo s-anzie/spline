@@ -85,7 +85,7 @@ export class OrganizationController {
       throw new BadRequestException(renamed.error.message);
     }
     await this.organizations.save(organization);
-    flushDomainEvents(organization, this.publisher);
+    await flushDomainEvents(organization, this.publisher);
     return { ok: true };
   }
 }

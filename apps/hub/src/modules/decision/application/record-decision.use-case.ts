@@ -102,7 +102,7 @@ export class RecordDecisionUseCase
     }
 
     await this.decisions.save(decision.value);
-    flushDomainEvents(decision.value, this.publisher);
+    await flushDomainEvents(decision.value, this.publisher);
     return Result.ok({ decisionId: decision.value.id.value });
   }
 }

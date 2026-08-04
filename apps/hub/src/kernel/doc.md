@@ -333,6 +333,35 @@ Deux règles qui en découlent :
   prouve rien et se lirait comme un succès — c'est arrivé pendant l'écriture, et une assertion sur le
   gréement le rend impossible.
 
+### 5.2 Une chaîne de réactions est bornée
+
+`ReactionDepth` (§4) plafonne à **5** la profondeur d'une cascade de réactions, comme OpenClaw plafonne
+les échanges entre agents (`maxPingPongTurns`, défaut 5 — spec §10.18).
+
+Ce n'était pas nécessaire tant que la publication était en « fire-and-forget » : un écouteur qui publiait
+ce qu'il écoutait fuyait des promesses flottantes. Depuis que la publication est **attendue** (pour que
+l'appelant ne soit pas informé avant que le travail soit fait), la même erreur **récurse sur la pile de
+l'appelant** et la requête ne revient jamais. Aucun écouteur ne fait ça aujourd'hui ; l'intérêt est
+qu'aucun ne puisse commencer à le faire en silence, et qu'un cycle soit refusé **en nommant la chaîne**
+plutôt qu'en débordant la pile.
+
+Les chaînes légitimes sont courtes : un objectif annulé → ses tâches annulées → leurs assignés prévenus,
+soit trois. Au-delà de cinq, ce n'est pas du travail en profondeur, c'est un cycle.
+
+### 5.3 Une promesse que personne n'attend est une erreur de lint, pas une habitude de revue
+
+Quand `EventPublisher` est devenu asynchrone, le compilateur n'a signalé que les sites **dont la valeur
+de retour était utilisée**. **Trente-quatre** appels à `flushDomainEvents` ont continué de compiler en
+promesses ignorées : les faits étaient écrits *après* le retour de la requête. En test, cela se
+manifestait par des violations de clé étrangère contre des lignes qu'un test suivant avait déjà purgées —
+donc par des échecs erratiques attribuables à tout sauf à leur cause. En production, ce sont des rejets
+non gérés et un appelant informé avant que le travail soit fait.
+
+Le lint du hub est donc **typé** (`projectService`) pour deux règles : `no-floating-promises` et
+`await-thenable`. Le commentaire du §7 disait que le critère de réussite du changement de port était
+« que le changement soit trouvé par le compilateur et non par la production ». Il l'a été à moitié :
+le compilateur ne pouvait pas voir cette moitié-là.
+
 ## 6. Décisions notables (et leurs raisons)
 
 | Décision | Raison |

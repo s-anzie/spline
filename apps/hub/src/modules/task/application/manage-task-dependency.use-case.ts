@@ -58,7 +58,7 @@ export class ManageTaskDependencyUseCase
         return Result.fail(removed.error);
       }
       await this.tasks.save(task);
-      flushDomainEvents(task, this.publisher);
+      await flushDomainEvents(task, this.publisher);
       return Result.ok(undefined);
     }
 
@@ -89,7 +89,7 @@ export class ManageTaskDependencyUseCase
     }
 
     await this.tasks.save(task);
-    flushDomainEvents(task, this.publisher);
+    await flushDomainEvents(task, this.publisher);
     return Result.ok(undefined);
   }
 }

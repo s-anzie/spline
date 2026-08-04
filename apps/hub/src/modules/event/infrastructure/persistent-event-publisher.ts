@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 
+import { ReactionDepth } from "../../../kernel/application/reaction-depth";
 import { DomainEvent } from "../../../kernel/domain/domain-event";
 import { EventPublisher } from "../../../kernel/domain/ports/event-publisher.port";
 import { Event } from "../domain/event";
@@ -30,6 +31,7 @@ export class PersistentEventPublisher implements EventPublisher {
   constructor(
     @Inject(EVENT_REPOSITORY) private readonly events: EventRepository,
     private readonly emitter: EventEmitter2,
+    private readonly depth: ReactionDepth,
   ) {}
 
   async publish(event: DomainEvent): Promise<void> {
@@ -52,7 +54,13 @@ export class PersistentEventPublisher implements EventPublisher {
     // the originating call instead of disappearing. With no queue in the
     // system, visible-and-slow beats silent-and-lost — and the journal is
     // already written, so a listener that throws can be replayed (§14.5).
-    await this.emitter.emitAsync(event.eventName, event);
+    //
+    // Awaiting is also what makes a self-feeding chain recurse on the
+    // caller's stack rather than leak promises, hence the bound: a cycle is
+    // refused by name instead of overflowing the stack (§10.18).
+    await this.depth.within(event.eventName, () =>
+      this.emitter.emitAsync(event.eventName, event),
+    );
   }
 
   async publishAll(events: readonly DomainEvent[]): Promise<void> {

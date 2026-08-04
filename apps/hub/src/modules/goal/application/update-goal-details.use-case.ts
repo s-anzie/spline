@@ -63,7 +63,7 @@ export class UpdateGoalDetailsUseCase
     }
 
     await this.goals.save(goal);
-    flushDomainEvents(goal, this.publisher);
+    await flushDomainEvents(goal, this.publisher);
     return Result.ok(undefined);
   }
 }

@@ -11,10 +11,12 @@ import { Event } from "../domain/event";
 import { EventReceipt, ReceiptStatus } from "../domain/event-receipt";
 import { EventSeverity } from "../domain/event-severity";
 import {
+  DEFAULT_EVENT_PAGE,
   EventReceiptRepository,
   EventRepository,
   ListEventsFilter,
   ListReceiptsFilter,
+  MAX_EVENT_PAGE,
 } from "../domain/ports/event.repository.port";
 
 function actorOf(type: string | null, id: string | null): ActorRef | null {
@@ -90,7 +92,8 @@ export class PrismaEventRepository implements EventRepository {
       },
       // Sequence, never createdAt: two facts can share a millisecond.
       orderBy: { sequence: "asc" },
-      ...(filter.limit !== undefined && { take: filter.limit }),
+      // Always bounded: an absent limit is a page, never the whole journal.
+      take: Math.min(filter.limit ?? DEFAULT_EVENT_PAGE, MAX_EVENT_PAGE),
     });
     return rows.map((row) => EventMapper.toDomain(row));
   }

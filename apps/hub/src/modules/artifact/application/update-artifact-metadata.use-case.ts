@@ -72,7 +72,7 @@ export class UpdateArtifactMetadataUseCase
     }
 
     await this.artifacts.save(artifact);
-    flushDomainEvents(artifact, this.publisher);
+    await flushDomainEvents(artifact, this.publisher);
     return Result.ok(undefined);
   }
 }

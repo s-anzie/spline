@@ -79,7 +79,7 @@ export class SupersedeDecisionUseCase
       return Result.fail(marked.error);
     }
     await this.decisions.save(superseded);
-    flushDomainEvents(superseded, this.publisher);
+    await flushDomainEvents(superseded, this.publisher);
 
     return Result.ok(recorded.value);
   }

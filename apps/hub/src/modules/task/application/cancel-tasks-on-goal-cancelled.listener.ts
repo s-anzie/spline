@@ -49,7 +49,7 @@ export class CancelTasksOnGoalCancelledListener {
         continue;
       }
       await this.tasks.save(task);
-      flushDomainEvents(task, this.publisher);
+      await flushDomainEvents(task, this.publisher);
     }
   }
 }

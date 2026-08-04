@@ -119,7 +119,7 @@ export class CreateTaskUseCase
     }
 
     await this.tasks.save(task.value);
-    flushDomainEvents(task.value, this.publisher);
+    await flushDomainEvents(task.value, this.publisher);
     return Result.ok({ taskId: task.value.id.value });
   }
 

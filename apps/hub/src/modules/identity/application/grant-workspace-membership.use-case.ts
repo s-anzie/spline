@@ -75,7 +75,7 @@ export class GrantWorkspaceMembershipUseCase
     }
 
     await this.memberships.save(membership.value);
-    flushDomainEvents(membership.value, this.publisher);
+    await flushDomainEvents(membership.value, this.publisher);
     return Result.ok({ membershipId: membership.value.id.value });
   }
 }

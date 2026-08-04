@@ -52,7 +52,7 @@ export class CompleteTaskUseCase
     }
 
     await this.tasks.save(task);
-    flushDomainEvents(task, this.publisher);
+    await flushDomainEvents(task, this.publisher);
     await this.goalSync.sync(task.workspaceId, task.goalId);
     return Result.ok(undefined);
   }

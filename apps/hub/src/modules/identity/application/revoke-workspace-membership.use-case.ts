@@ -73,7 +73,7 @@ export class RevokeWorkspaceMembershipUseCase
 
     membership.revoke(this.clock.now());
     await this.memberships.delete(membership.id.value);
-    flushDomainEvents(membership, this.publisher);
+    await flushDomainEvents(membership, this.publisher);
     return Result.ok(undefined);
   }
 }

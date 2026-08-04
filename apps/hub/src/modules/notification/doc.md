@@ -206,4 +206,14 @@ Reports explicites, avec leur raison :
   une décision qui n'appartient pas à ce module.
 - **`DELIVERED` n'est estampillé par personne** : aucun transport n'existe (§20.5). L'état est prévu pour
   que le Realtime l'écrive, il n'est pas simulé.
-- **Aucune borne sur les échanges** entre acteurs — voir l'étude OpenClaw, `v3/spline-v3.md` §10.18.
+- **La cascade est bornée, la conversation ne l'est pas.** `ReactionDepth` (kernel §5.2) empêche une
+  chaîne de réactions de se nourrir elle-même, ce qui couvre le risque de boucle **technique**. Ce qu'il
+  ne couvre pas, parce qu'il n'existe pas encore, c'est la boucle **conversationnelle** : deux acteurs
+  qui se répondent, chacun dans une requête séparée. Il y faudra un fil avec un budget de tours et un
+  jeton de terminaison explicite (§10.18 a/b). Le champ `taskId` sert aujourd'hui d'ancre de fil ; il
+  n'est pas une conversation, et ce module ne prétend pas le contraire.
+- **La communication reste ouverte entre membres d'un workspace.** OpenClaw ferme par défaut et
+  n'autorise que par liste. Ne pas copier ici est délibéré : chez eux l'unité d'isolement est l'agent,
+  ici c'est le workspace — l'appartenance *est* l'autorisation. Si cela doit se restreindre, c'est au
+  Policy Engine (§12) de le porter. Aucun port permissif n'est posé d'avance : un branchement qui dit
+  toujours « oui » a déjà été retiré une fois de ce code, et il ne prouve rien.

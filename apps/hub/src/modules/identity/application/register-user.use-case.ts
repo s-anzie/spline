@@ -101,8 +101,8 @@ export class RegisterUserUseCase
 
     await this.users.save(user.value);
     await this.organizations.save(organization.value);
-    flushDomainEvents(user.value, this.publisher);
-    flushDomainEvents(organization.value, this.publisher);
+    await flushDomainEvents(user.value, this.publisher);
+    await flushDomainEvents(organization.value, this.publisher);
 
     return Result.ok({
       userId: ownerId,

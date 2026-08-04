@@ -61,7 +61,7 @@ export class UpdateWorkspaceDetailsUseCase
     }
 
     await this.workspaces.save(workspace);
-    flushDomainEvents(workspace, this.publisher);
+    await flushDomainEvents(workspace, this.publisher);
     return Result.ok(undefined);
   }
 }

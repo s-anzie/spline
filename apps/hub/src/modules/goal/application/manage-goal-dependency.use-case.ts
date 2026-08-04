@@ -62,7 +62,7 @@ export class ManageGoalDependencyUseCase
         return Result.fail(removed.error);
       }
       await this.goals.save(goal);
-      flushDomainEvents(goal, this.publisher);
+      await flushDomainEvents(goal, this.publisher);
       return Result.ok(undefined);
     }
 
@@ -87,7 +87,7 @@ export class ManageGoalDependencyUseCase
     }
 
     await this.goals.save(goal);
-    flushDomainEvents(goal, this.publisher);
+    await flushDomainEvents(goal, this.publisher);
     return Result.ok(undefined);
   }
 

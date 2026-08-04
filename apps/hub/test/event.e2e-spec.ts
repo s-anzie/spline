@@ -281,6 +281,36 @@ describe("Event (e2e)", () => {
     ).expect(403);
   });
 
+  /**
+   * A journal keeps every fact (§14.1) and nothing prunes it yet, so an
+   * unfiltered read must not mean "give me everything": it returned the whole
+   * journal of a workspace, which is harmless on day one and a way to take
+   * the hub down later. Replay already pages with afterSequence (§14.5).
+   */
+  it("never returns an unbounded journal", async () => {
+    const ctx = await setup();
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+
+    for (let i = 0; i < 105; i++) {
+      await auth(request(http).post(ctx.base))
+        .send({ type: "agent.observation", targetType: "agent", targetId: `a-${i}` })
+        .expect(201);
+    }
+
+    const page = await auth(request(http).get(ctx.base)).expect(200);
+    expect(page.body).toHaveLength(100);
+
+    // And the caller cannot ask for more than the ceiling.
+    await auth(request(http).get(`${ctx.base}?limit=5000`)).expect(400);
+
+    // Paging forward still reaches the rest (§14.5).
+    const last = page.body[page.body.length - 1].sequence as string;
+    const next = await auth(
+      request(http).get(`${ctx.base}?afterSequence=${last}`),
+    ).expect(200);
+    expect(next.body.length).toBeGreaterThan(0);
+  });
+
   it("isolates per workspace and requires authentication", async () => {
     const ctx = await setup();
     await request(http)

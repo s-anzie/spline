@@ -12,8 +12,20 @@ export interface ListEventsFilter {
   actor?: ActorRef;
   /** Replay (§14.5) reads forward from a known position. */
   afterSequence?: bigint;
+  /** Omitted means DEFAULT_EVENT_PAGE, never "everything" — see below. */
   limit?: number;
 }
+
+/**
+ * A journal grows without bound — §14.1 keeps every fact and no retention
+ * policy exists yet (that is the Policy Engine's, §12). So an unfiltered read
+ * has to be capped by default: `GET …/events` with no parameter returned the
+ * entire journal of a workspace, which is fine on day one and a way to take
+ * the hub down on day one hundred. Replay pages forward with `afterSequence`
+ * (§14.5), so a cap costs nothing that ordering does not already provide.
+ */
+export const DEFAULT_EVENT_PAGE = 100;
+export const MAX_EVENT_PAGE = 500;
 
 export interface EventRepository {
   /** Appends and returns the fact with the sequence the store assigned. */

@@ -105,7 +105,7 @@ export class CreateGoalUseCase
     }
 
     await this.goals.save(goal.value);
-    flushDomainEvents(goal.value, this.publisher);
+    await flushDomainEvents(goal.value, this.publisher);
     return Result.ok({ goalId: goal.value.id.value });
   }
 }
