@@ -4,7 +4,7 @@
 > Référence spec : `v3/spline-v3.md` — §4.1 (hiérarchie Organization→Workspace), §18.2 (acteurs),
 > §18.3 (RBAC), §18.8 (exception de bootstrap), §10.9/§11.2 (validation humaine), §12.2 (héritage des
 > politiques depuis l'Organization)
-> Statut : en cours d'implémentation (TDD).
+> Statut : implémenté, double-vérifié, audité en accessibilité (§9).
 
 ## 1. Rôle
 
@@ -79,7 +79,7 @@ Six rôles de workspace (hérités de v1, éprouvés en exploitation) :
 
 `OWNER`, `HUMAN_OPERATOR`, `AGENT_MANAGER`, `AGENT_CONTRIBUTOR`, `READ_ONLY_AGENT`, `VIEWER`.
 
-Catalogue de permissions étendu pour couvrir tout le périmètre v3 (14 permissions — v1 en avait 8) :
+Catalogue de permissions étendu pour couvrir tout le périmètre v3 (15 permissions — v1 en avait 8) :
 
 | Permission | Couvre (chapitres v3) |
 | --- | --- |

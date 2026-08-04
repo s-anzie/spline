@@ -3,7 +3,7 @@
 > Module : `apps/hub/src/modules/workspace/`
 > Référence spec : `v3/spline-v3.md` — §4.2 (entité), §4.24 (invariants), §12.2 (héritage des politiques),
 > §18.8 (bootstrap `workspace-create`), §22 (machine à états)
-> Statut : conception — implémentation TDD à suivre.
+> Statut : implémenté, double-vérifié (§7), permissions affinées par l.audit d.accessibilité.
 
 ## 1. Rôle
 
@@ -79,8 +79,9 @@ Le module policy la remplacera par de vraies entités héritables (Organization 
   cross-tenant.
 - `UpdateWorkspaceDetailsUseCase` — nom (re-slugifié), description, settings (fusion superficielle,
   `settings.policies` ne peut pas devenir vide) ; interdit hors `ACTIVE`.
-- `ChangeWorkspaceStatusUseCase` — pause/resume/archive/unarchive/delete via la machine à états ;
-  idempotence §22.6 (même état → succès silencieux) ; `DELETED` définitif.
+- `ChangeWorkspaceStatusUseCase` — cible du cycle de vie via la machine à états ; idempotence §22.6
+  (même état → succès silencieux) ; `DELETED` définitif. Cinq routes distinctes l'appellent, chacune avec
+  sa permission (§5) — le use-case reste unique, c'est l'autorisation qui se différencie.
 
 ## 4. Infrastructure
 
@@ -113,7 +114,7 @@ Le module policy la remplacera par de vraies entités héritables (Organization 
 | --- | --- |
 | Suppression logique (`DELETED`), jamais physique | §15.5/§18.7 : rien d'important ne disparaît sans trace ; les données restent pour l'audit, l'API les masque. |
 | Compensation explicite plutôt que transaction inter-agrégats | Deux agrégats, deux repositories : une transaction traversante coulerait les frontières de modules ; la compensation est locale, testée, et le cas est rare. |
-| Slug non unique globalement, unicité par organisation préparée mais non imposée | Les ids sont les identifiants ; l'unicité de slug est un besoin d'URL propre à venir avec l'UI — le port `existsBySlugInOrganization` est prêt, la contrainte attendra un vrai besoin. |
+| Slug non unique globalement | Les ids sont les identifiants ; l'unicité de slug est un besoin d'URL qui viendra avec l'UI, et aucun port n'a été créé en avance pour elle. |
 | Un agent ne peut pas créer de workspace | La création fonde la propriété humaine (§1.3 Human Supervision) ; un manager agent opère *dans* un workspace, jamais au-dessus. |
 | Cinq routes de cycle de vie plutôt qu'une route `/status` | L'autorisation aurait dû dépendre du corps de la requête (pause = opérateur, archive = propriétaire) ; une route par intention laisse le décorateur de permission faire son travail déclarativement. |
 | `PAUSED` distinct d'`ARCHIVED` | §4.2 liste les deux ; pause = suspension d'exécution réversible fréquente, archive = fin de vie consultable. Les fusionner perdrait la sémantique que le scheduler exploitera. |
