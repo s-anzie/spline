@@ -8,6 +8,7 @@ import { InviteWorkspaceMemberUseCase } from "./application/invite-workspace-mem
 import { IssueActorCredentialUseCase } from "./application/issue-actor-credential.use-case";
 import { LoginUseCase } from "./application/login.use-case";
 import { PermissionsService } from "./application/permissions.service";
+import { WORKSPACE_AUDIENCE_PROVIDER } from "./infrastructure/identity-workspace-audience.adapter";
 import { RegisterUserUseCase } from "./application/register-user.use-case";
 import { RevokeActorCredentialUseCase } from "./application/revoke-actor-credential.use-case";
 import { RevokeWorkspaceMembershipUseCase } from "./application/revoke-workspace-membership.use-case";
@@ -77,8 +78,10 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
     PermissionsService,
     ActorAuthGuard,
     PermissionsGuard,
+    WORKSPACE_AUDIENCE_PROVIDER,
   ],
   exports: [
+    WORKSPACE_AUDIENCE_PROVIDER,
     PermissionsService,
     ActorAuthGuard,
     PermissionsGuard,

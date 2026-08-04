@@ -10,6 +10,7 @@ import { DecisionModule } from "./modules/decision/decision.module";
 import { EventModule } from "./modules/event/event.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { NotificationModule } from "./modules/notification/notification.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
 import { TaskModule } from "./modules/task/task.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
@@ -31,6 +32,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     ArtifactModule,
     DecisionModule,
     EventModule,
+    NotificationModule,
     WorkloadModule,
   ],
 })

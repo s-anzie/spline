@@ -1320,6 +1320,55 @@ Aucune tâche sans propriétaire, aucun travail sans isolation adéquate, aucune
 modification sans validation, aucun provider privilégié, aucune communication non structurée, aucun Engine ou Tool
 privilégié par rapport à un autre.
 
+### 10.18 Ce que l'étude d'OpenClaw apporte à ce protocole
+
+OpenClaw est le point de comparaison assumé du projet (0.1). Son modèle d'agents a été étudié pour
+éprouver celui-ci. Quatre mécanismes qu'il possède et que Spline n'a pas, et deux manques qu'il documente
+lui-même et que Spline couvre déjà.
+
+**a) Deux verbes distincts, pas un seul.** OpenClaw sépare `sessions_spawn` (déléguer un travail : il
+s'exécute dans une session isolée et **annonce son résultat en retour**) de `sessions_send` (parler à un
+agent et attendre sa réponse). Spline ne possède aujourd'hui que l'assignation d'une Task — ce n'est
+ni l'un ni l'autre : personne n'attend rien en retour, et rien ne relie le résultat au demandeur. La
+délégation-avec-attente est donc **un manque réel** du §10, pas un raffinement.
+
+**b) Une borne sur les échanges.** `session.agentToAgent.maxPingPongTurns` (0–5, défaut 5) plafonne les
+allers-retours, et un jeton explicite — l'agent répond exactement `REPLY_SKIP` — permet de dire « je n'ai
+rien à ajouter ». Spline n'a **aucune borne** : deux acteurs qui se répondent via Notification, ou un
+écouteur qui réagit à un fait en produisant un fait du même type, bouclent indéfiniment. Le protocole
+§10.11 dit « Await » mais n'offre aucun moyen de terminer un échange. À corriger avec le premier
+mécanisme de conversation entre agents (fil + budget de tours + terminaison explicite).
+
+**c) La communication est fermée par défaut.** `tools.agentToAgent.enabled` est faux par défaut, et
+chaque agent autorisé doit figurer dans une liste `allow`. L'isolement est la valeur par défaut, se
+parler est un choix. Spline fait l'inverse : tout membre d'un workspace peut écrire à tout autre membre.
+Cela relève du Policy Engine (§12), mais le point d'accroche doit exister avant, sinon la politique
+n'aura rien à décider.
+
+**d) Une résolution déterministe et ordonnée, jamais un score.** Le routage d'OpenClaw suit une
+précédence écrite (pair exact → pair parent → joker → guilde+rôles → guilde → équipe → compte → canal →
+agent par défaut), les égalités étant tranchées par l'ordre du fichier. Quand le Scheduling Engine (§9)
+choisira à qui confier un travail, ce sera la forme à retenir : une table de précédence lisible et
+rejouable, pas une heuristique pondérée dont personne ne peut prédire la sortie.
+
+**Ce que Spline a déjà et qu'OpenClaw cherche encore.** L'issue publique #12401 réclame chez eux un vrai
+protocole inter-agents et énumère leurs contournements actuels : tout passer par la session principale
+(goulot d'étranglement), écrire dans un fichier `.jsonl` partagé (courses critiques, scrutation), et un
+`sessions_send` qui exige de connaître l'étiquette de session, sans publication/abonnement ni découverte.
+Restent chez eux non résolus : persistance des messages, isolation par locataire, limitation de débit,
+file de rebut.
+
+Spline répond déjà à trois de ces quatre points, et c'est la confirmation que le socle est le bon :
+persistance et ordre total des faits (§14, Event), état de lecture individuel par destinataire (§4.19,
+Notification), isolation par workspace absolue (§4.2). La limitation de débit et la file de rebut restent
+ouvertes ici aussi.
+
+**Une leçon d'architecture, enfin, qui n'est pas un manque mais un pari opposé.** OpenClaw garde un
+noyau d'exécution minimal (quatre outils) et laisse les agents s'étendre en écrivant du code ; Spline
+parie sur un registre d'Engines et de Tools publiables (§19). Les deux se défendent, mais la leçon à
+retenir est celle de la surface : **garder le noyau d'outils petit**, l'extension venant du registre et
+non d'un noyau qui grossit.
+
 ---
 
 ## 11. Validation Engine

@@ -43,7 +43,16 @@ export class PersistentEventPublisher implements EventPublisher {
     } else {
       await this.events.append(projected.value);
     }
-    this.emitter.emit(event.eventName, event);
+    // `emit` would leave async listeners as floating promises: the reaction
+    // would race the response, and the caller would be told the work is done
+    // before it is. That is not hypothetical — it made "the assignee is told
+    // their task" pass alone and fail under a full suite. `emitAsync` awaits
+    // the handlers, so a reaction completes within the request that caused
+    // it. The trade is deliberate: a slow or failing listener now shows up in
+    // the originating call instead of disappearing. With no queue in the
+    // system, visible-and-slow beats silent-and-lost — and the journal is
+    // already written, so a listener that throws can be replayed (§14.5).
+    await this.emitter.emitAsync(event.eventName, event);
   }
 
   async publishAll(events: readonly DomainEvent[]): Promise<void> {

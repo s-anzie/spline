@@ -80,6 +80,7 @@ model Workspace {
   artifacts      Artifact[]
   decisions      Decision[]
   events         Event[]
+  notifications  Notification[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -209,6 +210,7 @@ model Task {
   goal      Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
   artifacts Artifact[]
   decisions Decision[]
+  notifications Notification[]
 
   @@index([workspaceId, status])
   @@index([goalId])
@@ -383,4 +385,73 @@ model EventReceipt {
   @@unique([eventId, actorType, actorId])
   @@index([actorType, actorId, status])
   @@map("event_receipts")
+}
+
+enum NotificationKind {
+  CHAT_MESSAGE
+  SYSTEM_ALERT
+}
+
+enum NotificationScope {
+  DIRECT
+  BROADCAST
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  SEEN
+  ACKNOWLEDGED
+  ACTED_ON
+  FAILED
+}
+
+/// The addressed channel (spec 4.18). Immutable once sent: no updatedAt, and
+/// no mutation path anywhere in the module.
+model Notification {
+  id          String            @id @default(uuid())
+  workspaceId String
+  kind        NotificationKind
+  scope       NotificationScope
+  taskId      String?
+  fromActorType ActorType?
+  fromActorId   String?
+  title       String
+  body        String
+  payload     Json              @default("{}")
+  createdByType ActorType
+  createdById   String
+  createdAt   DateTime          @default(now())
+
+  workspace  Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task       Task?                   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  recipients NotificationRecipient[]
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, kind])
+  @@map("notifications")
+}
+
+/// One row per real recipient, written with the notification (spec 4.19).
+/// A recipient has no workspace of its own: it inherits the one of its
+/// notification, so every scoped query filters through the parent.
+model NotificationRecipient {
+  id             String         @id @default(uuid())
+  notificationId String
+  recipientType  ActorType
+  recipientId    String
+  deliveryStatus DeliveryStatus @default(PENDING)
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+  actionTakenAt  DateTime?
+  lastSeenAt     DateTime?
+  failureReason  String?
+  createdAt      DateTime       @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, recipientType, recipientId])
+  @@index([recipientType, recipientId, deliveryStatus])
+  @@map("notification_recipients")
 }
