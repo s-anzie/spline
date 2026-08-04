@@ -159,6 +159,16 @@ describe("Artifact", () => {
       expect(artifact.domainEvents).toHaveLength(0);
     });
 
+    it("links a decision — §15.3 lists it among an artifact's relations", () => {
+      const artifact = createArtifact().value;
+
+      expect(artifact.link({ decisionId: "d-1" }, later).isSuccess).toBe(true);
+      expect(artifact.decisionId).toBe("d-1");
+
+      artifact.unlink({ decision: true }, later);
+      expect(artifact.decisionId).toBeNull();
+    });
+
     it("an immutable artifact can still be linked — immutability is about content", () => {
       const artifact = createArtifact({ immutable: true }).value;
 
@@ -231,6 +241,7 @@ describe("Artifact", () => {
         goalId: null,
         taskId: null,
         repositoryId: null,
+        decisionId: null,
         type: "REPORT",
         name: "R",
         description: null,

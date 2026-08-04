@@ -53,6 +53,8 @@ interface ArtifactProps {
   goalId: string | null;
   taskId: string | null;
   repositoryId: string | null;
+  /// §15.3 lists Decision among an artifact's relations.
+  decisionId: string | null;
   type: string;
   name: string;
   description: string | null;
@@ -71,6 +73,7 @@ export interface CreateArtifactProps {
   goalId?: string;
   taskId?: string;
   repositoryId?: string;
+  decisionId?: string;
   type: string;
   name: string;
   description?: string;
@@ -93,12 +96,14 @@ export interface ArtifactLinks {
   goalId?: string;
   taskId?: string;
   repositoryId?: string;
+  decisionId?: string;
 }
 
 export interface ArtifactUnlinks {
   goal?: boolean;
   task?: boolean;
   repository?: boolean;
+  decision?: boolean;
 }
 
 export type CreateArtifactError = GuardViolation | InvalidArtifactTypeError;
@@ -131,6 +136,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
         goalId: input.goalId ?? null,
         taskId: input.taskId ?? null,
         repositoryId: input.repositoryId ?? null,
+        decisionId: input.decisionId ?? null,
         type: input.type,
         name: name.value,
         description: input.description?.trim() || null,
@@ -181,6 +187,10 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
 
   get repositoryId(): string | null {
     return this.props.repositoryId;
+  }
+
+  get decisionId(): string | null {
+    return this.props.decisionId;
   }
 
   get type(): string {
@@ -328,6 +338,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
       ["goalId", links.goalId],
       ["taskId", links.taskId],
       ["repositoryId", links.repositoryId],
+      ["decisionId", links.decisionId],
     ] as const) {
       if (value !== undefined && this.props[key] !== value) {
         this.props[key] = value;
@@ -352,6 +363,7 @@ export class Artifact extends AggregateRoot<ArtifactProps> {
       ["goalId", targets.goal],
       ["taskId", targets.task],
       ["repositoryId", targets.repository],
+      ["decisionId", targets.decision],
     ] as const) {
       if (requested && this.props[key] !== null) {
         this.props[key] = null;

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { DecisionModule } from "../decision/decision.module";
 import { GoalModule } from "../goal/goal.module";
 import { IdentityModule } from "../identity/identity.module";
 import { TaskModule } from "../task/task.module";
@@ -17,7 +18,7 @@ import { PrismaArtifactRepository } from "./infrastructure/prisma-artifact.repos
 import { ArtifactController } from "./interface/artifact.controller";
 
 @Module({
-  imports: [IdentityModule, WorkspaceModule, GoalModule, TaskModule],
+  imports: [IdentityModule, WorkspaceModule, GoalModule, TaskModule, DecisionModule],
   controllers: [ArtifactController],
   providers: [
     { provide: ARTIFACT_REPOSITORY, useClass: PrismaArtifactRepository },

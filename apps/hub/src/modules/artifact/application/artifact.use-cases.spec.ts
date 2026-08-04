@@ -1,6 +1,7 @@
 import { Result } from "../../../kernel/domain/result";
 import { FakeClock } from "../../../kernel/testing/fake-clock";
 import { FakeEventPublisher } from "../../../kernel/testing/fake-event-publisher";
+import { InMemoryDecisionRepository } from "../../decision/application/testing/decision.doubles";
 import { InMemoryGoalRepository } from "../../goal/application/testing/goal.doubles";
 import { Goal } from "../../goal/domain/goal";
 import { ActorRef } from "../../identity/domain/actor";
@@ -286,7 +287,8 @@ describe("link target validation", () => {
       now,
     }).value;
     await tasks.save(task);
-    const targets = new ArtifactLinkTargets(goals, tasks);
+    const decisions = new InMemoryDecisionRepository();
+    const targets = new ArtifactLinkTargets(goals, tasks, decisions);
 
     return {
       ...ctx,

@@ -42,6 +42,7 @@ interface ArtifactView {
   goalId: string | null;
   taskId: string | null;
   repositoryId: string | null;
+  decisionId: string | null;
   type: string;
   name: string;
   description: string | null;
@@ -72,6 +73,7 @@ function toView(artifact: Artifact): ArtifactView {
     goalId: artifact.goalId,
     taskId: artifact.taskId,
     repositoryId: artifact.repositoryId,
+    decisionId: artifact.decisionId,
     type: artifact.type,
     name: artifact.name,
     description: artifact.description,

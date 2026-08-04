@@ -6,6 +6,7 @@ import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
+import { DecisionModule } from "./modules/decision/decision.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
@@ -27,6 +28,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     GoalModule,
     TaskModule,
     ArtifactModule,
+    DecisionModule,
     WorkloadModule,
   ],
 })

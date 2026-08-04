@@ -37,6 +37,7 @@ export interface CreateArtifactInput {
   goalId?: string;
   taskId?: string;
   repositoryId?: string;
+  decisionId?: string;
   tags?: readonly string[];
   metadata?: Record<string, unknown>;
   immutable?: boolean;
@@ -82,6 +83,7 @@ export class CreateArtifactUseCase
     const links = await this.linkTargets.verify(input.workspaceId, {
       ...(input.goalId !== undefined && { goalId: input.goalId }),
       ...(input.taskId !== undefined && { taskId: input.taskId }),
+      ...(input.decisionId !== undefined && { decisionId: input.decisionId }),
     });
     if (links.isFailure) {
       return Result.fail(links.error);
@@ -106,6 +108,7 @@ export class CreateArtifactUseCase
       ...(input.goalId !== undefined && { goalId: input.goalId }),
       ...(input.taskId !== undefined && { taskId: input.taskId }),
       ...(input.repositoryId !== undefined && { repositoryId: input.repositoryId }),
+      ...(input.decisionId !== undefined && { decisionId: input.decisionId }),
       ...(input.tags !== undefined && { tags: input.tags }),
       ...(input.metadata !== undefined && { metadata: input.metadata }),
       ...(input.immutable !== undefined && { immutable: input.immutable }),

@@ -26,9 +26,11 @@ export interface LinkArtifactInput {
   goalId?: string;
   taskId?: string;
   repositoryId?: string;
+  decisionId?: string;
   goal?: boolean;
   task?: boolean;
   repository?: boolean;
+  decision?: boolean;
 }
 
 export type LinkArtifactError =
@@ -59,6 +61,7 @@ export class LinkArtifactUseCase
       const links = await this.linkTargets.verify(artifact.workspaceId, {
         ...(input.goalId !== undefined && { goalId: input.goalId }),
         ...(input.taskId !== undefined && { taskId: input.taskId }),
+        ...(input.decisionId !== undefined && { decisionId: input.decisionId }),
       });
       if (links.isFailure) {
         return Result.fail(links.error);
@@ -72,6 +75,7 @@ export class LinkArtifactUseCase
               ...(input.goalId !== undefined && { goalId: input.goalId }),
               ...(input.taskId !== undefined && { taskId: input.taskId }),
               ...(input.repositoryId !== undefined && { repositoryId: input.repositoryId }),
+              ...(input.decisionId !== undefined && { decisionId: input.decisionId }),
             },
             this.clock.now(),
           )
@@ -80,6 +84,7 @@ export class LinkArtifactUseCase
               ...(input.goal !== undefined && { goal: input.goal }),
               ...(input.task !== undefined && { task: input.task }),
               ...(input.repository !== undefined && { repository: input.repository }),
+              ...(input.decision !== undefined && { decision: input.decision }),
             },
             this.clock.now(),
           );

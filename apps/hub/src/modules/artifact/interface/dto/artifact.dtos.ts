@@ -59,6 +59,11 @@ export class CreateArtifactDto {
   repositoryId?: string;
 
   @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  decisionId?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
@@ -126,6 +131,11 @@ export class LinkArtifactDto {
   @IsString()
   @IsNotEmpty()
   repositoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  decisionId?: string;
 }
 
 export class UnlinkArtifactDto {
@@ -140,6 +150,10 @@ export class UnlinkArtifactDto {
   @IsOptional()
   @IsBoolean()
   repository?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  decision?: boolean;
 }
 
 export class ChangeArtifactStatusDto {

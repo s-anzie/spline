@@ -2,6 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { Result } from "../../../kernel/domain/result";
 import { GOAL_REPOSITORY, GoalRepository } from "../../goal/domain/ports/goal.repository.port";
+import {
+  DECISION_REPOSITORY,
+  DecisionRepository,
+} from "../../decision/domain/ports/decision.repository.port";
 import { TASK_REPOSITORY, TaskRepository } from "../../task/domain/ports/task.repository.port";
 import { ArtifactLinkError } from "../domain/artifact.errors";
 
@@ -9,6 +13,7 @@ export interface LinkTargets {
   goalId?: string;
   taskId?: string;
   repositoryId?: string;
+  decisionId?: string;
 }
 
 /**
@@ -22,6 +27,7 @@ export class ArtifactLinkTargets {
   constructor(
     @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
     @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
+    @Inject(DECISION_REPOSITORY) private readonly decisions: DecisionRepository,
   ) {}
 
   async verify(
@@ -44,6 +50,19 @@ export class ArtifactLinkTargets {
       }
       if (task.workspaceId !== workspaceId) {
         return Result.fail(new ArtifactLinkError("the task belongs to another workspace"));
+      }
+    }
+    if (targets.decisionId !== undefined) {
+      const decision = await this.decisions.findById(targets.decisionId);
+      if (!decision) {
+        return Result.fail(
+          new ArtifactLinkError(`decision "${targets.decisionId}" does not exist`),
+        );
+      }
+      if (decision.workspaceId !== workspaceId) {
+        return Result.fail(
+          new ArtifactLinkError("the decision belongs to another workspace"),
+        );
       }
     }
     return Result.ok(undefined);

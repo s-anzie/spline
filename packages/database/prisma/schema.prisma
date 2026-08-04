@@ -78,6 +78,7 @@ model Workspace {
   goals          Goal[]
   tasks          Task[]
   artifacts      Artifact[]
+  decisions      Decision[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -206,6 +207,7 @@ model Task {
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   goal      Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
   artifacts Artifact[]
+  decisions Decision[]
 
   @@index([workspaceId, status])
   @@index([goalId])
@@ -232,6 +234,8 @@ model Artifact {
   taskId        String?
   /// Opaque until the Repository Engine lands (§8.12).
   repositoryId  String?
+  /// §15.3 lists Decision among an artifact's relations.
+  decisionId    String?
   type          String
   name          String
   description   String?
@@ -248,6 +252,7 @@ model Artifact {
   workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   goal      Goal?             @relation(fields: [goalId], references: [id], onDelete: SetNull)
   task      Task?             @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  decision  Decision?         @relation(fields: [decisionId], references: [id], onDelete: SetNull)
   versions  ArtifactVersion[]
 
   @@index([workspaceId, type])
@@ -276,4 +281,43 @@ model ArtifactVersion {
   @@unique([artifactId, version])
   @@index([artifactId])
   @@map("artifact_versions")
+}
+
+// ---------------------------------------------------------------------------
+// Decisions (§4.17) — why something was done, not what. Immutable by design:
+// §16.10 rebuilds memory from decisions, so there is deliberately no
+// updatedAt — a decision is superseded, never rewritten.
+// ---------------------------------------------------------------------------
+
+enum DecisionConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Decision {
+  id                     String             @id @default(uuid())
+  workspaceId            String
+  taskId                 String?
+  subject                String
+  rationale              String
+  alternatives           Json               @default("[]")
+  outcome                String
+  confidence             DecisionConfidence @default(MEDIUM)
+  authorType             ActorType
+  authorId               String
+  supersededByDecisionId String?
+  decidedAt              DateTime           @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// SetNull: deleting a task must not erase the reasoning that produced it.
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  supersededBy Decision?  @relation("DecisionSupersession", fields: [supersededByDecisionId], references: [id], onDelete: SetNull)
+  supersedes   Decision[] @relation("DecisionSupersession")
+  artifacts    Artifact[]
+
+  @@index([workspaceId])
+  @@index([taskId])
+  @@map("decisions")
 }
