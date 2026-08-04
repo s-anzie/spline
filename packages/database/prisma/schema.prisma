@@ -85,6 +85,7 @@ model Workspace {
   policies       Policy[]
   locks          ResourceLock[]
   auditEntries   AuditEntry[]
+  memoryEntries  MemoryEntry[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -614,4 +615,48 @@ model AuditEntry {
   @@index([action])
   @@index([targetType, targetId])
   @@map("audit_entries")
+}
+
+enum MemoryScopeType {
+  ORGANIZATION
+  WORKSPACE
+  REPOSITORY
+  GOAL
+  TASK
+  RUN
+  SESSION
+}
+
+/// Spec 16. NEVER the source of truth — the domain model is (16 opening).
+///
+/// An entry holds EITHER a note nobody else holds (`content`) OR a pointer at
+/// the domain object that does (`sourceType`/`sourceId`), never both: a copy
+/// is a second version of a decision that ages silently. The table can be
+/// dropped without losing anything, which is what 16.10 requires.
+model MemoryEntry {
+  id             String          @id @default(uuid())
+  workspaceId    String
+  scopeType      MemoryScopeType
+  scopeId        String
+  type           String
+  title          String
+  content        String?
+  sourceType     String?
+  sourceId       String?
+  tags           Json            @default("[]")
+  authorType     ActorType
+  authorId       String
+  supersededById String?
+  forgottenAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, scopeType, scopeId])
+  @@index([workspaceId, type])
+  /// A reference is posed once per source: reconstruction (16.10) must be
+  /// repeatable without piling up duplicates.
+  @@unique([workspaceId, scopeType, scopeId, sourceType, sourceId])
+  @@map("memory_entries")
 }
