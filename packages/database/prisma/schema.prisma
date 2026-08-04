@@ -6,3 +6,76 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ---------------------------------------------------------------------------
+// Identity & Access (v3 §18) — actors, organization, memberships, credentials.
+// workspaceId stays a plain indexed string until the workspace module lands;
+// the FK is added by that module's migration, not guessed here.
+// ---------------------------------------------------------------------------
+
+enum ActorType {
+  HUMAN
+  AGENT
+  WORKER
+  SERVICE
+}
+
+enum WorkspaceRole {
+  OWNER
+  HUMAN_OPERATOR
+  AGENT_MANAGER
+  AGENT_CONTRIBUTOR
+  READ_ONLY_AGENT
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+
+  @@map("users")
+}
+
+/// Top of the v3 hierarchy (§4.1). Slugs are display conveniences, not
+/// identifiers — ids are the identifiers, so slug carries no unique index.
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String
+  ownerId   String
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+  @@map("organizations")
+}
+
+model WorkspaceMembership {
+  id          String        @id @default(uuid())
+  actorType   ActorType
+  actorId     String
+  workspaceId String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  @@unique([actorType, actorId, workspaceId])
+  @@index([workspaceId])
+  @@index([actorType, actorId])
+  @@map("workspace_memberships")
+}
+
+/// Opaque-token credential for AGENT / WORKER / SERVICE actors (§18.2).
+model ActorCredential {
+  id         String    @id @default(uuid())
+  actorType  ActorType
+  actorId    String
+  tokenHash  String
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@index([actorType, actorId])
+  @@map("actor_credentials")
+}
