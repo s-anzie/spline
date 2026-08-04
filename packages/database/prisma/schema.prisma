@@ -77,6 +77,7 @@ model Workspace {
   memberships    WorkspaceMembership[]
   goals          Goal[]
   tasks          Task[]
+  artifacts      Artifact[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -135,12 +136,13 @@ model Goal {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime
 
-  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   // Restrict: a parent goal is never physically removed out from under its
   // children — cancellation is the normal path.
-  parentGoal Goal?     @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Restrict)
-  subGoals   Goal[]    @relation("GoalHierarchy")
+  parentGoal Goal?      @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: Restrict)
+  subGoals   Goal[]     @relation("GoalHierarchy")
   tasks      Task[]
+  artifacts  Artifact[]
 
   @@index([workspaceId, status])
   @@index([parentGoalId])
@@ -201,11 +203,77 @@ model Task {
   createdAt                DateTime    @default(now())
   updatedAt                DateTime
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  goal      Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  artifacts Artifact[]
 
   @@index([workspaceId, status])
   @@index([goalId])
   @@index([assigneeType, assigneeId])
   @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+// Artifacts (§4.10, §15) — the project's durable memory. Type is a validated
+// string, NOT an enum: §19.2 lets an Engine declare the types it produces, and
+// a closed set would force a core migration for every community extension.
+// ---------------------------------------------------------------------------
+
+enum ArtifactStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+model Artifact {
+  id            String         @id @default(uuid())
+  workspaceId   String
+  goalId        String?
+  taskId        String?
+  /// Opaque until the Repository Engine lands (§8.12).
+  repositoryId  String?
+  type          String
+  name          String
+  description   String?
+  status        ArtifactStatus @default(ACTIVE)
+  tags          Json           @default("[]")
+  metadata      Json           @default("{}")
+  /// §15.7 — audit trails, validation reports and signed bundles never change.
+  immutable     Boolean        @default(false)
+  createdByType ActorType
+  createdById   String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  goal      Goal?             @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  task      Task?             @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  versions  ArtifactVersion[]
+
+  @@index([workspaceId, type])
+  @@index([taskId])
+  @@index([goalId])
+  @@index([createdAt])
+  @@map("artifacts")
+}
+
+/// A real table, unlike task blockers: a version has its own identity and will
+/// be referenced by validation reports and Git commits (§8.12, §11.10).
+model ArtifactVersion {
+  id            String    @id @default(uuid())
+  artifactId    String
+  version       Int
+  checksum      String
+  storageRef    String
+  sizeBytes     Int?
+  note          String?
+  createdByType ActorType
+  createdById   String
+  createdAt     DateTime  @default(now())
+
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@unique([artifactId, version])
+  @@index([artifactId])
+  @@map("artifact_versions")
 }

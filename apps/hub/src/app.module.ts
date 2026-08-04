@@ -5,6 +5,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
+import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { WorkloadModule } from "./modules/task/infrastructure/task-goal-workload.adapter";
@@ -25,6 +26,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     WorkspaceModule,
     GoalModule,
     TaskModule,
+    ArtifactModule,
     WorkloadModule,
   ],
 })
