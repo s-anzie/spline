@@ -162,8 +162,9 @@ nomme et qui n'existent pas encore.
 
 Reports explicites, avec leur raison :
 
-- **Machine, Session, RuntimeCommand** (§17.7) : leurs modules n'existent pas. Les simuler produirait une
-  supervision qui ne surveille rien, avec des voyants verts qui rassurent à tort.
+- ~~**Machine, Session**~~ (§17.7) : **livrées** par le module runtime, et c'est la démonstration du point
+  d'extension de §1.4 — deux sondes de plus, **aucune ligne changée ici**. Seul `RuntimeCommand` reste,
+  faute d'un worker à qui adresser des commandes.
 - **Logs** (§17.2) : Nest journalise, et le journal des faits métier est le module event. Un troisième
   mécanisme rejournaliserait ce que deux systèmes écrivent déjà.
 - **Traces** (§17.4) : `Goal → Task → Run → Session → Provider → Validation` — trois maillons sur six
