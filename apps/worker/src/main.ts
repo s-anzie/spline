@@ -1,27 +1,82 @@
+import { arch, platform } from "node:os";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { config as loadDotenv } from "dotenv";
 
-import { loadConfig } from "./config/config";
+import { loadConfig, WorkerConfig } from "./config/config";
+import { IdentityStore } from "./enrolment/identity-store";
+import { executeCommand, ExecutorDeps } from "./execution/executor";
+import { pairMachine } from "./enrolment/pairing";
 import { HubClient } from "./hub/hub-client";
 import { preflightComplaints } from "./supervision/preflight";
 
 loadDotenv();
 
 /**
+ * §6.3, §18.2 — makes sure this machine holds a credential, pairing if it
+ * does not.
+ *
+ * A token in the environment wins: that is how a machine provisioned by
+ * configuration management skips pairing. Otherwise the stored one is used,
+ * and failing that the machine asks — printing a code on its own console for
+ * an operator to approve.
+ */
+async function credentialFor(
+  config: WorkerConfig,
+  hub: HubClient,
+  identities: IdentityStore,
+): Promise<string> {
+  if (config.token) {
+    return config.token;
+  }
+  const stored = identities.load();
+  if (stored?.token) {
+    return stored.token;
+  }
+
+  const paired = await pairMachine({
+    hub,
+    machine: {
+      deviceId: identities.ensureDeviceId(),
+      hostname: config.hostname,
+      architecture: arch(),
+      operatingSystem: platform(),
+      capabilities: config.capabilities,
+      labels: config.labels,
+    },
+    announce: (line) => console.info(line),
+    sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+    pollIntervalMs: 5_000,
+    // Just past the hub's ten-minute window: waiting longer would poll a
+    // request that can never be approved.
+    maxAttempts: 125,
+  });
+  if (paired.isFailure) {
+    throw new Error(paired.error);
+  }
+
+  identities.saveCredential(paired.value.token, paired.value.actorId);
+  console.info(`paired: this machine is now ${paired.value.actorId}`);
+  return paired.value.token;
+}
+
+/**
  * §6.2 — `OFFLINE → CONNECTING → REGISTERING → READY`. What this daemon does
- * today is the left half of that: it announces itself and keeps saying it is
- * there. Receiving orders needs the hub to have commands to send (§6.8), and
- * it has none yet.
+ * today is the left half of that: it pairs if it must, announces itself and
+ * keeps saying it is there.
  *
  * Deliberately not a framework: a daemon with one responsibility does not
- * need dependency injection to hold two objects.
+ * need dependency injection to hold three objects.
  */
 async function main(): Promise<void> {
+  // Reading configuration acts on nothing; it only decides whether there is
+  // anything to check. Both files below come from it.
+  const config = loadConfig();
+
   /**
-   * §18 — before anything else. Running as root or leaving the token
-   * world-readable makes every other control in this daemon decorative, and
+   * §18 — before this daemon does anything. Running as root or leaving a
+   * credential world-readable makes every other control here decorative, and
    * both are misconfigurations an operator cannot see from the outside.
    * Refused rather than warned: a worker that starts anyway is a worker
    * nobody will ever go back and fix.
@@ -29,13 +84,15 @@ async function main(): Promise<void> {
   const complaints = preflightComplaints({
     uid: process.getuid?.(),
     statMode: (path) => statSync(path).mode,
-    secretFiles: [resolve(process.cwd(), ".env")],
+    // Both places a credential can live: the environment file an operator
+    // wrote, and the state file this daemon wrote for itself.
+    secretFiles: [resolve(process.cwd(), ".env"), config.statePath],
   });
   if (complaints.length > 0) {
     throw new Error(`refusing to start:\n- ${complaints.join("\n- ")}`);
   }
 
-  const config = loadConfig();
+  const identities = new IdentityStore(config.statePath);
   const hub = new HubClient(config);
 
   if (config.allowedCommands.length === 0) {
@@ -66,34 +123,74 @@ async function main(): Promise<void> {
     );
   }
 
+  hub.useToken(await credentialFor(config, hub, identities));
+
   const workerId = await hub.register({
     capabilities: config.capabilities,
     labels: config.labels,
   });
   console.info(`registered with the hub as ${workerId} (${config.hostname})`);
 
-  // §6.8 — pull, execute, report. One order at a time for now: running two
-  // at once needs isolation this daemon does not yet build (§7.9), and
-  // pretending otherwise would let two sessions share an environment.
+  /**
+   * §6.8 — pull, execute, report. One order at a time: running two at once
+   * would let them share a workspace directory, and §7.9's file isolation is
+   * per workspace, not per order.
+   *
+   * `busy` rather than a queue: an order this worker never claimed stays
+   * PENDING for it, or goes to another machine. Claiming work it cannot start
+   * would be taking it out of everyone's reach (§6.6).
+   */
+  const executor: ExecutorDeps = {
+    settings: {
+      backend: config.backend,
+      containerRuntime: config.containerRuntime,
+      containerImage: config.containerImage,
+      containerMemory: config.containerMemory,
+      containerCpus: config.containerCpus,
+      containerPids: config.containerPids,
+      containerUser: config.containerUser,
+      allowedCommands: config.allowedCommands,
+    },
+    limits: {
+      timeoutMs: config.taskTimeoutMs,
+      maxOutputBytes: config.maxOutputBytes,
+    },
+    workspaceRoot: config.workspaceRoot,
+    // §18.4 — nothing yet: secrets are granted per task by the hub, and it
+    // has no route that grants them. An empty set is the honest answer; a
+    // spread of this process's environment would be the dishonest one.
+    secretsFor: () => ({}),
+  };
+
+  let busy = false;
   const pump = setInterval(() => {
+    if (busy) {
+      return;
+    }
+    busy = true;
     void hub
       .claimCommands(1)
       .then(async (commands) => {
         for (const command of commands) {
-          // Nothing executes them yet: the spawn and failure-reading pieces
-          // are written and tested, but wiring an executor before the order
-          // types are settled would guess at their payloads. Reported as
-          // failed rather than silently swallowed — an order that vanishes is
-          // exactly what §6.6 forbids.
-          await hub.reportCommand(command.id, {
-            outcome: "FAILED",
-            failureReason: `${command.type} is not executable by this worker yet`,
-          });
-          console.warn(`declined ${command.type} (${command.id}): no executor`);
+          const report = await executeCommand(command, executor);
+          await hub.reportCommand(
+            command.id,
+            report.outcome === "COMPLETED"
+              ? { outcome: "COMPLETED", result: report.result ?? {} }
+              : { outcome: "FAILED", failureReason: report.failureReason ?? "unknown" },
+          );
+          console.info(
+            `${command.type} (${command.id}): ${report.outcome}${
+              report.failureReason ? ` — ${report.failureReason}` : ""
+            }`,
+          );
         }
       })
       .catch((error: unknown) => {
         console.error(`claiming commands failed: ${String(error)}`);
+      })
+      .finally(() => {
+        busy = false;
       });
   }, config.heartbeatIntervalMs);
 

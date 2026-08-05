@@ -7,8 +7,36 @@ const complete = {
 };
 
 describe("loadConfig", () => {
-  it("refuses to start without a hub or a token, naming what is missing", () => {
-    expect(() => loadConfig({})).toThrow(/HUB_URL, WORKER_TOKEN/);
+  it("refuses to start without a hub, naming what is missing", () => {
+    expect(() => loadConfig({})).toThrow(/HUB_URL/);
+  });
+
+  /**
+   * §6.3 — a machine that has never paired has no token, and that is the
+   * normal first run. Requiring one meant an operator had to obtain a
+   * credential before the daemon would start, and the only way to obtain one
+   * was to write code.
+   */
+  it("starts without a token, because pairing is how a machine gets one", () => {
+    const withoutToken = { ...complete, WORKER_TOKEN: undefined };
+
+    expect(loadConfig(withoutToken).token).toBeNull();
+  });
+
+  it("still takes a token from the environment, for a provisioned machine", () => {
+    expect(loadConfig(complete).token).toBe("worker-token");
+  });
+
+  it("gives each workspace its own directory under one root (§6.10)", () => {
+    expect(loadConfig({ ...complete, HOME: "/home/agent" }).workspaceRoot).toBe(
+      "/home/agent/.local/share/spline-worker/workspaces",
+    );
+  });
+
+  it("keeps its identity under the user's config directory, never beside the source", () => {
+    const path = loadConfig({ ...complete, HOME: "/home/agent" }).statePath;
+
+    expect(path).toBe("/home/agent/.config/spline-worker/identity.json");
   });
 
   it("drops a trailing slash so paths are joined once, not twice", () => {

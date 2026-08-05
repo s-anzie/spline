@@ -4,7 +4,21 @@ import { ExecutionBackend } from "../supervision/execution";
 
 export interface WorkerConfig {
   hubUrl: string;
-  token: string;
+  /**
+   * §6.3 — null on a machine that has never paired, which is the normal first
+   * run. It used to be required, which meant an operator had to obtain a
+   * credential before the daemon would even start — and the only way to
+   * obtain one was to write code.
+   */
+  token: string | null;
+  /** Where this machine keeps who it is, once paired. */
+  statePath: string;
+  /**
+   * §7.9, §6.10 — the root under which each workspace gets its own
+   * directory. A workspace never names its own root: one that could would be
+   * naming another's.
+   */
+  workspaceRoot: string;
   hostname: string;
   heartbeatIntervalMs: number;
   /**
@@ -61,6 +75,25 @@ function bounded(
   return parsed;
 }
 
+/**
+ * Under the user's own config directory, like every other tool that keeps a
+ * credential per machine. Never beside the source: a state file in a checkout
+ * is a state file in a backup, a container image, and eventually a commit.
+ */
+function defaultStatePath(env: NodeJS.ProcessEnv): string {
+  const base =
+    env.XDG_CONFIG_HOME?.trim() ||
+    (env.HOME ? `${env.HOME}/.config` : "/tmp/.config");
+  return `${base}/spline-worker/identity.json`;
+}
+
+function defaultWorkspaceRoot(env: NodeJS.ProcessEnv): string {
+  const base =
+    env.XDG_DATA_HOME?.trim() ||
+    (env.HOME ? `${env.HOME}/.local/share` : "/tmp/.local/share");
+  return `${base}/spline-worker/workspaces`;
+}
+
 function defaultContainerUser(): string {
   const uid = process.getuid?.() ?? 1000;
   const gid = process.getgid?.() ?? 1000;
@@ -105,11 +138,8 @@ function requireSafeHubUrl(raw: string): string {
  * exactly the silence §9.16 warns about, one level down.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
-  const missing = ["HUB_URL", "WORKER_TOKEN"].filter((key) => !env[key]?.trim());
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing configuration: ${missing.join(", ")}. See .env.example.`,
-    );
+  if (!env.HUB_URL?.trim()) {
+    throw new Error("Missing configuration: HUB_URL. See .env.example.");
   }
   const interval = Number(env.HEARTBEAT_INTERVAL_MS ?? 30_000);
   if (!Number.isFinite(interval) || interval < 1000) {
@@ -140,7 +170,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
       1024,
     ),
     hubUrl: requireSafeHubUrl(env.HUB_URL!.trim()),
-    token: env.WORKER_TOKEN!.trim(),
+    // A token in the environment still wins: it is how a machine provisioned
+    // by configuration management skips pairing entirely.
+    token: env.WORKER_TOKEN?.trim() || null,
+    statePath: env.WORKER_STATE_PATH?.trim() || defaultStatePath(env),
+    workspaceRoot: env.WORKSPACE_ROOT?.trim() || defaultWorkspaceRoot(env),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),
     heartbeatIntervalMs: interval,
     capabilities: list(env.WORKER_CAPABILITIES),

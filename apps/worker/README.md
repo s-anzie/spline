@@ -5,6 +5,12 @@ The hub decides; this executes.
 
 ## What it does today
 
+- **§6.3 Pairing.** A machine with no credential asks to join, prints a
+  short-lived code on **its own console**, and waits for the owner of an
+  organization to approve that code from the hub. Reading the code off this
+  screen is what makes approving it proof that you can see this machine — a
+  factor no amount of network access gives. The credential is minted when the
+  machine collects it, so no plaintext token ever waits at rest.
 - **§6.3 Registration.** Announces hostname, architecture, OS and declared
   capabilities; the hub answers with a worker id. Re-registering the same
   hostname returns the same machine, because a worker that restarts is the
@@ -77,14 +83,33 @@ runtime is installed.
   now redundant with the boundary rather than load-bearing, which is the right
   place for it, but it is still a list.
 
+## Carrying out an order (§6.8)
+
+The loop is pull → execute → report, one order at a time: two at once would
+share a workspace directory, and §7.9's file isolation is per workspace.
+
+The payload is **attacker-influenced input** — an agent's text reached it
+somewhere upstream — so nothing in it is trusted with anything structural:
+
+- the working directory is derived from the order's `workspaceId`, never taken
+  from the payload; a payload that could name its root could name another
+  workspace's (§6.10)
+- the program goes through this machine's allowlist
+- the environment goes through the same refusals as any other spawn
+- an order type this worker does not know is refused **by name**, not guessed
+  at: §6.8 lets an Engine or Extension add its own, and interpreting an
+  unknown one would be inventing a contract
+
+A non-zero exit code is reported as a **completed** order carrying that code,
+not as a failure. The program ran and said what it had to say; what that means
+is the hub's to decide (§6.9), and reporting FAILED would throw away the exit
+code and the output.
+
 ## What it does not do yet
 
-Executing orders. The hub has a command queue (§6.8) and this daemon claims
-from it, but declines every order rather than running it: wiring an executor
-before the payload shapes are settled would guess at them. Every piece that
-has to be right when it lands is written and tested here already —
-`planExecution` (which is the door: `planSpawn`, then `planContainer`),
-`superviseProcess`, and `detectProviderFailure`.
+**Secrets.** `secretsFor` returns nothing, because the hub has no route that
+grants a task its secrets yet (§18.4). An empty set is the honest answer; a
+spread of this process's environment would be the dishonest one.
 
 ## The rule worth knowing before changing anything
 
@@ -107,9 +132,14 @@ npm run dev --workspace=worker
 declared, never detected: claiming one this machine does not have would
 attract work it cannot do (§9.9).
 
+On a machine that has never paired, leave `WORKER_TOKEN` empty: the daemon
+prints a pairing code and waits. `WORKER_TOKEN` exists for a machine
+provisioned by configuration management, which skips pairing entirely.
+
 Three things will stop it starting, on purpose: a `HUB_URL` that is plain
 `http` to anything but loopback (the token would travel in clear), running as
-root, and a `.env` readable beyond its owner. `WORKER_ALLOWED_COMMANDS` is
+root, and a credential file readable beyond its owner — both the `.env` and
+the identity file this daemon writes for itself. `WORKER_ALLOWED_COMMANDS` is
 empty in the example, which means this machine refuses every order that asks
 it to run a program — that is the intended default, not an oversight.
 

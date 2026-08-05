@@ -1,6 +1,12 @@
 import { arch, platform } from "node:os";
 
 import { WorkerConfig } from "../config/config";
+import {
+  ClaimOutcome,
+  EnrolmentRequest,
+  EnrolmentTicket,
+  PairingHub,
+} from "../enrolment/pairing";
 import { ProviderFailure } from "../supervision/failure-detector";
 
 export interface ClaimedCommand {
@@ -20,13 +26,62 @@ export interface Capabilities {
  * the Control Plane authoritative, so this never decides anything — it says
  * what happened and does what it is told.
  */
-export class HubClient {
+export class HubClient implements PairingHub {
   private workerId: string | null = null;
+  /**
+   * Set once this machine has been paired. Held here rather than read from
+   * config on every call because pairing happens after config is loaded — a
+   * machine's first run has no token at all.
+   */
+  private token: string | null;
 
-  constructor(private readonly config: WorkerConfig) {}
+  constructor(private readonly config: WorkerConfig) {
+    this.token = config.token;
+  }
 
   get id(): string | null {
     return this.workerId;
+  }
+
+  useToken(token: string): void {
+    this.token = token;
+  }
+
+  /**
+   * §6.3 — the two calls a machine makes before it has anything to
+   * authenticate with. Unauthenticated by necessity, and they grant nothing:
+   * the request only creates a pending record, and the claim needs both the
+   * enrolment id and the deviceId this machine kept.
+   */
+  async requestEnrolment(request: EnrolmentRequest): Promise<EnrolmentTicket> {
+    return this.call<EnrolmentTicket>("POST", "/runtime/enrolments", request, {
+      anonymous: true,
+    });
+  }
+
+  async claimEnrolment(enrolmentId: string, deviceId: string): Promise<ClaimOutcome> {
+    const response = await this.send(
+      "POST",
+      `/runtime/enrolments/${enrolmentId}/claim`,
+      { deviceId },
+      { anonymous: true },
+    );
+    if (response.ok) {
+      const body = (await response.json()) as { token: string; actorId: string };
+      return { status: "approved", ...body };
+    }
+    /**
+     * 409 is "not decided yet, or decided against" — the hub deliberately
+     * does not distinguish waiting from refused on this route, so the machine
+     * reads its own state from what it can see: a request it made and that is
+     * not claimable. Treated as pending, and the expiry loop ends the wait.
+     */
+    if (response.status === 409) {
+      return { status: "pending" };
+    }
+    throw new Error(
+      `claiming the enrolment failed: ${response.status} ${await response.text()}`,
+    );
   }
 
   /** §6.3 — the machine announces what it is; the hub answers with its id. */
@@ -104,12 +159,37 @@ export class HubClient {
     );
   }
 
-  private async call<T>(method: string, path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.config.hubUrl}${path}`, {
+  private async call<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    options: { anonymous?: boolean } = {},
+  ): Promise<T> {
+    const response = await this.send(method, path, body, options);
+    if (!response.ok) {
+      throw new Error(
+        `${method} ${path} failed: ${response.status} ${await response.text()}`,
+      );
+    }
+    return (await response.json()) as T;
+  }
+
+  private async send(
+    method: string,
+    path: string,
+    body: unknown,
+    options: { anonymous?: boolean } = {},
+  ): Promise<Response> {
+    if (!options.anonymous && this.token === null) {
+      throw new Error("this machine is not paired yet — no credential to send");
+    }
+    return fetch(`${this.config.hubUrl}${path}`, {
       method,
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${this.config.token}`,
+        // Never attached to a pairing call: there is nothing to attach, and
+        // sending an empty Bearer would be a lie about being authenticated.
+        ...(options.anonymous ? {} : { authorization: `Bearer ${this.token}` }),
       },
       body: JSON.stringify(body),
       /**
@@ -120,11 +200,5 @@ export class HubClient {
        */
       redirect: "error",
     });
-    if (!response.ok) {
-      throw new Error(
-        `${method} ${path} failed: ${response.status} ${await response.text()}`,
-      );
-    }
-    return (await response.json()) as T;
   }
 }
