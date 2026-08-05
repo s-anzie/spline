@@ -92,6 +92,7 @@ model Workspace {
   sessions       AgentSession[]
   commands       RuntimeCommand[]
   runs           Run[]
+  threads        Thread[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -848,6 +849,42 @@ model WorkerNode {
   @@index([status])
   @@index([registeredByType, registeredById])
   @@map("worker_nodes")
+}
+
+enum ThreadStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+  EXHAUSTED
+}
+
+/// §10.18a-b — a bounded exchange between exactly TWO actors. The turn budget
+/// is what stops two agents answering each other forever; the task, when
+/// present, is what gives a delegated result somewhere to return to.
+model Thread {
+  id              String      @id @default(uuid())
+  workspaceId     String
+  initiatorType   ActorType
+  initiatorId     String
+  participantType ActorType
+  participantId   String
+  subject         String
+  /// Present when this thread delegated work and is waiting for its answer.
+  taskId          String?
+  turnBudget      Int
+  /// Turns live inside the aggregate: a turn has no life outside its thread.
+  turns           Json        @default("[]")
+  status          ThreadStatus @default(OPEN)
+  outcome         Json?
+  createdAt       DateTime    @default(now())
+  endedAt         DateTime?
+  updatedAt       DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([taskId])
+  @@map("threads")
 }
 
 enum RunStatus {
