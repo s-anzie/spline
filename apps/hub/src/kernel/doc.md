@@ -667,3 +667,30 @@ Les deux tests ont été corrigés pour ne plus préparer ce que le système doi
 produire. Le second l'a été en **supprimant** l'appel manuel, ce qui est le
 correctif le plus utile de la journée : le test échouait alors, comme il aurait
 dû depuis le début.
+
+### 5.12 Le pont du protocole, vérifié en vrai
+
+Le second run réel a porté sur le pont MCP : un vrai `claude`, un vrai jeton de
+tâche, un vrai serveur MCP lancé par le CLI de l'agent. L'agent a appelé
+`publish_progress`, et le hub a enregistré :
+
+```
+type   : agent.progress
+actor  : { type: HUMAN, id: <l'assigné de la tâche> }
+target : { type: TASK,  id: <la tâche> }
+payload: { summary: "BRIDGE-OK" }
+```
+
+**La ligne qui compte est `actor`.** Le fait est attribué à l'assigné de la
+tâche, pas à la machine qui a porté le jeton. C'est la propriété pour laquelle
+le jeton de tâche existe, et elle n'était vérifiable qu'ici : aucun test ne
+peut prouver qu'une chaîne de trois processus attribue correctement.
+
+Le fichier de configuration écrit pour l'occasion était bien en `600`, avec le
+jeton dans l'`env` du serveur et non dans celui de l'agent.
+
+**Un défaut dans mon propre script de vérification**, qui vaut d'être noté
+parce que c'est la même forme que §5.9 : je lisais `e["targetType"]`, alors que
+la vue expose `target: { type, id }`. Le script a affiché « None None » et j'ai
+d'abord cru à un défaut du produit. Un outil de diagnostic faux est pire qu'un
+diagnostic absent — il envoie corriger ce qui marche.
