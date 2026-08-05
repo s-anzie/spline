@@ -96,16 +96,39 @@ serait un mensonge de plus.
 5. **Ordre total par séquence monotone** (§14.1, §14.6), pas par horodatage : deux faits d'une même
    milliseconde doivent rester ordonnés.
 
-### 1.7 La limite qui reste, nommée
+### 1.7 L'atomicité — la limite qui a été fermée
 
-La persistance a lieu **après** l'écriture de l'agrégat, pas dans la même transaction. Un processus qui
-meurt entre les deux perd le fait. Le vrai patron *outbox* exige que l'insertion de l'événement partage la
-transaction du dépôt — ce que la forme actuelle (`repository.save()` puis `flushDomainEvents()`) ne permet
-pas sans traverser la frontière des modules.
+**Ce que cette section disait, et qui n'est plus vrai** : la persistance avait lieu après l'écriture de
+l'agrégat, dans sa propre transaction, si bien qu'un processus mourant entre les deux gardait le
+changement et perdait le fait.
 
-Ce module réduit donc la fenêtre de perte de « tout le temps » à « un crash entre deux écritures », et
-rend le fait **rejouable** une fois écrit. Il ne prétend pas à l'atomicité. C'est nommé ici plutôt que
-sous-entendu, et c'est ce que le futur travail sur les transactions devra fermer.
+C'est fermé. Une transaction entoure désormais toute requête mutante (`TransactionInterceptor`), et
+`PrismaService` route chaque délégué de modèle vers la transaction ambiante — donc le dépôt d'événements
+la rejoint sans savoir qu'elle existe. Ce qu'il faut retenir tient en trois points.
+
+**1. Le routage est au client, pas dans les soixante appelants.** L'alternative était de faire passer un
+client en argument à travers chaque méthode de dépôt et chaque use case : soixante fichiers dont le seul
+changement serait de porter quelque chose dont ils se moquent, et soixante occasions d'en oublier un. Un
+oubli écrirait hors transaction **en silence**, ce qui est exactement le défaut qu'on ferme.
+
+**2. L'annonce passe après le commit.** C'est le point que la dette ne mentionnait pas. Émettre à
+l'intérieur de la transaction ferait réagir un écouteur à un monde que personne d'autre ne peut encore
+lire. Les faits sont donc **écrits dedans et annoncés après** (`afterCommit`) — et hors transaction il n'y
+a rien à attendre, donc ça s'exécute immédiatement, ce qui garde le publisher correct dans les deux cas.
+Si un écouteur échoue après coup, l'écriture reste commitée et le fait reste journalisé : §14.5 rend un
+fait enregistré rejouable, et annuler toute la requête perdrait justement l'enregistrement qui permet de
+rejouer.
+
+**3. Le SQL brut et les transactions imbriquées doivent rejoindre l'ambiante — et l'apprendre a coûté
+vingt secondes d'attente.** La chaîne d'audit prend `pg_advisory_xact_lock` puis ouvre sa propre
+transaction. Laissées sur le client de base, elles s'exécutaient sur une **autre connexion** et
+attendaient des verrous de ligne que la transaction ouverte détenait — jusqu'à expiration. Une requête
+brute qui ne rejoint pas la transaction n'est pas seulement en dehors : elle peut la bloquer. Postgres n'a
+pas de transaction imbriquée, donc « rejoindre s'il y en a une, en ouvrir une sinon » est la seule
+sémantique qui ne bloque pas.
+
+La preuve est dans `test/atomicity.e2e-spec.ts`, et elle porte **son contrôle** : l'intercepteur désactivé,
+le test échoue. Une assertion négative sans contrôle passe pour la mauvaise raison.
 
 ## 2. Modèle de domaine
 
@@ -184,8 +207,7 @@ une seule fois ; §14.4 la lecture n'est jamais un attribut de l'événement ; �
 
 **La dette de durabilité est fermée à hauteur de ce qui est vrai** : un fait est écrit **avant** d'être
 émis, donc une réaction s'exécute toujours sur un fait déjà au journal, et une réaction perdue peut être
-retrouvée. Elle n'est **pas** atomique avec l'écriture de l'agrégat — c'est écrit noir sur blanc en §1.7,
-dans le code du publisher, et ce n'est pas prétendu ailleurs.
+retrouvée. Elle **est** atomique avec l'écriture de l'agrégat depuis la fermeture décrite en §1.7.
 
 **Audit d'accessibilité** : les cinq use-cases ont une route. `execute_tasks` gagne une route
 d'enregistrement explicite, celle dont le Worker (§6.8) et le Scheduler (§9.15) auront besoin.

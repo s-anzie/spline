@@ -1,12 +1,14 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { validateEnv } from "./config/env.validation";
 import { globalThrottleLimit, throttleTtlMs } from "./config/hardening";
 import { HealthModule } from "./health/health.module";
+import { UnitOfWork } from "./kernel/infrastructure/unit-of-work";
+import { TransactionInterceptor } from "./kernel/interface/transaction.interceptor";
 import { KernelModule } from "./kernel/kernel.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
@@ -62,6 +64,16 @@ import { PrismaModule } from "./prisma/prisma.module";
     ValidationModule,
     WorkloadModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    /**
+     * §14.1 — one request that changes something, one transaction. Registered
+     * globally rather than per controller: a controller that forgot it would
+     * write outside the transaction silently, and silently is how the gap
+     * this closes survived being documented.
+     */
+    UnitOfWork,
+    { provide: APP_INTERCEPTOR, useClass: TransactionInterceptor },
+  ],
 })
 export class AppModule {}
