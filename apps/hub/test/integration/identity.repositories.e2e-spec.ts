@@ -163,7 +163,13 @@ describe("identity repositories (integration)", () => {
 
   it("round-trips a credential and persists revocation + lastUsedAt on update", async () => {
     const actor = ActorRef.create("AGENT", "a-1").value;
-    const credential = ActorCredential.create({ actor, tokenHash: "$2b$10$h", now }).value;
+    const credential = ActorCredential.create({
+      actor,
+      organizationId: "org-1",
+      displayName: "a-1",
+      tokenHash: "$2b$10$h",
+      now,
+    }).value;
     await credentials.save(credential);
 
     credential.touch(later);

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import {
+  WorkerEnrolment as EnrolmentRow,
   RuntimeCommand as CommandRow,
   AgentSession as SessionRow,
   ProviderProfile as ProviderRow,
@@ -12,9 +13,11 @@ import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { AgentSession, SessionStatus } from "../domain/agent-session";
 import { ProviderProfile } from "../domain/provider-profile";
 import { CommandStatus, RuntimeCommand } from "../domain/runtime-command";
+import { EnrolmentStatus, WorkerEnrolment } from "../domain/worker-enrolment";
 import { WorkerNode, WorkerStatus } from "../domain/worker-node";
 import {
   CommandStore,
+  EnrolmentStore,
   ListCommandsFilter,
   ListSessionsFilter,
   ProviderStore,
@@ -292,6 +295,74 @@ function toCommand(row: CommandRow): RuntimeCommand {
       result: (row.result ?? null) as Record<string, unknown> | null,
       failureReason: row.failureReason,
       createdAt: row.createdAt,
+    },
+    row.id,
+  );
+}
+
+
+@Injectable()
+export class PrismaEnrolmentStore implements EnrolmentStore {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** §5.19 — the whole aggregate. */
+  async save(enrolment: WorkerEnrolment): Promise<void> {
+    const data = {
+      deviceId: enrolment.deviceId,
+      organizationId: enrolment.organizationId,
+      hostname: enrolment.hostname,
+      architecture: enrolment.architecture,
+      operatingSystem: enrolment.operatingSystem,
+      capabilities: [...enrolment.capabilities],
+      labels: [...enrolment.labels],
+      code: enrolment.code,
+      status: enrolment.status,
+      decidedBy: enrolment.decidedBy,
+      decidedAt: enrolment.decidedAt,
+      requestedAt: enrolment.requestedAt,
+    };
+    await this.prisma.workerEnrolment.upsert({
+      where: { id: enrolment.id.value },
+      create: { id: enrolment.id.value, ...data },
+      update: data,
+    });
+  }
+
+  async findById(id: string): Promise<WorkerEnrolment | null> {
+    const row = await this.prisma.workerEnrolment.findUnique({ where: { id } });
+    return row ? toEnrolment(row) : null;
+  }
+
+  async findByCode(code: string): Promise<WorkerEnrolment | null> {
+    const row = await this.prisma.workerEnrolment.findUnique({ where: { code } });
+    return row ? toEnrolment(row) : null;
+  }
+
+  async listPending(limit?: number): Promise<WorkerEnrolment[]> {
+    const rows = await this.prisma.workerEnrolment.findMany({
+      where: { status: "PENDING" },
+      orderBy: { requestedAt: "asc" },
+      take: pageSize(limit),
+    });
+    return rows.map(toEnrolment);
+  }
+}
+
+function toEnrolment(row: EnrolmentRow): WorkerEnrolment {
+  return WorkerEnrolment.reconstitute(
+    {
+      deviceId: row.deviceId,
+      organizationId: row.organizationId,
+      hostname: row.hostname,
+      architecture: row.architecture,
+      operatingSystem: row.operatingSystem,
+      capabilities: (row.capabilities ?? []) as string[],
+      labels: (row.labels ?? []) as string[],
+      code: row.code,
+      status: row.status as EnrolmentStatus,
+      decidedBy: row.decidedBy,
+      decidedAt: row.decidedAt,
+      requestedAt: row.requestedAt,
     },
     row.id,
   );

@@ -51,7 +51,12 @@ describe("Notification (e2e)", () => {
     for (const agentId of ["a-1", "a-2", "a-3"]) {
       const issued = await app
         .get(IssueActorCredentialUseCase)
-        .execute({ actorType: "AGENT", actorId: agentId });
+        .execute({
+          actorType: "AGENT",
+          actorId: agentId,
+          organizationId: registered.body.organizationId as string,
+          displayName: agentId,
+        });
       tokens[agentId] = issued.value.token;
       await app.get(GrantWorkspaceMembershipUseCase).execute({
         actorType: "AGENT",

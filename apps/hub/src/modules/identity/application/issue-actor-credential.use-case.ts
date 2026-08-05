@@ -27,6 +27,9 @@ import {
 export interface IssueActorCredentialInput {
   actorType: Exclude<ActorType, "HUMAN">;
   actorId: string;
+  /** §18 — who owns this actor. Only they may rotate or revoke it. */
+  organizationId: string;
+  displayName: string;
 }
 
 export interface IssueActorCredentialOutput {
@@ -66,6 +69,8 @@ export class IssueActorCredentialUseCase
     const tokenHash = await this.hasher.hash(secret);
     const credential = ActorCredential.create({
       actor: actor.value,
+      organizationId: input.organizationId,
+      displayName: input.displayName,
       tokenHash,
       now: this.clock.now(),
     });

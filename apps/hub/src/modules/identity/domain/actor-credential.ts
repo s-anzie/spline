@@ -8,6 +8,20 @@ import { HumanCredentialNotAllowedError } from "./identity.errors";
 
 interface CredentialProps {
   actor: ActorRef;
+  /**
+   * §18 — the organization that created this actor, and the only one that may
+   * rotate or revoke its credentials. Without it, naming somebody else's
+   * actor id would be a cross-organization impersonation route: the scope
+   * escalation class, where holding a permission somewhere means minting a
+   * credential anywhere.
+   */
+  organizationId: string;
+  /**
+   * What an operator calls this actor. It lives here because the credential
+   * set IS the registry of non-human actors — v3 has no Agent entity, actors
+   * are polymorphic references, and a credential is the only proof one exists.
+   */
+  displayName: string;
   tokenHash: string;
   createdAt: Date;
   revokedAt: Date | null;
@@ -16,6 +30,8 @@ interface CredentialProps {
 
 export interface CreateCredentialInput {
   actor: ActorRef;
+  organizationId: string;
+  displayName: string;
   tokenHash: string;
   now: Date;
 }
@@ -38,10 +54,20 @@ export class ActorCredential extends AggregateRoot<CredentialProps> {
     if (tokenHash.isFailure) {
       return Result.fail(tokenHash.error);
     }
+    const organizationId = Guard.againstEmpty(input.organizationId, "organizationId");
+    if (organizationId.isFailure) {
+      return Result.fail(organizationId.error);
+    }
+    const displayName = Guard.againstEmpty(input.displayName, "displayName");
+    if (displayName.isFailure) {
+      return Result.fail(displayName.error);
+    }
 
     const credential = new ActorCredential(
       {
         actor: input.actor,
+        organizationId: organizationId.value,
+        displayName: displayName.value,
         tokenHash: tokenHash.value,
         createdAt: input.now,
         revokedAt: null,
@@ -62,6 +88,19 @@ export class ActorCredential extends AggregateRoot<CredentialProps> {
 
   get actor(): ActorRef {
     return this.props.actor;
+  }
+
+  get organizationId(): string {
+    return this.props.organizationId;
+  }
+
+  get displayName(): string {
+    return this.props.displayName;
+  }
+
+  /** §18 — the one question every rotation and revocation has to ask first. */
+  belongsTo(organizationId: string): boolean {
+    return this.props.organizationId === organizationId;
   }
 
   get tokenHash(): string {

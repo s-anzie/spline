@@ -51,14 +51,18 @@ describe("Goal (e2e)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ organizationId: registered.body.organizationId, name: "Core" })
       .expect(201);
-    return { token, workspaceId: workspace.body.workspaceId as string };
+    return {
+      token,
+      workspaceId: workspace.body.workspaceId as string,
+      organizationId: registered.body.organizationId as string,
+    };
   }
 
   /** An AGENT_MANAGER member — can drive goals but never approve completion. */
-  async function agentManager(workspaceId: string) {
+  async function agentManager(workspaceId: string, organizationId: string) {
     const issued = await app
       .get(IssueActorCredentialUseCase)
-      .execute({ actorType: "AGENT", actorId: "a-1" });
+      .execute({ actorType: "AGENT", actorId: "a-1", organizationId, displayName: "a-1" });
     await app.get(GrantWorkspaceMembershipUseCase).execute({
       actorType: "AGENT",
       actorId: "a-1",
@@ -124,8 +128,8 @@ describe("Goal (e2e)", () => {
   });
 
   it("completion is an approval: an agent manager reaches REVIEW but cannot close", async () => {
-    const { token, workspaceId } = await setup();
-    const agentToken = await agentManager(workspaceId);
+    const { token, workspaceId, organizationId } = await setup();
+    const agentToken = await agentManager(workspaceId, organizationId);
     const asAgent = (r: request.Test) => r.set("Authorization", `Bearer ${agentToken}`);
 
     const created = await asAgent(request(http).post(`/workspaces/${workspaceId}/goals`))

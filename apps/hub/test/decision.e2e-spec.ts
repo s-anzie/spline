@@ -50,7 +50,7 @@ describe("Decision (e2e)", () => {
 
     const issued = await app
       .get(IssueActorCredentialUseCase)
-      .execute({ actorType: "AGENT", actorId: "observer" });
+      .execute({ actorType: "AGENT", actorId: "observer", organizationId: registered.body.organizationId as string, displayName: "observer" });
     await app.get(GrantWorkspaceMembershipUseCase).execute({
       actorType: "AGENT",
       actorId: "observer",

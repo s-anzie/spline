@@ -55,7 +55,12 @@ describe("Lock (e2e)", () => {
     for (const agentId of ["a-holder", "a-challenger"]) {
       const issued = await app
         .get(IssueActorCredentialUseCase)
-        .execute({ actorType: "AGENT", actorId: agentId });
+        .execute({
+          actorType: "AGENT",
+          actorId: agentId,
+          organizationId,
+          displayName: agentId,
+        });
       tokens[agentId] = issued.value.token;
       await app.get(GrantWorkspaceMembershipUseCase).execute({
         actorType: "AGENT",

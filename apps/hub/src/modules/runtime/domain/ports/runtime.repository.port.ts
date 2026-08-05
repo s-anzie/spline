@@ -1,6 +1,7 @@
 import { AgentSession } from "../agent-session";
 import { RuntimeCommand } from "../runtime-command";
 import { ProviderProfile } from "../provider-profile";
+import { WorkerEnrolment } from "../worker-enrolment";
 import { WorkerNode } from "../worker-node";
 
 export interface WorkerStore {
@@ -53,3 +54,18 @@ export interface CommandStore {
   listClaimed(workspaceId: string): Promise<RuntimeCommand[]>;
 }
 export const COMMAND_STORE = "runtime/CommandStore";
+
+/** §6.3 — pending and decided pairing requests. */
+export interface EnrolmentStore {
+  save(enrolment: WorkerEnrolment): Promise<void>;
+  findById(id: string): Promise<WorkerEnrolment | null>;
+  /** The operator approves by the code the machine printed on its console. */
+  findByCode(code: string): Promise<WorkerEnrolment | null>;
+  /**
+   * Still waiting, whatever their age: expiry is judged at read (§17.7), so
+   * an expired request is listed and shown as expired rather than hidden.
+   * A request nobody can see is a request nobody can reject.
+   */
+  listPending(limit?: number): Promise<WorkerEnrolment[]>;
+}
+export const ENROLMENT_STORE = "runtime/EnrolmentStore";

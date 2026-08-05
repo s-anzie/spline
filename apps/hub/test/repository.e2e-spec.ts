@@ -50,7 +50,7 @@ describe("Repository (e2e)", () => {
 
     const issued = await app
       .get(IssueActorCredentialUseCase)
-      .execute({ actorType: "AGENT", actorId: "a-1" });
+      .execute({ actorType: "AGENT", actorId: "a-1", organizationId, displayName: "a-1" });
     await app.get(GrantWorkspaceMembershipUseCase).execute({
       actorType: "AGENT",
       actorId: "a-1",

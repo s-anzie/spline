@@ -48,6 +48,8 @@ model Organization {
   ownerId    String
   createdAt  DateTime    @default(now())
   workspaces Workspace[]
+  actorCredentials ActorCredential[]
+  workerEnrolments WorkerEnrolment[]
 
   @@index([ownerId])
   @@map("organizations")
@@ -162,15 +164,25 @@ model Goal {
 
 /// Opaque-token credential for AGENT / WORKER / SERVICE actors (§18.2).
 model ActorCredential {
-  id         String    @id @default(uuid())
-  actorType  ActorType
-  actorId    String
-  tokenHash  String
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
-  lastUsedAt DateTime?
+  id        String    @id @default(uuid())
+  actorType ActorType
+  actorId   String
+  /// §18 — the organization that created this actor, and the only one that
+  /// may rotate or revoke its credentials. Without it, naming somebody
+  /// else's actor would be a cross-organization impersonation route.
+  organizationId String
+  /// What an operator calls this actor. The credential set is the registry of
+  /// non-human actors (v3 has no Agent entity), so the name lives here.
+  displayName String
+  tokenHash   String
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([actorType, actorId])
+  @@index([organizationId])
   @@map("actor_credentials")
 }
 
@@ -834,6 +846,44 @@ model WorkerNode {
   @@index([status])
   @@index([registeredByType, registeredById])
   @@map("worker_nodes")
+}
+
+enum EnrolmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CLAIMED
+}
+
+/// §6.3, §18.2 — how a machine comes to be trusted. The machine generates its
+/// own identity and prints a short-lived code on its own console; an operator
+/// approves that code. The credential is minted at CLAIM, so no plaintext
+/// token ever waits at rest.
+model WorkerEnrolment {
+  id       String @id @default(uuid())
+  /// Generated and kept by the machine, never by the hub: knowing the
+  /// enrolment id is not enough to claim it, you must be the machine.
+  deviceId String
+  /// Assigned at approval — a machine cannot know which organization it joins.
+  organizationId  String?
+  hostname        String
+  architecture    String
+  operatingSystem String
+  capabilities    Json            @default("[]")
+  labels          Json            @default("[]")
+  code            String
+  status          EnrolmentStatus @default(PENDING)
+  decidedBy       String?
+  decidedAt       DateTime?
+  requestedAt     DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([code])
+  @@index([status])
+  @@index([organizationId])
+  @@map("worker_enrolments")
 }
 
 /// Spec 4.12 — "une session est éphémère. L'Agent est permanent."

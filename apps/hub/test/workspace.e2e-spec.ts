@@ -100,7 +100,12 @@ describe("Workspace (e2e)", () => {
   it("an agent cannot create a workspace (403) — creation founds human ownership", async () => {
     const owner = await registerAndLogin("owner@example.com");
     const issue = app.get(IssueActorCredentialUseCase);
-    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const issued = await issue.execute({
+      actorType: "AGENT",
+      actorId: "a-1",
+      organizationId: owner.organizationId,
+      displayName: "a-1",
+    });
 
     await request(http)
       .post("/workspaces")

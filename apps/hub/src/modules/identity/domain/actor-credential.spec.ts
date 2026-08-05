@@ -7,7 +7,7 @@ const agent = ActorRef.create("AGENT", "a-1").value;
 
 describe("ActorCredential", () => {
   it("creates for a non-human actor", () => {
-    const result = ActorCredential.create({ actor: agent, tokenHash: "$2b$10$h", now });
+    const result = ActorCredential.create({ actor: agent, organizationId: "org-1", displayName: "worker-01", tokenHash: "$2b$10$h", now });
 
     expect(result.isSuccess).toBe(true);
     expect(result.value.isRevoked).toBe(false);
@@ -17,13 +17,13 @@ describe("ActorCredential", () => {
   it("refuses a credential for a human — humans authenticate with JWT", () => {
     const human = ActorRef.create("HUMAN", "u-1").value;
 
-    const result = ActorCredential.create({ actor: human, tokenHash: "$2b$10$h", now });
+    const result = ActorCredential.create({ actor: human, organizationId: "org-1", displayName: "u", tokenHash: "$2b$10$h", now });
 
     expect(result.isFailure).toBe(true);
   });
 
   it("revoke is idempotent and keeps the first revocation time", () => {
-    const credential = ActorCredential.create({ actor: agent, tokenHash: "$2b$10$h", now }).value;
+    const credential = ActorCredential.create({ actor: agent, organizationId: "org-1", displayName: "worker-01", tokenHash: "$2b$10$h", now }).value;
 
     credential.revoke(now);
     credential.revoke(later);
@@ -33,7 +33,7 @@ describe("ActorCredential", () => {
   });
 
   it("touch records the last use", () => {
-    const credential = ActorCredential.create({ actor: agent, tokenHash: "$2b$10$h", now }).value;
+    const credential = ActorCredential.create({ actor: agent, organizationId: "org-1", displayName: "worker-01", tokenHash: "$2b$10$h", now }).value;
 
     credential.touch(later);
 
@@ -42,7 +42,15 @@ describe("ActorCredential", () => {
 
   it("reconstitute rebuilds a revoked credential faithfully", () => {
     const credential = ActorCredential.reconstitute(
-      { actor: agent, tokenHash: "$2b$10$h", createdAt: now, revokedAt: later, lastUsedAt: null },
+      {
+        actor: agent,
+        organizationId: "org-1",
+        displayName: "a",
+        tokenHash: "$2b$10$h",
+        createdAt: now,
+        revokedAt: later,
+        lastUsedAt: null,
+      },
       "c-1",
     );
 

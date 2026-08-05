@@ -31,7 +31,7 @@ describe("actor credential lifecycle", () => {
   it("issues a parseable token whose secret is stored only as a hash", async () => {
     const { issue, credentials } = makeUseCases();
 
-    const result = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const result = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
 
     expect(result.isSuccess).toBe(true);
     const parsed = parseActorToken(result.value.token).value;
@@ -46,6 +46,8 @@ describe("actor credential lifecycle", () => {
     const result = await issue.execute({
       actorType: "HUMAN" as never,
       actorId: "u-1",
+      organizationId: "org-1",
+      displayName: "a",
     });
 
     expect(result.isFailure).toBe(true);
@@ -53,7 +55,7 @@ describe("actor credential lifecycle", () => {
 
   it("verify accepts a valid token, touches lastUsedAt, and identifies the actor", async () => {
     const { issue, verify, credentials, clock } = makeUseCases();
-    const issued = await issue.execute({ actorType: "WORKER", actorId: "m-1" });
+    const issued = await issue.execute({ actorType: "WORKER", actorId: "m-1", organizationId: "org-1", displayName: "a" });
     clock.advance(60_000);
 
     const result = await verify.execute({ token: issued.value.token });
@@ -68,9 +70,9 @@ describe("actor credential lifecycle", () => {
 
   it("verify rejects a revoked credential", async () => {
     const { issue, revoke, verify } = makeUseCases();
-    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
     const credentialId = parseActorToken(issued.value.token).value.credentialId;
-    await revoke.execute({ credentialId });
+    await revoke.execute({ credentialId, organizationId: "org-1" });
 
     const result = await verify.execute({ token: issued.value.token });
 
@@ -80,7 +82,7 @@ describe("actor credential lifecycle", () => {
 
   it("verify rejects a wrong secret and a malformed token", async () => {
     const { issue, verify } = makeUseCases();
-    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
     const credentialId = parseActorToken(issued.value.token).value.credentialId;
 
     const wrongSecret = await verify.execute({ token: `agent_${credentialId}.bad` });
@@ -92,8 +94,8 @@ describe("actor credential lifecycle", () => {
 
   it("issuing a second credential does not revoke the first — rotation without a gap", async () => {
     const { issue, verify } = makeUseCases();
-    const first = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
-    const second = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const first = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
+    const second = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
 
     expect((await verify.execute({ token: first.value.token })).isSuccess).toBe(true);
     expect((await verify.execute({ token: second.value.token })).isSuccess).toBe(true);
@@ -101,11 +103,11 @@ describe("actor credential lifecycle", () => {
 
   it("revoke is idempotent at the use-case level", async () => {
     const { issue, revoke } = makeUseCases();
-    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1" });
+    const issued = await issue.execute({ actorType: "AGENT", actorId: "a-1", organizationId: "org-1", displayName: "a" });
     const credentialId = parseActorToken(issued.value.token).value.credentialId;
 
-    const first = await revoke.execute({ credentialId });
-    const again = await revoke.execute({ credentialId });
+    const first = await revoke.execute({ credentialId, organizationId: "org-1" });
+    const again = await revoke.execute({ credentialId, organizationId: "org-1" });
 
     expect(first.isSuccess).toBe(true);
     expect(again.isSuccess).toBe(true);
@@ -114,7 +116,7 @@ describe("actor credential lifecycle", () => {
   it("revoke fails cleanly on an unknown credential", async () => {
     const { revoke } = makeUseCases();
 
-    const result = await revoke.execute({ credentialId: "nope" });
+    const result = await revoke.execute({ credentialId: "nope", organizationId: "org-1" });
 
     expect(result.isFailure).toBe(true);
     expect(result.error.name).toBe("CredentialNotFoundError");

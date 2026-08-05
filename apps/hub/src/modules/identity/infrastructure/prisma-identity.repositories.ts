@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
+import { pageSize } from "../../../kernel/domain/pagination";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef } from "../domain/actor";
 import { ActorCredential } from "../domain/actor-credential";
@@ -159,6 +160,19 @@ export class PrismaActorCredentialRepository implements ActorCredentialRepositor
     const rows = await this.prisma.actorCredential.findMany({
       where: { actorType: actor.type, actorId: actor.actorId },
       orderBy: { createdAt: "asc" },
+      take: pageSize(undefined),
+    });
+    return rows.map((row) => ActorCredentialMapper.toDomain(row));
+  }
+
+  async listByOrganization(
+    organizationId: string,
+    limit?: number,
+  ): Promise<ActorCredential[]> {
+    const rows = await this.prisma.actorCredential.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "asc" },
+      take: pageSize(limit),
     });
     return rows.map((row) => ActorCredentialMapper.toDomain(row));
   }

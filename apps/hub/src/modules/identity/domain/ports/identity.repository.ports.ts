@@ -37,5 +37,12 @@ export interface ActorCredentialRepository {
   save(credential: ActorCredential): Promise<void>;
   findById(id: string): Promise<ActorCredential | null>;
   listByActor(actor: ActorRef): Promise<ActorCredential[]>;
+  /**
+   * The registry of an organization's non-human actors, since the credential
+   * set is that registry (v3 has no Agent entity). Revoked ones included: an
+   * actor whose last credential was revoked still existed, and hiding it
+   * would make its history unreachable.
+   */
+  listByOrganization(organizationId: string, limit?: number): Promise<ActorCredential[]>;
 }
 export const ACTOR_CREDENTIAL_REPOSITORY = "identity/ActorCredentialRepository";

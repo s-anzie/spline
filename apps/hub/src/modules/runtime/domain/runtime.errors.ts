@@ -41,6 +41,23 @@ export class WorkerImpersonationError extends DomainError {
   }
 }
 
+export class EnrolmentNotFoundError extends EntityNotFoundError {
+  constructor(reference: string) {
+    super("WorkerEnrolment", reference);
+  }
+}
+
+/**
+ * §6.3 — a machine asked to join and something about that request no longer
+ * holds: the code expired, the decision was already made, or the caller is
+ * not the machine that asked.
+ */
+export class EnrolmentNotClaimableError extends DomainError {
+  constructor(reason: string) {
+    super(`This enrolment cannot be used: ${reason}`);
+  }
+}
+
 /**
  * §4.2 and §18.3 — a session names the actor it runs as, and that name came
  * from the request body. An actor that is not a member of this workspace

@@ -12,6 +12,7 @@ import {
 import { Type } from "class-transformer";
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -19,6 +20,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 
@@ -235,6 +237,56 @@ function toProviderView(profile: ProviderProfile, now: Date) {
     /** §4.14 — computed, never stored, so it cannot drift from its inputs. */
     effectiveAvailable: profile.isAvailableAt(now),
   };
+}
+
+export class RequestEnrolmentDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  deviceId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  hostname!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  architecture!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  operatingSystem!: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  capabilities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  labels?: string[];
+}
+
+export class ClaimEnrolmentDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  deviceId!: string;
+}
+
+export class DecideEnrolmentDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(16)
+  code!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  approve?: boolean;
 }
 
 /** §17.7 default, until a workspace policy tightens it. */

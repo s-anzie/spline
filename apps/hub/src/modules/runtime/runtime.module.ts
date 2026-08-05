@@ -12,6 +12,7 @@ import {
 } from "./application/runtime.use-cases";
 import {
   COMMAND_STORE,
+  ENROLMENT_STORE,
   PROVIDER_STORE,
   SESSION_STORE,
   WORKER_STORE,
@@ -22,11 +23,21 @@ import {
   ReportCommandUseCase,
 } from "./application/command.use-cases";
 import { CommandHealthProbe } from "./infrastructure/command-health.probe";
+import {
+  ClaimEnrolmentUseCase,
+  DecideEnrolmentUseCase,
+  RequestEnrolmentUseCase,
+} from "./application/enrolment.use-cases";
+import {
+  EnrolmentDecisionController,
+  EnrolmentDoorController,
+} from "./interface/enrolment.controller";
 import { RecoverCrashedSessionsUseCase } from "./application/recover-crashed-sessions.use-case";
 import { SessionHealthProbe } from "./infrastructure/session-health.probe";
 import { WorkerHealthProbe } from "./infrastructure/worker-health.probe";
 import {
   PrismaCommandStore,
+  PrismaEnrolmentStore,
   PrismaProviderStore,
   PrismaSessionStore,
   PrismaWorkerStore,
@@ -46,12 +57,21 @@ import {
  */
 @Module({
   imports: [IdentityModule, WorkspaceModule],
-  controllers: [RuntimeController, WorkspaceRuntimeController],
+  controllers: [
+    RuntimeController,
+    WorkspaceRuntimeController,
+    EnrolmentDoorController,
+    EnrolmentDecisionController,
+  ],
   providers: [
     { provide: WORKER_STORE, useClass: PrismaWorkerStore },
     { provide: SESSION_STORE, useClass: PrismaSessionStore },
     { provide: PROVIDER_STORE, useClass: PrismaProviderStore },
     { provide: COMMAND_STORE, useClass: PrismaCommandStore },
+    { provide: ENROLMENT_STORE, useClass: PrismaEnrolmentStore },
+    RequestEnrolmentUseCase,
+    DecideEnrolmentUseCase,
+    ClaimEnrolmentUseCase,
     RegisterWorkerUseCase,
     AttachWorkerUseCase,
     WorkerHeartbeatUseCase,

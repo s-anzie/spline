@@ -98,6 +98,8 @@ export const ActorCredentialMapper = {
     return ActorCredential.reconstitute(
       {
         actor: ActorRef.create(row.actorType as ActorType, row.actorId).value,
+        organizationId: row.organizationId,
+        displayName: row.displayName,
         tokenHash: row.tokenHash,
         createdAt: row.createdAt,
         revokedAt: row.revokedAt,
@@ -112,6 +114,8 @@ export const ActorCredentialMapper = {
       id: credential.id.value,
       actorType: credential.actor.type,
       actorId: credential.actor.actorId,
+      organizationId: credential.organizationId,
+      displayName: credential.displayName,
       tokenHash: credential.tokenHash,
       createdAt: credential.createdAt,
       revokedAt: credential.revokedAt,

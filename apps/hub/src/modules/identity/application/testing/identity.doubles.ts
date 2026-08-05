@@ -112,6 +112,12 @@ export class InMemoryActorCredentialRepository implements ActorCredentialReposit
   async listByActor(actor: ActorRef): Promise<ActorCredential[]> {
     return [...this.credentials.values()].filter((c) => c.actor.equals(actor));
   }
+
+  async listByOrganization(organizationId: string): Promise<ActorCredential[]> {
+    return [...this.credentials.values()].filter((c) =>
+      c.belongsTo(organizationId),
+    );
+  }
 }
 
 /** Reversible fake: hash("x") = "hashed:x" — deterministic, no crypto cost. */

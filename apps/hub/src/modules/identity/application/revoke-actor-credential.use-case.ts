@@ -16,6 +16,12 @@ import {
 
 export interface RevokeActorCredentialInput {
   credentialId: string;
+  /**
+   * §18 — revoking is scoped to the owner. Without it, knowing a credential
+   * id would be enough to cut off another organization's worker: a denial of
+   * service that needs no permission anywhere near that organization.
+   */
+  organizationId: string;
 }
 
 @Injectable()
@@ -34,7 +40,10 @@ export class RevokeActorCredentialUseCase
     input: RevokeActorCredentialInput,
   ): Promise<Result<void, CredentialNotFoundError>> {
     const credential = await this.credentials.findById(input.credentialId);
-    if (!credential) {
+    // Not found and "belongs to someone else" answer identically on purpose:
+    // distinguishing them would confirm the existence of a credential the
+    // caller has no business knowing about.
+    if (!credential || !credential.belongsTo(input.organizationId)) {
       return Result.fail(new CredentialNotFoundError(input.credentialId));
     }
 

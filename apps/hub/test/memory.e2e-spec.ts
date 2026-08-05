@@ -320,7 +320,12 @@ describe("Memory (e2e)", () => {
     // recording a decision.
     const issued = await app
       .get(IssueActorCredentialUseCase)
-      .execute({ actorType: "AGENT", actorId: "a-reader" });
+      .execute({
+        actorType: "AGENT",
+        actorId: "a-reader",
+        organizationId: ctx.organizationId,
+        displayName: "a-reader",
+      });
     await app.get(GrantWorkspaceMembershipUseCase).execute({
       actorType: "AGENT",
       actorId: "a-reader",
