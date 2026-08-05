@@ -110,6 +110,7 @@ export class ClaimCommandsUseCase
   constructor(
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
+    @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
   ) {}
@@ -150,6 +151,22 @@ export class ClaimCommandsUseCase
       }
       await this.commands.save(command);
       await flushDomainEvents(command, this.publisher);
+
+      /**
+       * §4.7 — the run starts here, because taking the order IS starting.
+       * A run left PENDING while a machine executes it would be lying for the
+       * whole duration, and the overrun sweep (§9.13) judges against a
+       * `startedAt` that only an open attempt sets.
+       */
+      await this.runs.beginAttempt({
+        workspaceId: command.workspaceId,
+        runId: typeof command.payload.runId === "string" ? command.payload.runId : null,
+        workerId: worker.id.value,
+        provider:
+          typeof command.payload.provider === "string" ? command.payload.provider : "",
+        model: typeof command.payload.model === "string" ? command.payload.model : null,
+      });
+
       claimed.push({
         id: command.id.value,
         workspaceId: command.workspaceId,

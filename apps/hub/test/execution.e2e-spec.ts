@@ -786,16 +786,12 @@ describe("Dispatching a task to an agent (e2e)", () => {
       .send({})
       .expect(200);
 
-    // The run has to have an attempt open for the report to close one.
-    await ctx
-      .auth(
-        request(http).post(
-          `/workspaces/${ctx.workspaceId}/runs/${dispatched.body.runId}/attempts`,
-        ),
-      )
-      .send({ workerId: ctx.workerId, provider: "claude" })
-      .expect(201);
-
+    /**
+     * No manual attempt here on purpose. Claiming the order opens it — and
+     * calling this route by hand is exactly what hid the gap a real run
+     * found: the run stayed PENDING for its whole execution because nothing
+     * ever opened an attempt.
+     */
     await ctx
       .auth(
         request(http).post(
@@ -840,14 +836,6 @@ describe("Dispatching a task to an agent (e2e)", () => {
     await ctx
       .auth(
         request(http).post(
-          `/workspaces/${ctx.workspaceId}/runs/${first.body.runId}/attempts`,
-        ),
-      )
-      .send({ workerId: ctx.workerId, provider: "claude" })
-      .expect(201);
-    await ctx
-      .auth(
-        request(http).post(
           `/runtime/workers/${ctx.workerId}/commands/${first.body.commandId}/report`,
         ),
       )
@@ -872,14 +860,6 @@ describe("Dispatching a task to an agent (e2e)", () => {
       .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
       .send({})
       .expect(200);
-    await ctx
-      .auth(
-        request(http).post(
-          `/workspaces/${ctx.workspaceId}/runs/${first.body.runId}/attempts`,
-        ),
-      )
-      .send({ workerId: ctx.workerId, provider: "claude" })
-      .expect(201);
     await ctx
       .auth(
         request(http).post(

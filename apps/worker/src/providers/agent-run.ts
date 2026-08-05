@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
-
 import { CommandReport } from "../execution/executor";
+import { ensureWorkspaceDirectory } from "../execution/workspace-directory";
 import { ClaimedCommand } from "../hub/hub-client";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
 import { SpawnPlan } from "../supervision/spawn-plan";
@@ -25,6 +24,12 @@ export interface AgentRunDeps {
   realpath?: (path: string) => string;
   /** Injected so a test can say which id was assigned. */
   newSessionId?: () => string;
+  /**
+   * §7.9 — makes the workspace's directory. Injected for the same reason
+   * `realpath` is: a test about planning should not have to create
+   * directories on the machine running it.
+   */
+  ensureDirectory?: (root: string, workspaceId: string) => string;
 }
 
 function failed(reason: string): CommandReport {
@@ -90,7 +95,13 @@ export async function runAgent(
     {
       command: spec.command,
       args,
-      workspaceRoot: join(deps.workspaceRoot, command.workspaceId),
+      // §7.9 — created before planning: containment is judged on the real
+      // path, and a path that does not exist cannot be shown to be inside
+      // anything. Every test pre-created it, so no test ever noticed.
+      workspaceRoot: (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
+        deps.workspaceRoot,
+        command.workspaceId,
+      ),
       cwd: typeof payload.workdir === "string" ? payload.workdir : ".",
       env: {},
       secrets: deps.secretsFor(command),

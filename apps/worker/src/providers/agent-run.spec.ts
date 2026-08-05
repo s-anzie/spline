@@ -26,6 +26,8 @@ function deps(overrides: Partial<AgentRunDeps> = {}): AgentRunDeps {
       stoppedBy: null,
     }),
     realpath: (path: string) => path,
+    // A unit test about planning creates no directories.
+    ensureDirectory: (root: string, workspaceId: string) => `${root}/${workspaceId}`,
     newSessionId: () => "assigned-1",
     ...overrides,
   };

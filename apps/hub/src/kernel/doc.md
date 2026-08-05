@@ -639,3 +639,31 @@ touche l'outillage plutôt que le produit :
 Ce qui l'a rattrapée est un test e2e qui appelait la route (404). Sans lui, le
 défaut serait passé : `tsc` ne voit rien d'anormal dans une méthode qui
 n'existe pas.
+
+### 5.11 Le premier run réel trouve ce qu'aucun test n'avait vu
+
+La boucle complète a été exécutée pour de vrai — un vrai `claude`, un vrai
+appairage, un vrai dispatch. Elle a trouvé **deux défauts que 958 tests
+laissaient passer**, et les deux ont la même cause.
+
+**1. Rien ne créait le répertoire du workspace.** `planSpawn` juge le
+confinement sur le chemin *réel*, et un chemin qui n'existe pas ne peut être
+montré à l'intérieur de rien. Il refusait donc, correctement.
+
+**2. Rien n'ouvrait d'Attempt.** Le run restait `PENDING` pendant toute son
+exécution — un mensonge sur toute la durée — et le balayage de dépassement
+(§9.13) n'avait aucun `startedAt` à juger.
+
+La cause commune : **chaque test fournissait lui-même ce qui manquait**. L'un
+pré-créait le répertoire, l'autre appelait la route d'attempt à la main. Un
+test qui construit son propre décor ne peut pas remarquer que personne ne le
+construit en production.
+
+> **Un test qui prépare le terrain valide le code, pas le système.** Ce qu'un
+> test met en place à la main est exactement ce que personne ne met en place
+> ailleurs — et c'est invisible tant que rien ne tourne pour de vrai.
+
+Les deux tests ont été corrigés pour ne plus préparer ce que le système doit
+produire. Le second l'a été en **supprimant** l'appel manuel, ce qui est le
+correctif le plus utile de la journée : le test échouait alors, comme il aurait
+dû depuis le début.

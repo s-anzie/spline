@@ -1,6 +1,5 @@
-import { join } from "node:path";
-
 import { ClaimedCommand } from "../hub/hub-client";
+import { ensureWorkspaceDirectory } from "./workspace-directory";
 import { runAgent } from "../providers/agent-run";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
 import { ExecutionLimits, ExecutionOutcome, superviseProcess } from "../supervision/supervisor";
@@ -21,6 +20,12 @@ export interface ExecutorDeps {
     limits: ExecutionLimits,
   ) => Promise<ExecutionOutcome>;
   realpath?: (path: string) => string;
+  /**
+   * §7.9 — makes the workspace's directory. Injected for the same reason
+   * `realpath` is: a test about planning should not have to create
+   * directories on the machine running it.
+   */
+  ensureDirectory?: (root: string, workspaceId: string) => string;
 }
 
 export interface CommandReport {
@@ -90,7 +95,11 @@ export async function executeCommand(
     return failed("this order names no command to run");
   }
 
-  const root = join(deps.workspaceRoot, command.workspaceId);
+  // §7.9 — the directory has to exist before containment can be judged on it.
+  const root = (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
+    deps.workspaceRoot,
+    command.workspaceId,
+  );
   const workdir = typeof payload.workdir === "string" ? payload.workdir : ".";
 
   const plan = planExecution(

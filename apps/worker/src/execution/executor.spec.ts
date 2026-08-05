@@ -22,6 +22,8 @@ function deps(overrides: Partial<ExecutorDeps> = {}): ExecutorDeps {
       stoppedBy: null,
     }),
     realpath: (path: string) => path,
+    // A unit test about planning creates no directories.
+    ensureDirectory: (root: string, workspaceId: string) => `${root}/${workspaceId}`,
     ...overrides,
   };
 }

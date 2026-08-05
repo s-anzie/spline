@@ -44,9 +44,24 @@ export interface RecordOutcomeInput {
   failureReason: string | null;
 }
 
+export interface BeginAttemptOnRunInput {
+  workspaceId: string;
+  runId: string | null;
+  workerId: string;
+  provider: string;
+  model: string | null;
+}
+
 export interface RunLedger {
   /** §9.12 — a new run, numbered after the ones that already exist. */
   openRun(workspaceId: string, taskId: string): Promise<{ runId: string }>;
+  /**
+   * §4.7 — the run starts when a machine TAKES the order, not when it
+   * reports. A run that stayed PENDING while a machine was executing it would
+   * be lying for the whole duration — and §9.13's overrun sweep judges
+   * against `startedAt`, which only an open attempt sets.
+   */
+  beginAttempt(input: BeginAttemptOnRunInput): Promise<void>;
   /** The last run of this task, whatever became of it. */
   latestFor(workspaceId: string, taskId: string): Promise<LatestRun | null>;
   /**

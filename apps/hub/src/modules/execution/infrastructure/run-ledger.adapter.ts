@@ -7,6 +7,7 @@ import {
   EventPublisher,
 } from "../../../kernel/domain/ports/event-publisher.port";
 import {
+  BeginAttemptOnRunInput,
   LatestRun,
   RecordOutcomeInput,
   RUN_LEDGER,
@@ -52,6 +53,37 @@ export class RunLedgerAdapter implements RunLedger {
    * failed one. What they do is leave a run an operator can still find, which
    * is why the order carries the run id.
    */
+  /**
+   * §4.7 — opens the attempt when the machine claims the order.
+   *
+   * Silent about everything that can go wrong, like `recordOutcome` and for
+   * the same reason: claiming an order has already succeeded by the time this
+   * runs, and bookkeeping must not un-claim it. An attempt already in flight
+   * is a re-claim by the same worker (§13.7), which is not a second attempt.
+   */
+  async beginAttempt(input: BeginAttemptOnRunInput): Promise<void> {
+    if (!input.runId) {
+      return;
+    }
+    const run = await this.runs.findById(input.runId);
+    if (!run || run.workspaceId !== input.workspaceId) {
+      return;
+    }
+    const begun = run.beginAttempt(
+      {
+        workerId: input.workerId,
+        provider: input.provider,
+        model: input.model ?? undefined,
+      },
+      this.clock.now(),
+    );
+    if (begun.isFailure) {
+      return;
+    }
+    await this.runs.save(run);
+    await flushDomainEvents(run, this.publisher);
+  }
+
   async recordOutcome(input: RecordOutcomeInput): Promise<void> {
     if (!input.runId) {
       return;
