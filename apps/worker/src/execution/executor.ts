@@ -26,7 +26,14 @@ export interface ExecutorDeps {
    * directories on the machine running it.
    */
   ensureDirectory?: (root: string, workspaceId: string) => string;
+  /** §10 — passed through to an agent run; ignored by a plain program. */
+  grantFor?: AgentGrantResolver;
 }
+
+/** §10 — obtains the credential an agent acts with, for one order. */
+export type AgentGrantResolver = (
+  command: ClaimedCommand,
+) => Promise<import("../providers/agent-run").AgentGrant | null>;
 
 export interface CommandReport {
   outcome: "COMPLETED" | "FAILED";
@@ -88,6 +95,8 @@ export async function executeCommand(
       secretsFor: deps.secretsFor,
       supervise: deps.supervise,
       realpath: deps.realpath,
+      ensureDirectory: deps.ensureDirectory,
+      grantFor: deps.grantFor,
     });
   }
   const program = typeof payload.command === "string" ? payload.command : "";

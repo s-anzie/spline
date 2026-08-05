@@ -156,6 +156,104 @@ describe("runAgent", () => {
   });
 
   /**
+   * §10, §18.12 — the protocol bridge, and when it is NOT opened.
+   */
+  describe("the tools an agent is given", () => {
+    const grant = {
+      token: "grant_abc.secret",
+      hubUrl: "http://hub.test",
+      serverCommand: "node",
+      serverArgs: ["mcp.js"],
+    };
+
+    it("opens the bridge when the hub gave this run a credential", async () => {
+      const openBridge = jest.fn().mockReturnValue({
+        mcpConfigPath: "/run/w-1/.spline/mcp.json",
+        allowedTools: ["mcp__spline__synchronize"],
+      });
+      const supervise = jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({ result: "done" }),
+        stderr: "",
+        stoppedBy: null,
+      });
+
+      await runAgent(
+        order({ taskId: "t-1" }),
+        deps({ grantFor: async () => grant, openBridge, supervise }),
+      );
+
+      expect(openBridge.mock.calls[0][0]).toMatchObject({
+        taskId: "t-1",
+        grantToken: "grant_abc.secret",
+      });
+      const args = supervise.mock.calls[0][0].args as string[];
+      expect(args[args.indexOf("--mcp-config") + 1]).toBe("/run/w-1/.spline/mcp.json");
+      expect(args).toContain("mcp__spline__synchronize");
+    });
+
+    /**
+     * An agent with the tools but no identity would get an authentication
+     * error from every one of them, and would report a hub that is "down" —
+     * a diagnosis pointing at entirely the wrong thing.
+     */
+    it("gives no tools at all when there is no credential", async () => {
+      const supervise = jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({ result: "done" }),
+        stderr: "",
+        stoppedBy: null,
+      });
+
+      await runAgent(order({ taskId: "t-1" }), deps({ supervise }));
+
+      const args = supervise.mock.calls[0][0].args as string[];
+      expect(args).not.toContain("--mcp-config");
+      expect(args).toContain("--strict-mcp-config");
+    });
+
+    it("gives no tools to an order that belongs to no task", async () => {
+      const openBridge = jest.fn();
+      const supervise = jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({ result: "done" }),
+        stderr: "",
+        stoppedBy: null,
+      });
+
+      await runAgent(order(), deps({ grantFor: async () => grant, openBridge, supervise }));
+
+      expect(openBridge).not.toHaveBeenCalled();
+    });
+
+    /** §18.4 — the credential is never on the command line. */
+    it("never puts the grant on the command line", async () => {
+      const supervise = jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({ result: "done" }),
+        stderr: "",
+        stoppedBy: null,
+      });
+
+      await runAgent(
+        order({ taskId: "t-1" }),
+        deps({
+          grantFor: async () => grant,
+          openBridge: () => ({
+            mcpConfigPath: "/run/mcp.json",
+            allowedTools: [],
+          }),
+          supervise,
+        }),
+      );
+
+      expect((supervise.mock.calls[0][0].args as string[]).join(" ")).not.toContain(
+        "grant_abc.secret",
+      );
+    });
+  });
+
+  /**
    * §7.15 — a worker reads what a PROCESS said. Output that is not the
    * envelope is a broken run, and inventing a result would hand the hub a
    * fact nobody produced.

@@ -36,13 +36,20 @@ export type ParseResult =
  * an act, never a leftover.
  */
 export interface ToolSurface {
-  /** MCP servers, as the CLI's own config shape. Empty means none. */
-  mcpServers: Record<string, unknown>;
+  /**
+   * PATH to an MCP config file, never the JSON itself.
+   *
+   * The CLI accepts either, and accepting the string here would put whatever
+   * credential the config carries into argv — visible in `ps` to every
+   * account on the machine. A path cannot leak what a file holds, and the
+   * type is what makes that true rather than a habit.
+   */
+  mcpConfigPath: string | null;
   /** Exactly which tools may be called. Empty means none. */
   allowedTools: readonly string[];
 }
 
-export const CLOSED_SURFACE: ToolSurface = { mcpServers: {}, allowedTools: [] };
+export const CLOSED_SURFACE: ToolSurface = { mcpConfigPath: null, allowedTools: [] };
 
 export interface ProviderSpec {
   /** A program name — `planSpawn` refuses a path, and the allowlist decides. */
@@ -91,8 +98,8 @@ function usageOf(value: unknown): Record<string, number> | null {
  */
 function isolation(surface: ToolSurface): string[] {
   const args = ["--strict-mcp-config", "--permission-mode", "dontAsk"];
-  if (Object.keys(surface.mcpServers).length > 0) {
-    args.push("--mcp-config", JSON.stringify({ mcpServers: surface.mcpServers }));
+  if (surface.mcpConfigPath) {
+    args.push("--mcp-config", surface.mcpConfigPath);
   }
   if (surface.allowedTools.length > 0) {
     args.push("--allowedTools", surface.allowedTools.join(","));

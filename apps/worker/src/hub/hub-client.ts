@@ -161,6 +161,25 @@ export class HubClient implements PairingHub {
     );
   }
 
+  /**
+   * §10, §18.10 — the credential this order's agent acts with, asked for
+   * while holding the order. Same lifetime as the secrets: it exists for the
+   * length of the run, never in the order and never on disk except inside a
+   * 0600 config the agent's own tools read.
+   */
+  async commandGrant(
+    commandId: string,
+  ): Promise<{ token: string; scopes: string[]; expiresAt: string }> {
+    if (!this.workerId) {
+      throw new Error("cannot obtain a grant before registering");
+    }
+    return this.call(
+      "POST",
+      `/runtime/workers/${this.workerId}/commands/${commandId}/grant`,
+      {},
+    );
+  }
+
   /** Says what became of an order. Only its holder may. */
   async reportCommand(
     commandId: string,

@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { resolve } from "node:path";
 
 import { ExecutionBackend } from "../supervision/execution";
 
@@ -13,6 +14,12 @@ export interface WorkerConfig {
   token: string | null;
   /** Where this machine keeps who it is, once paired. */
   statePath: string;
+  /**
+   * §10 — the MCP bridge an agent's tools talk to. A path rather than a
+   * package name: the agent's CLI spawns it, and a name it would have to
+   * resolve is a name it could resolve to something else.
+   */
+  mcpServerPath: string;
   /**
    * §7.9, §6.10 — the root under which each workspace gets its own
    * directory. A workspace never names its own root: one that could would be
@@ -174,6 +181,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     // by configuration management skips pairing entirely.
     token: env.WORKER_TOKEN?.trim() || null,
     statePath: env.WORKER_STATE_PATH?.trim() || defaultStatePath(env),
+    mcpServerPath:
+      env.MCP_SERVER_PATH?.trim() || resolve(__dirname, "..", "mcp", "server.js"),
     workspaceRoot: env.WORKSPACE_ROOT?.trim() || defaultWorkspaceRoot(env),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),
     heartbeatIntervalMs: interval,

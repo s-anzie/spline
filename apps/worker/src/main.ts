@@ -197,6 +197,24 @@ async function main(): Promise<void> {
           const report = await executeCommand(command, {
             ...executor,
             secretsFor: () => secrets,
+            /**
+             * §10 — the protocol bridge, opened only if the hub grants one.
+             * An order that belongs to no task gets none, and the agent then
+             * runs with no tools rather than with tools that all fail.
+             */
+            grantFor: async () => {
+              try {
+                const granted = await hub.commandGrant(command.id);
+                return {
+                  token: granted.token,
+                  hubUrl: config.hubUrl,
+                  serverCommand: process.execPath,
+                  serverArgs: [config.mcpServerPath],
+                };
+              } catch {
+                return null;
+              }
+            },
           });
           await hub.reportCommand(
             command.id,

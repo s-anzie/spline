@@ -152,6 +152,38 @@ Codex has **no equivalent flags today**, and that is recorded as a test rather
 than papered over: a surface this cannot narrow is one an operator must know
 is wide.
 
+### The protocol bridge (§10, §18.12)
+
+An agent has to call back: §10's cycle is Synchronize, Publish, Validate. The
+question was **how**, and the two obvious answers are both wrong.
+
+Giving it `curl` and the hub's address is arbitrary HTTP with a credential
+attached. Giving it the machine's own credential makes every entry in the
+journal say the machine did what the agent did.
+
+So: an **MCP server**, spawned by the agent's CLI, holding a **task grant** —
+the agent's identity, this workspace, this task, these scopes, one hour. Every
+call the agent can make is a line in `protocol-tools.ts`, and there is no tool
+that completes a task: an agent submits for validation, it never declares its
+own success (§10.9, §11).
+
+**Where the credential is not**, which is most of the design:
+
+- **Not on the command line.** `--mcp-config` accepts a JSON string, which
+  would put the token in argv — readable in `ps` by every account on the
+  machine. `ToolSurface` carries a *path* and has no field that could carry
+  the config inline.
+- **Not in the agent's environment.** It lives in the `env` of the MCP server
+  the agent spawns. An agent that found a way to read its own environment
+  would find nothing: it can *use* the credential through the tools, never see
+  it.
+- **Not readable by anyone else.** The config file is 0600 inside the run's
+  own directory.
+
+No grant means **no tools at all**, rather than tools that would each fail
+authentication — an agent given those would report a hub that is "down",
+which points at entirely the wrong thing.
+
 ### Credentials (§18.4)
 
 Fetched **per order, at execution time**, from a route that only answers a

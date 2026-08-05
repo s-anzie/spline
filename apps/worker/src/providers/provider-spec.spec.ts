@@ -73,11 +73,14 @@ describe("provider specs", () => {
 
       it("opens exactly what it was given, and no more", () => {
         const args = claude.startArgs("go", "sess-1", {
-          mcpServers: { spline: { command: "node", args: ["mcp.js"] } },
+          mcpConfigPath: "/run/w-1/.spline/mcp.json",
           allowedTools: ["mcp__spline__publish_progress"],
         });
 
-        expect(args[args.indexOf("--mcp-config") + 1]).toContain("spline");
+        // A PATH, never the JSON: a config in argv is a credential in `ps`.
+        expect(args[args.indexOf("--mcp-config") + 1]).toBe(
+          "/run/w-1/.spline/mcp.json",
+        );
         expect(args[args.indexOf("--allowedTools") + 1]).toBe(
           "mcp__spline__publish_progress",
         );
@@ -148,7 +151,7 @@ describe("provider specs", () => {
      */
     it("cannot narrow its tool surface, and that is recorded rather than faked", () => {
       const args = codex.startArgs("go", "sess-1", {
-        mcpServers: { spline: {} },
+        mcpConfigPath: "/run/mcp.json",
         allowedTools: ["mcp__spline__x"],
       });
 

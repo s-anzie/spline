@@ -9,7 +9,16 @@ import {
   ExecutionOutcome,
   superviseProcess,
 } from "../supervision/supervisor";
-import { CLOSED_SURFACE, providerSpec, ToolSurface } from "./provider-spec";
+import { writeMcpBridge } from "../mcp/mcp-config";
+import { CLOSED_SURFACE, providerSpec } from "./provider-spec";
+
+/** §10 — what a run needs to open the protocol bridge. */
+export interface AgentGrant {
+  token: string;
+  hubUrl: string;
+  serverCommand: string;
+  serverArgs: readonly string[];
+}
 
 export interface AgentRunDeps {
   settings: ExecutionSettings;
@@ -24,8 +33,14 @@ export interface AgentRunDeps {
   realpath?: (path: string) => string;
   /** Injected so a test can say which id was assigned. */
   newSessionId?: () => string;
-  /** §18.12 — what this run may reach. Closed when absent. */
-  toolSurface?: ToolSurface;
+  /**
+   * §10, §18.10 — obtains the task grant this run acts with. Absent means no
+   * bridge: an agent that cannot identify itself is given no tools rather
+   * than tools that will all fail.
+   */
+  grantFor?: (command: ClaimedCommand) => Promise<AgentGrant | null>;
+  /** Injected so a test needs no filesystem to prove what is passed. */
+  openBridge?: typeof writeMcpBridge;
   /**
    * §7.9 — makes the workspace's directory. Injected for the same reason
    * `realpath` is: a test about planning should not have to create
@@ -88,11 +103,34 @@ export async function runAgent(
     ? (deps.newSessionId ?? randomUUID)()
     : null;
 
+  const root = (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
+    deps.workspaceRoot,
+    command.workspaceId,
+  );
+
   /**
-   * §18.5, §18.12 — closed unless the order opened something. An agent
-   * inherits nothing from the machine it happens to run on.
+   * §10, §18.12 — the protocol bridge, opened only when the hub gave this run
+   * a credential to open it with. No grant means no bridge: an agent with the
+   * tools but no identity would get an authentication error from every one of
+   * them, and report a hub that is "down".
+   *
+   * Closed otherwise, and closed is the default — an agent inherits nothing
+   * from the machine it happens to run on.
    */
-  const surface = deps.toolSurface ?? CLOSED_SURFACE;
+  const grant = deps.grantFor ? await deps.grantFor(command) : null;
+  const taskId = typeof payload.taskId === "string" ? payload.taskId : null;
+  const surface =
+    grant && taskId
+      ? (deps.openBridge ?? writeMcpBridge)({
+          directory: root,
+          hubUrl: grant.hubUrl,
+          workspaceId: command.workspaceId,
+          taskId,
+          grantToken: grant.token,
+          serverCommand: grant.serverCommand,
+          serverArgs: grant.serverArgs,
+        })
+      : CLOSED_SURFACE;
   const args =
     resumeSessionId && spec.resumeArgs
       ? spec.resumeArgs(prompt, resumeSessionId, surface)
@@ -105,10 +143,7 @@ export async function runAgent(
       // §7.9 — created before planning: containment is judged on the real
       // path, and a path that does not exist cannot be shown to be inside
       // anything. Every test pre-created it, so no test ever noticed.
-      workspaceRoot: (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
-        deps.workspaceRoot,
-        command.workspaceId,
-      ),
+      workspaceRoot: root,
       cwd: typeof payload.workdir === "string" ? payload.workdir : ".",
       env: {},
       secrets: deps.secretsFor(command),
