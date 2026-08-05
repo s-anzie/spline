@@ -91,6 +91,7 @@ model Workspace {
   repositories   Repository[]
   sessions       AgentSession[]
   commands       RuntimeCommand[]
+  runs           Run[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -232,6 +233,7 @@ model Task {
   decisions Decision[]
   notifications Notification[]
   validations Validation[]
+  runs        Run[]
 
   @@index([workspaceId, status])
   @@index([goalId])
@@ -846,6 +848,45 @@ model WorkerNode {
   @@index([status])
   @@index([registeredByType, registeredById])
   @@map("worker_nodes")
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  VALIDATING
+  COMPLETED
+  FAILED
+}
+
+/// §4.7 — one logical execution of a task. §9.12 makes every retry a NEW run,
+/// and the history is kept: three failures leave three rows, each carrying
+/// what it cost and which provider carried it.
+model Run {
+  id            String    @id @default(uuid())
+  workspaceId   String
+  taskId        String
+  /// Which retry this is, counted across the task's runs. Carried rather than
+  /// derived: a count is a query that can disagree with itself under
+  /// concurrency.
+  attemptNumber Int
+  workerId      String?
+  status        RunStatus @default(PENDING)
+  /// §4.8 — attempts are entities INSIDE this aggregate: an attempt has no
+  /// life outside its run, the same reason blockers live inside a task
+  /// (§4.22). Persisted with it (§5.19).
+  attempts      Json      @default("[]")
+  failureReason String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([taskId])
+  @@map("runs")
 }
 
 enum EnrolmentStatus {

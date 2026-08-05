@@ -14,6 +14,8 @@ import { AuditModule } from "./modules/audit/audit.module";
 import { ArtifactModule } from "./modules/artifact/artifact.module";
 import { DecisionModule } from "./modules/decision/decision.module";
 import { EventModule } from "./modules/event/event.module";
+import { ExecutionModule } from "./modules/execution/execution.module";
+import { TaskRetryModule } from "./modules/task/infrastructure/task-retry.adapter";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { NotificationModule } from "./modules/notification/notification.module";
@@ -50,6 +52,8 @@ import { PrismaModule } from "./prisma/prisma.module";
     WorkspaceModule,
     GoalModule,
     TaskModule,
+    TaskRetryModule,
+    ExecutionModule,
     ArtifactModule,
     DecisionModule,
     EventModule,
