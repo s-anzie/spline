@@ -25,7 +25,7 @@ import {
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
 import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
-import { ACTOR_TYPES, ActorType } from "../../identity/domain/actor";
+import { ACTOR_TYPES, ActorRef, ActorType } from "../../identity/domain/actor";
 import { ActorAuthGuard } from "../../identity/interface/actor-auth.guard";
 import { CurrentActor } from "../../identity/interface/current-actor.decorator";
 import {
@@ -241,6 +241,18 @@ function toProviderView(profile: ProviderProfile, now: Date) {
 const DEFAULT_WORKER_STALE_MS = 2 * 60 * 1000;
 
 /**
+ * 403 rather than 404: the machine exists, and answering "not found" would
+ * send an operator debugging a machine that is fine (§20.6).
+ */
+const IMPERSONATION = ["WorkerImpersonationError"];
+
+function asActorRef(actor: ActorIdentity): ActorRef {
+  // The guard already resolved this identity, so the reference cannot be
+  // invalid here — `.value` is safe by the time the request reaches a route.
+  return ActorRef.create(actor.actorType, actor.actorId).value;
+}
+
+/**
  * Machines live above workspaces: registering one is not a workspace act,
  * because it has no workspace yet (§6.3). The catalogue of providers is
  * global too (§4.14), so both sit outside `/workspaces/:id`.
@@ -263,10 +275,16 @@ export class RuntimeController {
    * none yet. Authentication still applies, so only a known actor may.
    */
   @Post("workers")
-  async register(@Body() dto: RegisterWorkerDto): Promise<{ workerId: string }> {
-    const result = await this.registerWorker.execute(dto);
+  async register(
+    @CurrentActor() actor: ActorIdentity,
+    @Body() dto: RegisterWorkerDto,
+  ): Promise<{ workerId: string }> {
+    const result = await this.registerWorker.execute({
+      ...dto,
+      registeredBy: asActorRef(actor),
+    });
     if (result.isFailure) {
-      throw toHttpException(result.error);
+      throw toHttpException(result.error, { forbidden: IMPERSONATION });
     }
     return result.value;
   }
@@ -275,11 +293,16 @@ export class RuntimeController {
   @HttpCode(200)
   async beat(
     @Param("workerId") workerId: string,
+    @CurrentActor() actor: ActorIdentity,
     @Body() dto: HeartbeatDto,
   ): Promise<{ ok: true }> {
-    const result = await this.heartbeat.execute({ workerId, status: dto.status });
+    const result = await this.heartbeat.execute({
+      workerId,
+      actor: asActorRef(actor),
+      status: dto.status,
+    });
     if (result.isFailure) {
-      throw toHttpException(result.error);
+      throw toHttpException(result.error, { forbidden: IMPERSONATION });
     }
     return { ok: true };
   }
@@ -294,11 +317,16 @@ export class RuntimeController {
   @HttpCode(200)
   async claim(
     @Param("workerId") workerId: string,
+    @CurrentActor() actor: ActorIdentity,
     @Body() dto: ClaimCommandsDto,
   ) {
-    const result = await this.claimCommands.execute({ workerId, max: dto.max });
+    const result = await this.claimCommands.execute({
+      workerId,
+      actor: asActorRef(actor),
+      max: dto.max,
+    });
     if (result.isFailure) {
-      throw toHttpException(result.error);
+      throw toHttpException(result.error, { forbidden: IMPERSONATION });
     }
     return result.value;
   }
@@ -309,18 +337,20 @@ export class RuntimeController {
   async report(
     @Param("workerId") workerId: string,
     @Param("commandId") commandId: string,
+    @CurrentActor() actor: ActorIdentity,
     @Body() dto: ReportCommandDto,
   ): Promise<{ ok: true }> {
     const result = await this.reportCommand.execute({
       commandId,
       workerId,
+      actor: asActorRef(actor),
       outcome: dto.outcome,
       result: dto.result,
       failureReason: dto.failureReason,
     });
     if (result.isFailure) {
       throw toHttpException(result.error, {
-        forbidden: ["CommandAlreadyClaimedError"],
+        forbidden: ["CommandAlreadyClaimedError", ...IMPERSONATION],
       });
     }
     return { ok: true };

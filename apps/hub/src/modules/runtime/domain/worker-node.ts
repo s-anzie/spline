@@ -6,6 +6,7 @@ import { Result } from "../../../kernel/domain/result";
 import { isStale } from "../../../kernel/domain/staleness";
 import { StateMachine } from "../../../kernel/domain/state-machine";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
+import { ActorRef } from "../../identity/domain/actor";
 
 /** §4.11 */
 export const WORKER_STATUSES = [
@@ -69,6 +70,17 @@ export class WorkerAttached extends BaseDomainEvent {
 
 interface WorkerProps {
   hostname: string;
+  /**
+   * §18 — the actor that registered this machine, and the only one allowed
+   * to speak as it afterwards.
+   *
+   * Every machine route carries the machine's id in its path, and nothing
+   * used to tie that id to the caller: any authenticated actor could claim
+   * the orders addressed to somebody else's machine — receiving their
+   * payloads, and leaving the real machine with nothing, since the orders
+   * were already CLAIMED.
+   */
+  registeredBy: ActorRef;
   labels: string[];
   architecture: string;
   operatingSystem: string;
@@ -83,6 +95,7 @@ interface WorkerProps {
 
 export interface RegisterWorkerProps {
   hostname: string;
+  registeredBy: ActorRef;
   architecture: string;
   operatingSystem: string;
   capabilities?: readonly string[];
@@ -110,6 +123,7 @@ export class WorkerNode extends AggregateRoot<WorkerProps> {
     const worker = new WorkerNode(
       {
         hostname: input.hostname.trim(),
+        registeredBy: input.registeredBy,
         labels: [...(input.labels ?? [])],
         architecture: input.architecture.trim(),
         operatingSystem: input.operatingSystem.trim(),
@@ -135,6 +149,22 @@ export class WorkerNode extends AggregateRoot<WorkerProps> {
 
   get hostname(): string {
     return this.props.hostname;
+  }
+
+  get registeredBy(): ActorRef {
+    return this.props.registeredBy;
+  }
+
+  /**
+   * The one question every machine route has to ask before it acts: is the
+   * caller this machine? Compared on both halves of the reference — an agent
+   * whose id happens to match a worker's is still not that worker.
+   */
+  isOperatedBy(actor: ActorRef): boolean {
+    return (
+      this.props.registeredBy.type === actor.type &&
+      this.props.registeredBy.actorId === actor.actorId
+    );
   }
 
   get labels(): readonly string[] {

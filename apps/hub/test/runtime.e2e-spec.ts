@@ -457,6 +457,63 @@ describe("Runtime (e2e)", () => {
     expect(listed.body[0].result).toEqual({ exitCode: 0 });
   });
 
+  /**
+   * §18 — a machine's own routes carry the machine's id in the path, and
+   * nothing used to bind that id to the caller. Any authenticated actor,
+   * including the least privileged one in the workspace, could claim the
+   * orders addressed to somebody else's machine: it received their payloads,
+   * and the real machine never got them because they were already CLAIMED.
+   *
+   * The machine belongs to whoever registered it, and only that actor may
+   * speak as it.
+   */
+  it("refuses to let another actor speak as a machine", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+    await ctx
+      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { secret: "x" } })
+      .expect(201);
+
+    await ctx
+      .asAgent(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(403);
+
+    await ctx
+      .asAgent(request(http).post(`/runtime/workers/${ctx.workerId}/heartbeat`))
+      .send({})
+      .expect(403);
+
+    // And the orders are still there for the machine they were addressed to.
+    const claimed = await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+    expect(claimed.body).toHaveLength(1);
+  });
+
+  /**
+   * The other half of the same defect: registration upserts by hostname, so
+   * announcing an existing machine's hostname used to return that machine's
+   * id — a takeover in one call, no credential of its own needed.
+   */
+  it("refuses to re-register a machine registered by somebody else", async () => {
+    const ctx = await setup();
+
+    await ctx
+      .asAgent(request(http).post("/runtime/workers"))
+      .send({
+        hostname: "workshop-01",
+        architecture: "x86_64",
+        operatingSystem: "linux",
+      })
+      .expect(403);
+  });
+
   it("refuses an order for a machine that does not serve the workspace", async () => {
     const ctx = await setup();
 

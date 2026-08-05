@@ -29,6 +29,18 @@ export class WorkerNotAttachedError extends DomainError {
   }
 }
 
+/**
+ * §18 — a machine's routes name the machine in their path; only the actor
+ * that registered it may use them. Refused as a forbidden act, never as "not
+ * found", because the machine does exist and saying otherwise would be a lie
+ * the operator has to debug.
+ */
+export class WorkerImpersonationError extends DomainError {
+  constructor(hostname: string) {
+    super(`Machine "${hostname}" is operated by another actor (§18)`);
+  }
+}
+
 /** §4.14 — a provider that is out of quota cannot take new work. */
 export class ProviderUnavailableError extends DomainError {
   constructor(provider: string, reason: string | null) {

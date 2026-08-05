@@ -20,6 +20,15 @@ export default async function globalSetup(): Promise<void> {
 
   process.env.DATABASE_URL = testDatabaseUrl;
 
+  /**
+   * The rate limits are real and shipped on (§18), but a suite that registers
+   * forty users in a minute is exactly the traffic they exist to stop. Raised
+   * here for the suite at large; `security.e2e-spec.ts` lowers them again for
+   * itself, which is where the limit is actually proven.
+   */
+  process.env.THROTTLE_LIMIT = "1000000";
+  process.env.AUTH_THROTTLE_LIMIT = "1000000";
+
   const databasePackageDir = path.resolve(__dirname, "../../../../packages/database");
 
   execFileSync("npx", ["prisma", "migrate", "deploy"], {

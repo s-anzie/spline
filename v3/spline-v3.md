@@ -1719,6 +1719,33 @@ de machine (0.3.2) et se généralise à toute action de première liaison.
 Toute copie de secret produite pour l'isolation (sandbox, machine locale) doit être resynchronisée quand sa
 source change, jamais figée à sa création. Détail et justification en 7.14.
 
+### 18.10 Un identifiant dans un chemin n'est pas une preuve d'identité
+
+Une ressource qui a un propriétaire porte ce propriétaire **en base** et le vérifie à **chaque** acte, même quand
+la route « appartient » manifestement à cette ressource. L'identifiant présent dans le chemin est une donnée
+fournie par l'appelant, jamais une preuve.
+
+Rencontré concrètement sur les routes de machine : `POST /runtime/workers/:workerId/commands/claim` n'était gardée
+que par « être authentifié », si bien que n'importe quel acteur du système pouvait réclamer les ordres adressés à
+la machine d'un autre — en lire les charges utiles, et les rendre inaccessibles à leur destinataire, déjà
+`CLAIMED`. Même trou à l'enregistrement, qui fait un upsert par nom d'hôte. `WorkerNode` porte donc `registeredBy`,
+vérifié avant tout battement, réclamation, rapport ou ré-enregistrement. Le refus est un **403 et non un 404** : la
+ressource existe, et répondre « introuvable » enverrait un opérateur déboguer une machine qui va bien (§20.6).
+
+### 18.11 Le durcissement HTTP appartient à une fonction testable, pas au bootstrap
+
+CORS, en-têtes de sécurité, limite de débit et plafond de taille de corps sont des contrôles de sécurité comme les
+autres : ils doivent être **prouvés par un test**. Écrits directement dans le point d'entrée du serveur, ils ne le
+peuvent pas — un test d'intégration construit l'application depuis le graphe de modules et n'exécute jamais ce
+point d'entrée. Ils vivent donc dans une fonction appelée par les deux.
+
+Valeurs de référence : origines navigateur en liste blanche (aucune par défaut) ; plafond de corps explicite, parce
+qu'un `payload` de politique ou de commande accepte du JSON arbitraire par conception ; limite de débit globale
+généreuse, et limite stricte sur les routes qui devinent un secret (`/auth/login`, `/auth/register`), puisque le
+hachage rend chaque tentative bon marché pour l'attaquant et coûteuse pour le serveur. Une clé de signature est
+refusée au démarrage en dessous de 32 caractères. Un Worker refuse de démarrer si son hub est joignable en `http`
+ailleurs qu'en loopback : son jeton porteur voyagerait en clair.
+
 ---
 
 ## 19. Extensibility & Community

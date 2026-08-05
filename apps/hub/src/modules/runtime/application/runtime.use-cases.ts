@@ -29,6 +29,7 @@ import {
 import {
   ProviderUnavailableError,
   SessionNotFoundError,
+  WorkerImpersonationError,
   WorkerNotAttachedError,
   WorkerNotFoundError,
 } from "../domain/runtime.errors";
@@ -36,6 +37,8 @@ import { WorkerNode, WorkerStatus } from "../domain/worker-node";
 
 export interface RegisterWorkerInput {
   hostname: string;
+  /** §18 — the actor announcing it, and the only one that may speak as it. */
+  registeredBy: ActorRef;
   architecture: string;
   operatingSystem: string;
   capabilities?: readonly string[];
@@ -55,7 +58,10 @@ export interface RegisterWorkerInput {
 @Injectable()
 export class RegisterWorkerUseCase
   implements
-    UseCase<RegisterWorkerInput, Result<{ workerId: string }, GuardViolation>>
+    UseCase<
+      RegisterWorkerInput,
+      Result<{ workerId: string }, GuardViolation | WorkerImpersonationError>
+    >
 {
   constructor(
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
@@ -65,10 +71,16 @@ export class RegisterWorkerUseCase
 
   async execute(
     input: RegisterWorkerInput,
-  ): Promise<Result<{ workerId: string }, GuardViolation>> {
+  ): Promise<Result<{ workerId: string }, GuardViolation | WorkerImpersonationError>> {
     const now = this.clock.now();
     const existing = await this.workers.findByHostname(input.hostname.trim());
     if (existing) {
+      // §18 — registration upserts by hostname, so announcing an existing
+      // machine's hostname used to hand back that machine's id: a takeover in
+      // one call. A restart is the same actor and still succeeds.
+      if (!existing.isOperatedBy(input.registeredBy)) {
+        return Result.fail(new WorkerImpersonationError(existing.hostname));
+      }
       existing.heartbeat(now);
       await this.workers.save(existing);
       await flushDomainEvents(existing, this.publisher);
@@ -150,6 +162,8 @@ export class AttachWorkerUseCase
 
 export interface WorkerHeartbeatInput {
   workerId: string;
+  /** §18 — the caller, which must be the machine it claims to be. */
+  actor: ActorRef;
   status?: WorkerStatus;
 }
 
@@ -159,7 +173,10 @@ export class WorkerHeartbeatUseCase
   implements
     UseCase<
       WorkerHeartbeatInput,
-      Result<void, WorkerNotFoundError | InvalidStateTransitionError>
+      Result<
+        void,
+        WorkerNotFoundError | WorkerImpersonationError | InvalidStateTransitionError
+      >
     >
 {
   constructor(
@@ -170,10 +187,18 @@ export class WorkerHeartbeatUseCase
 
   async execute(
     input: WorkerHeartbeatInput,
-  ): Promise<Result<void, WorkerNotFoundError | InvalidStateTransitionError>> {
+  ): Promise<
+    Result<
+      void,
+      WorkerNotFoundError | WorkerImpersonationError | InvalidStateTransitionError
+    >
+  > {
     const worker = await this.workers.findById(input.workerId);
     if (!worker) {
       return Result.fail(new WorkerNotFoundError(input.workerId));
+    }
+    if (!worker.isOperatedBy(input.actor)) {
+      return Result.fail(new WorkerImpersonationError(worker.hostname));
     }
 
     const now = this.clock.now();

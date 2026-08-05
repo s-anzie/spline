@@ -1,5 +1,19 @@
 import { plainToInstance } from "class-transformer";
-import { IsNotEmpty, IsNumberString, IsString, validateSync } from "class-validator";
+import {
+  IsNotEmpty,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  MinLength,
+  validateSync,
+} from "class-validator";
+
+/**
+ * A signing key is only as strong as its length, and "not empty" accepted
+ * `JWT_SECRET=x`. 32 characters is the floor below which a key is guessable
+ * offline; the shipped .env.example generates far more (§18).
+ */
+const MINIMUM_KEY_LENGTH = 32;
 
 class EnvironmentVariables {
   @IsNumberString()
@@ -14,7 +28,7 @@ class EnvironmentVariables {
   DATABASE_URL_TEST!: string;
 
   @IsString()
-  @IsNotEmpty()
+  @MinLength(MINIMUM_KEY_LENGTH)
   JWT_SECRET!: string;
 
   @IsString()
@@ -27,8 +41,35 @@ class EnvironmentVariables {
    * one must not compromise the other.
    */
   @IsString()
-  @IsNotEmpty()
+  @MinLength(MINIMUM_KEY_LENGTH)
   AUDIT_SIGNING_KEY!: string;
+
+  /**
+   * Comma-separated list of browser origins allowed to call this API. Absent
+   * means none — a worker and a server-side client send no Origin and are
+   * unaffected, so the safe default costs nothing until a UI needs listing.
+   */
+  @IsOptional()
+  @IsString()
+  CORS_ORIGINS?: string;
+
+  /** Rate limits and body ceiling: see config/throttle.ts and bootstrap.ts. */
+  @IsOptional()
+  @IsNumberString()
+  THROTTLE_TTL_MS?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  THROTTLE_LIMIT?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  AUTH_THROTTLE_LIMIT?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  BODY_LIMIT?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

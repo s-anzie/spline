@@ -10,7 +10,9 @@ import {
   UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 
+import { authThrottleLimit, throttleTtlMs } from "../../../config/throttle";
 import { ActorIdentity } from "../application/permissions.service";
 import { LoginUseCase } from "../application/login.use-case";
 import { RegisterUserUseCase } from "../application/register-user.use-case";
@@ -22,6 +24,15 @@ import { ActorAuthGuard } from "./actor-auth.guard";
 import { CurrentActor } from "./current-actor.decorator";
 import { LoginDto, RegisterDto } from "./dto/auth.dtos";
 
+/**
+ * The two routes a stranger may call without a token, which is exactly what
+ * makes them the two routes worth flooding: /login guesses a password,
+ * /register mints accounts. Both are narrowed well below the global ceiling
+ * (§18) — a person logs in a handful of times a minute at worst, and a
+ * script that needs more than that is not a person.
+ */
+const GUESSING_A_SECRET = { default: { ttl: throttleTtlMs(), limit: authThrottleLimit() } };
+
 @Controller("auth")
 export class AuthController {
   constructor(
@@ -31,6 +42,7 @@ export class AuthController {
   ) {}
 
   @Post("register")
+  @Throttle(GUESSING_A_SECRET)
   async register(@Body() dto: RegisterDto): Promise<{
     userId: string;
     organizationId: string;
@@ -57,6 +69,7 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(200)
+  @Throttle(GUESSING_A_SECRET)
   async logIn(@Body() dto: LoginDto): Promise<{ accessToken: string; userId: string }> {
     const result = await this.login.execute(dto);
     if (result.isFailure) {

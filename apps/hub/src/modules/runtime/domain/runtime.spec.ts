@@ -5,11 +5,13 @@ import { WorkerNode } from "./worker-node";
 const now = new Date("2026-08-04T12:00:00Z");
 const later = new Date("2026-08-04T12:10:00Z");
 const agent = ActorRef.create("AGENT", "a-1").value;
+const operator = ActorRef.create("WORKER", "w-1").value;
 const MINUTE = 60 * 1000;
 
 function worker(overrides: Record<string, unknown> = {}) {
   return WorkerNode.register({
     hostname: "workshop-01",
+    registeredBy: operator,
     architecture: "x86_64",
     operatingSystem: "linux",
     capabilities: ["docker", "node"],

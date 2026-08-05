@@ -17,8 +17,10 @@ import {
   WORKER_STORE,
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
+import { ActorRef } from "../../identity/domain/actor";
 import {
   CommandAlreadyClaimedError,
+  WorkerImpersonationError,
   WorkerNotAttachedError,
   WorkerNotFoundError,
 } from "../domain/runtime.errors";
@@ -75,6 +77,8 @@ export class EnqueueCommandUseCase
 
 export interface ClaimCommandsInput {
   workerId: string;
+  /** §18 — the caller, which must be the machine whose queue this is. */
+  actor: ActorRef;
   max?: number;
 }
 
@@ -92,7 +96,11 @@ export interface ClaimedCommand {
  */
 @Injectable()
 export class ClaimCommandsUseCase
-  implements UseCase<ClaimCommandsInput, Result<ClaimedCommand[], WorkerNotFoundError>>
+  implements
+    UseCase<
+      ClaimCommandsInput,
+      Result<ClaimedCommand[], WorkerNotFoundError | WorkerImpersonationError>
+    >
 {
   constructor(
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
@@ -103,10 +111,19 @@ export class ClaimCommandsUseCase
 
   async execute(
     input: ClaimCommandsInput,
-  ): Promise<Result<ClaimedCommand[], WorkerNotFoundError>> {
+  ): Promise<Result<ClaimedCommand[], WorkerNotFoundError | WorkerImpersonationError>> {
     const worker = await this.workers.findById(input.workerId);
     if (!worker) {
       return Result.fail(new WorkerNotFoundError(input.workerId));
+    }
+    /**
+     * §18 — the id in the path is not a credential. Without this, any
+     * authenticated actor could pull the orders addressed to somebody else's
+     * machine: it would read their payloads, and the machine they were meant
+     * for would find nothing left to claim.
+     */
+    if (!worker.isOperatedBy(input.actor)) {
+      return Result.fail(new WorkerImpersonationError(worker.hostname));
     }
 
     const now = this.clock.now();
@@ -142,6 +159,8 @@ export class ClaimCommandsUseCase
 export interface ReportCommandInput {
   commandId: string;
   workerId: string;
+  /** §18 — the caller, which must be the machine that holds the order. */
+  actor: ActorRef;
   outcome: "COMPLETED" | "FAILED";
   result?: Record<string, unknown>;
   failureReason?: string;
@@ -150,6 +169,7 @@ export interface ReportCommandInput {
 export type ReportCommandError =
   | GuardViolation
   | WorkerNotFoundError
+  | WorkerImpersonationError
   | CommandAlreadyClaimedError
   | InvalidStateTransitionError;
 
@@ -160,6 +180,7 @@ export class ReportCommandUseCase
 {
   constructor(
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
+    @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
   ) {}
@@ -168,6 +189,16 @@ export class ReportCommandUseCase
     const guarded = Guard.againstEmpty(input.commandId, "commandId");
     if (guarded.isFailure) {
       return Result.fail(guarded.error);
+    }
+    // Checked before the order is even read: "is the caller this machine?" is
+    // a question about the caller, and the answer must not depend on which
+    // order they name (§18).
+    const worker = await this.workers.findById(input.workerId);
+    if (!worker) {
+      return Result.fail(new WorkerNotFoundError(input.workerId));
+    }
+    if (!worker.isOperatedBy(input.actor)) {
+      return Result.fail(new WorkerImpersonationError(worker.hostname));
     }
     const command = await this.commands.findById(guarded.value);
     if (!command) {

@@ -30,6 +30,8 @@ export class PrismaWorkerStore implements WorkerStore {
   async save(worker: WorkerNode): Promise<void> {
     const data = {
       hostname: worker.hostname,
+      registeredByType: worker.registeredBy.type,
+      registeredById: worker.registeredBy.actorId,
       labels: [...worker.labels],
       architecture: worker.architecture,
       operatingSystem: worker.operatingSystem,
@@ -161,6 +163,10 @@ function toWorker(row: WorkerRow): WorkerNode {
   return WorkerNode.reconstitute(
     {
       hostname: row.hostname,
+      registeredBy: ActorRef.create(
+        row.registeredByType as ActorType,
+        row.registeredById,
+      ).value,
       labels: (row.labels ?? []) as string[],
       architecture: row.architecture,
       operatingSystem: row.operatingSystem,

@@ -21,6 +21,38 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/**
+ * §18 — the worker attaches its bearer token to every request it makes. Over
+ * plain http that token crosses the network readable by anything on the
+ * path, and the holder of it can register workers, claim commands and report
+ * results as this machine.
+ *
+ * Loopback is the exception, and only loopback: a hub on the same host during
+ * development never leaves the machine. Anything else must be https, refused
+ * at startup rather than discovered in a packet capture.
+ */
+function requireSafeHubUrl(raw: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`HUB_URL is not a valid URL: ${raw}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(`HUB_URL must be http or https, got ${parsed.protocol}`);
+  }
+  if (parsed.protocol === "http:" && !LOOPBACK_HOSTS.has(parsed.hostname)) {
+    throw new Error(
+      `HUB_URL must use https to reach ${parsed.hostname}: the worker token ` +
+        "would otherwise be sent in clear text. Plain http is allowed for " +
+        "localhost only.",
+    );
+  }
+  return raw.replace(/\/$/, "");
+}
+
 /**
  * Read once, at startup, and refused loudly if incomplete. A worker that
  * starts without a hub to talk to would look healthy while doing nothing —
@@ -38,7 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     throw new Error("HEARTBEAT_INTERVAL_MS must be at least 1000");
   }
   return {
-    hubUrl: env.HUB_URL!.trim().replace(/\/$/, ""),
+    hubUrl: requireSafeHubUrl(env.HUB_URL!.trim()),
     token: env.WORKER_TOKEN!.trim(),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),
     heartbeatIntervalMs: interval,

@@ -1,8 +1,11 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { APP_GUARD } from "@nestjs/core";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { validateEnv } from "./config/env.validation";
+import { globalThrottleLimit, throttleTtlMs } from "./config/throttle";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
 import { AuditModule } from "./modules/audit/audit.module";
@@ -31,6 +34,12 @@ import { PrismaModule } from "./prisma/prisma.module";
     // wildcard: lets realtime relays subscribe once to "**" and forward every
     // domain event, instead of hard-coding a listener per event type.
     EventEmitterModule.forRoot({ wildcard: true, delimiter: "." }),
+    /**
+     * §18 — nothing stood between a caller and a million password attempts
+     * against /auth/login. The ceiling declared here applies to every route;
+     * the routes that guess a secret narrow it themselves with `@Throttle`.
+     */
+    ThrottlerModule.forRoot([{ ttl: throttleTtlMs(), limit: globalThrottleLimit() }]),
     KernelModule,
     PrismaModule,
     HealthModule,
@@ -53,5 +62,6 @@ import { PrismaModule } from "./prisma/prisma.module";
     ValidationModule,
     WorkloadModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

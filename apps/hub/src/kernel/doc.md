@@ -415,7 +415,7 @@ succès.
 Le troisième n'était pas une hypothèse : ajouter `GET /:entryId` au contrôleur d'audit a fait passer
 `GET /audit/verify` en 404, et une seule assertion e2e l'a remarqué.
 
-### 5.4 Le défaut qui apparaît quand un module en débloque un autre
+### 5.5 Le défaut qui apparaît quand un module en débloque un autre
 
 Trois modules ont été livrés en disant, à juste titre, « X n'existe pas encore ». Puis X a été livré, et
 **la phrase est restée**. Un audit transversal en a trouvé un cas net — `scheduling` expliquait que
@@ -433,6 +433,51 @@ découle :
 Les invariants structurels (§5.1 à §5.3) attrapent les régressions de code. Celui-ci ne peut pas être
 automatisé — une phrase périmée compile parfaitement — donc il est écrit ici, et l'audit d'intégration
 qui suit chaque module est l'endroit où on le vérifie.
+
+### 5.6 Revue de sécurité — l'identifiant dans l'URL n'est pas une preuve d'identité
+
+Revue menée sur le hub et le worker après le module runtime. Ce qui tenait déjà : bcrypt sur tous les
+secrets, comparaison HMAC en temps constant pour la chaîne d'audit, message de login identique pour un
+compte inconnu et un mot de passe faux (pas d'énumération de comptes), une seule requête SQL brute et
+elle est paramétrée, aucun secret dans les événements de domaine, une seule route sans garde et c'est
+`/health`.
+
+**Le défaut sérieux, et il n'était visible qu'en lisant une route et son contrat d'authentification
+ensemble.** Les routes d'une machine portent son identifiant dans le chemin — `POST
+/runtime/workers/:workerId/commands/claim` — et la seule garde était « être authentifié ». Rien ne liait
+`:workerId` à l'appelant. N'importe quel acteur authentifié, y compris le rôle le plus faible d'un
+workspace, pouvait donc **réclamer les ordres adressés à la machine d'un autre** : il en recevait les
+charges utiles, et la vraie machine ne trouvait plus rien à prendre, les ordres étant déjà `CLAIMED`.
+Le même trou existait à l'enregistrement, qui fait un upsert par nom d'hôte : annoncer le nom d'hôte
+d'une machine existante rendait son identifiant — une reprise d'identité en un appel.
+
+La règle qui en découle, et qui vaut au-delà du runtime :
+
+> **Un identifiant dans un chemin est une donnée fournie par l'appelant, jamais une preuve.** Toute
+> ressource qui a un propriétaire doit le porter en base et le vérifier à chaque acte, même quand la
+> route « appartient » manifestement à cette ressource.
+
+`WorkerNode` porte désormais `registeredBy: ActorRef`, et `isOperatedBy()` est appelé avant tout acte de
+machine (battement, réclamation, rapport, ré-enregistrement). Refus en **403, pas 404** : la machine
+existe, et répondre « introuvable » enverrait un opérateur déboguer une machine qui va bien (§20.6).
+
+**Quatre durcissements HTTP, tous absents et tous hors module.** `enableCors()` sans argument autorisait
+toutes les origines ; aucun en-tête de sécurité ; aucune limite de débit sur `/auth/login`, alors que
+bcrypt rend chaque tentative bon marché pour l'attaquant et coûteuse pour nous ; aucun plafond de taille
+de corps, alors qu'un `payload` de politique ou de commande accepte du JSON arbitraire par conception.
+
+Le point méthodologique compte plus que la liste : **ces quatre protections vivaient dans `main.ts`, que
+`moduleRef.createNestApplication()` n'exécute jamais**. Une protection écrite là est une protection
+qu'aucun test e2e ne peut observer — et un contrôle de sécurité que personne ne vérifie est un contrôle
+de sécurité que personne n'a. Elles sont donc extraites dans `configureApp()`, appelée par `main.ts`
+**et** par `test/security.e2e-spec.ts`, qui les prouve une par une.
+
+Enfin, côté worker : le jeton porteur partait vers l'URL configurée quelle qu'elle soit, `http://` compris.
+`HUB_URL` exige désormais `https`, sauf loopback où rien ne quitte la machine.
+
+**Un invariant structurel ajouté** : `authenticated-routes.spec.ts` — aucun contrôleur sans garde, liste
+d'exceptions nommée (`/health` seul). L'omission d'une garde ne se remarque pas en revue : elle ressemble
+à rien.
 
 ## 6. Décisions notables (et leurs raisons)
 
