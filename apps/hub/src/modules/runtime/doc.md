@@ -24,7 +24,7 @@ local ; **en cas de divergence, le Control Plane fait autorité** » :
 | §4.14 | le catalogue de providers et leur disponibilité | l'appel au provider |
 | §6.3 | l'enregistrement, le rattachement à un workspace | ce qu'on envoie en s'enregistrant |
 | §6.4 | juger qu'un heartbeat manque | l'émettre |
-| §6.6 | la reprise après panne | rien : elle est morte |
+| §6.6 | **détecter** l'absence (la sonde) ; *marquer* et remettre en file restent à faire, voir §3 | rien : elle est morte |
 | §6.8 | les points d'entrée de l'API Runtime | leurs appelants |
 
 **Ce module est donc un registre et un arbitre**, pas un exécuteur. `apps/worker` est un livrable

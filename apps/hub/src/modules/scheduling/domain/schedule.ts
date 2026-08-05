@@ -57,8 +57,15 @@ const SETTLED: readonly TaskStatus[] = ["COMPLETED", "CANCELLED", "FAILED"];
 const IN_FLIGHT: readonly TaskStatus[] = ["RUNNING", "VALIDATING"];
 
 /**
- * §9 — "il ne réalise jamais le travail : il décide où et quand". The "où"
- * needs Workers (§9.8-9.9), which do not exist; the "quand" is this.
+ * §9 — "il ne réalise jamais le travail : il décide où et quand". This is the
+ * "quand".
+ *
+ * The "où" needed Workers, and they now exist (runtime module). What is still
+ * missing is smaller and nameable: matching a task's constraints (§9.8) to a
+ * worker's declared capabilities (§9.9), and a command queue to hand the
+ * assignment to. The queue below is already ordered, so assigning becomes
+ * "take the head that fits" — this comment says so rather than repeating that
+ * Workers do not exist, which stopped being true.
  *
  * A pure function, and nothing is stored: a schedule is a CONCLUSION, valid
  * only for the state it was computed from. Persisting it would create a

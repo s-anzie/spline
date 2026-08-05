@@ -415,6 +415,25 @@ succès.
 Le troisième n'était pas une hypothèse : ajouter `GET /:entryId` au contrôleur d'audit a fait passer
 `GET /audit/verify` en 404, et une seule assertion e2e l'a remarqué.
 
+### 5.4 Le défaut qui apparaît quand un module en débloque un autre
+
+Trois modules ont été livrés en disant, à juste titre, « X n'existe pas encore ». Puis X a été livré, et
+**la phrase est restée**. Un audit transversal en a trouvé un cas net — `scheduling` expliquait que
+l'assignation manquait « parce qu'il n'y a pas de Worker », alors que le module runtime venait de les
+créer — et un cas de contradiction interne, où le tableau d'un doc revendiquait ce que sa propre section
+de reports déclarait différé.
+
+Ce n'est pas de la cosmétique : ces phrases sont la seule explication qu'un lecteur a de **pourquoi**
+quelque chose manque, et une explication périmée envoie chercher au mauvais endroit. La règle qui en
+découle :
+
+> **Livrer un module, c'est aussi relire ce que les autres disaient de son absence.** Un report nommé est
+> une dette ; quand la dette est payée, la ligne qui la nommait doit changer dans le même mouvement.
+
+Les invariants structurels (§5.1 à §5.3) attrapent les régressions de code. Celui-ci ne peut pas être
+automatisé — une phrase périmée compile parfaitement — donc il est écrit ici, et l'audit d'intégration
+qui suit chaque module est l'endroit où on le vérifie.
+
 ## 6. Décisions notables (et leurs raisons)
 
 | Décision | Raison |
