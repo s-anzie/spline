@@ -1,5 +1,16 @@
-import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
-import { IsNotEmpty, IsOptional, IsString } from "class-validator";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
+import { IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
+
+import { PRIORITIES, Priority } from "../../../kernel/domain/priority";
 
 import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
@@ -9,11 +20,21 @@ import {
   PermissionsGuard,
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
+import { PreemptForTaskUseCase } from "../application/preempt.use-case";
 import {
   GetNextForActorUseCase,
   GetScheduleUseCase,
 } from "../application/schedule.use-cases";
 import { Schedule } from "../domain/schedule";
+
+export class PreemptDto {
+  @IsString()
+  @IsNotEmpty()
+  claimantTaskId!: string;
+
+  @IsIn(PRIORITIES)
+  claimantPriority!: Priority;
+}
 
 export class ScheduleQueryDto {
   @IsOptional()
@@ -50,6 +71,7 @@ export class SchedulingController {
   constructor(
     private readonly schedule: GetScheduleUseCase,
     private readonly next: GetNextForActorUseCase,
+    private readonly preemptFor: PreemptForTaskUseCase,
   ) {}
 
   /** §9.5/§9.7 — the workspace's queue. Reading it cannot change anything. */
@@ -71,6 +93,35 @@ export class SchedulingController {
    * "nothing". An empty list teaches nobody anything, and a system fully up
    * to date then goes quiet for good.
    */
+  /**
+   * §9.14 — makes room for an urgent task by interrupting a less urgent one.
+   *
+   * Declared BEFORE the parametric reads below (there are none here today,
+   * but the shadowing invariant exists because that changed once already).
+   * `manage_tasks` rather than `execute_tasks`: interrupting somebody else's
+   * work is an act of scheduling, not of execution, and no agent role holds
+   * it.
+   */
+  @Post("preempt")
+  @HttpCode(200)
+  @RequirePermission("manage_tasks")
+  async preempt(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: PreemptDto,
+  ) {
+    const result = await this.preemptFor.execute({
+      workspaceId,
+      claimantTaskId: dto.claimantTaskId,
+      claimantPriority: dto.claimantPriority,
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        conflicts: ["NoPreemptableTaskError"],
+      });
+    }
+    return result.value;
+  }
+
   @Get("mine")
   @RequirePermission("read_workspace_state")
   async mine(

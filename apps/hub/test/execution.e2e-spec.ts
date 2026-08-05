@@ -308,3 +308,171 @@ describe("Execution (e2e)", () => {
     ).expect(404);
   });
 });
+
+/**
+ * §9.14 — "Une tâche critique peut interrompre une tâche moins prioritaire si
+ * le Lease est récupérable et la reprise possible."
+ *
+ * Lives beside the execution suite because preemption is only meaningful once
+ * runs exist: the two conditions §9.14 names are both answered by a run.
+ */
+describe("Preemption (e2e)", () => {
+  let app: INestApplication;
+  let http: ReturnType<INestApplication["getHttpServer"]>;
+  let prisma: PrismaService;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    await app.init();
+    http = app.getHttpServer();
+    prisma = app.get(PrismaService);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function workspace() {
+    const registered = await request(http)
+      .post("/auth/register")
+      .send({ email: "o@example.com", password: "a-strong-password", displayName: "O" })
+      .expect(201);
+    const logged = await request(http)
+      .post("/auth/login")
+      .send({ email: "o@example.com", password: "a-strong-password" })
+      .expect(200);
+    const token = logged.body.accessToken as string;
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${token}`);
+    const ws = await auth(request(http).post("/workspaces"))
+      .send({ organizationId: registered.body.organizationId, name: "Core" })
+      .expect(201);
+    const workspaceId = ws.body.workspaceId as string;
+    const goal = await auth(request(http).post(`/workspaces/${workspaceId}/goals`))
+      .send({ title: "Ship", successCriteria: ["ok"] })
+      .expect(201);
+
+    /** A task walked all the way to RUNNING, with a run that has attempted. */
+    const runningTask = async (title: string, priority: string, attempted = true) => {
+      const task = await auth(request(http).post(`/workspaces/${workspaceId}/tasks`))
+        .send({
+          goalId: goal.body.goalId,
+          title,
+          acceptanceCriteria: ["ok"],
+          assigneeType: "HUMAN",
+          assigneeId: registered.body.userId,
+          priority,
+        })
+        .expect(201);
+      const taskId = task.body.taskId as string;
+      for (const status of ["READY", "ASSIGNED", "RUNNING"]) {
+        await auth(
+          request(http).post(`/workspaces/${workspaceId}/tasks/${taskId}/status`),
+        )
+          .send({ status })
+          .expect(200);
+      }
+      const run = await auth(request(http).post(`/workspaces/${workspaceId}/runs`))
+        .send({ taskId })
+        .expect(201);
+      if (attempted) {
+        await auth(
+          request(http).post(
+            `/workspaces/${workspaceId}/runs/${run.body.runId}/attempts`,
+          ),
+        )
+          .send({ workerId: "worker-1", provider: "claude" })
+          .expect(201);
+      }
+      return { taskId, runId: run.body.runId as string };
+    };
+
+    return { auth, workspaceId, runningTask, base: `/workspaces/${workspaceId}/schedule` };
+  }
+
+  it("interrupts a less urgent task and says which", async () => {
+    const ctx = await workspace();
+    const victim = await ctx.runningTask("Background chores", "BACKGROUND");
+
+    const preempted = await ctx
+      .auth(request(http).post(`${ctx.base}/preempt`))
+      .send({ claimantTaskId: "t-urgent", claimantPriority: "CRITICAL" })
+      .expect(200);
+
+    // §17.8 — who, never just "one task".
+    expect(preempted.body.preemptedTaskId).toBe(victim.taskId);
+
+    /**
+     * BLOCKED, not FAILED: a task carries where it stood when it got blocked,
+     * so it resumes instead of restarting (§4.6). Failing it would turn
+     * preemption into a retry from zero — the very thing §9.14's "reprise
+     * possible" condition exists to avoid.
+     */
+    const task = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/tasks/${victim.taskId}`))
+      .expect(200);
+    expect(task.body.status).toBe("BLOCKED");
+
+    // And its run is closed, with the attempt not left counting as in flight.
+    const run = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/runs/${victim.runId}`))
+      .expect(200);
+    expect(run.body.status).toBe("FAILED");
+    expect(run.body.attempts[0].outcome).toBe("ABANDONED");
+  });
+
+  it("takes the least urgent of several, by written precedence", async () => {
+    const ctx = await workspace();
+    await ctx.runningTask("Normal work", "NORMAL");
+    const background = await ctx.runningTask("Background chores", "BACKGROUND");
+    await ctx.runningTask("Low work", "LOW");
+
+    const preempted = await ctx
+      .auth(request(http).post(`${ctx.base}/preempt`))
+      .send({ claimantTaskId: "t-urgent", claimantPriority: "CRITICAL" })
+      .expect(200);
+
+    expect(preempted.body.preemptedTaskId).toBe(background.taskId);
+  });
+
+  it("refuses to interrupt a task of equal priority, and says why", async () => {
+    const ctx = await workspace();
+    await ctx.runningTask("Also critical", "CRITICAL");
+
+    const refused = await ctx
+      .auth(request(http).post(`${ctx.base}/preempt`))
+      .send({ claimantTaskId: "t-urgent", claimantPriority: "CRITICAL" })
+      .expect(409);
+
+    expect(refused.body.message).toContain("CRITICAL");
+  });
+
+  /** §9.14's "la reprise possible", refused when it is not. */
+  it("leaves alone a task whose work could not be resumed", async () => {
+    const ctx = await workspace();
+    // A run that never attempted anything: there is nothing to resume, so
+    // interrupting it would lose work with no record of what it was.
+    await ctx.runningTask("Never attempted", "BACKGROUND", false);
+
+    await ctx
+      .auth(request(http).post(`${ctx.base}/preempt`))
+      .send({ claimantTaskId: "t-urgent", claimantPriority: "CRITICAL" })
+      .expect(409);
+  });
+
+  it("refuses when nothing is running at all", async () => {
+    const ctx = await workspace();
+
+    await ctx
+      .auth(request(http).post(`${ctx.base}/preempt`))
+      .send({ claimantTaskId: "t-urgent", claimantPriority: "CRITICAL" })
+      .expect(409);
+  });
+});

@@ -92,7 +92,9 @@ Le scheduler **lit** l'état des tâches ; il ne le pilote pas.
 ### 1.7 Ce qu'il ne fait pas, et pourquoi
 
 - **Il n'assigne pas.** §1.1.
-- **Il ne préempte pas** (§9.14). Interrompre une tâche moins prioritaire suppose une tâche en cours
+- ~~**Il ne préempte pas** (§9.14)~~ — **livré**, voir plus bas. La supposition qui manquait (une tâche en
+  cours, avec de quoi dire ce qu'on lui prend) est satisfaite depuis le module `execution`.
+- ~~Il ne préempte pas~~ : ce qui suit était vrai avant. Interrompre une tâche moins prioritaire suppose une tâche en cours
   d'exécution réelle et un bail récupérable ; les verrous existent, l'exécution non.
 - **Il ne rejoue pas** (§9.12). Un retry crée un Run et une Attempt, qui n'existent pas.
 - **Il n'écrit rien.** Ce module est **entièrement en lecture** — un fait rare ici, et une propriété utile :
@@ -162,7 +164,21 @@ Reports explicites, avec leur raison :
   Worker compatible » — et il n'y a pas de Worker. Un allocateur sans rien à allouer assignerait toujours
   à personne. La file est déjà ordonnée ; assigner deviendra « prendre la tête de file compatible ».
 - **Le réveil périodique** (§9.16, moitié réactive) : rien à réveiller.
-- **La préemption** (§9.14) : suppose une exécution réelle et un bail récupérable.
+- ~~**La préemption** (§9.14)~~ : **livrée**. La décision est une fonction pure
+  (`choosePreemptionVictim`) — une **précédence écrite et rejouable, jamais un score** (§10.18d) :
+  éligibilité d'abord (priorité strictement inférieure, reprise possible, bail récupérable), puis ordre
+  (moins urgent, puis démarré le plus récemment donc le moins de travail perdu, puis par identifiant).
+  Une tâche inéligible ne gagne jamais sur l'ordre. Le refus **nomme chaque tâche examinée et sa raison**
+  (§20.6) : « rien à préempter » enverrait inspecter trois tâches sans dire laquelle a échoué sur quoi.
+
+  Trois ports déclarés ici, trois adaptateurs fournis ailleurs : `task` décide qu'interrompre veut dire
+  `BLOCKED` et pas `FAILED` (une tâche garde où elle en était, elle **reprend** au lieu de recommencer,
+  §4.6) ; `execution` répond « la reprise possible » ; `lock` répond « le bail récupérable ».
+
+  **Ce dernier renvoie toujours oui aujourd'hui, et c'est dit tel quel** dans l'adaptateur : aucun drapeau
+  ne marque un bail intouchable dans ce modèle. La condition n'est pas décorative pour autant — la
+  fonction de décision l'applique et la teste, et cet adaptateur est la seule chose qui change le jour où
+  un bail non récupérable existe. Inventer une règle pour faire joli aurait été pire.
 - **Retry et timeout** (§9.12-9.13) : un retry crée un Run et une Attempt (§4.7-4.8), qui n'existent pas.
 - **Les états `WAITING`, `SCHEDULED`, `RETRYING`, `PAUSED`, `WAITING_APPROVAL`** (§9.6) : ce module n'en
   ajoute aucun à la machine de Task. §22.6 en fait l'autorité de l'agrégat, et deux propriétaires d'un

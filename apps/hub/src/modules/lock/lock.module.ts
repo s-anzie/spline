@@ -26,6 +26,6 @@ import { LockHealthProbe } from "./infrastructure/lock-health.probe";
     ListLocksUseCase,
     GetLockUseCase,
   ],
-  exports: [LockHealthProbe],
+  exports: [LockHealthProbe, LOCK_REPOSITORY],
 })
 export class LockModule {}

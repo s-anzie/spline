@@ -1,3 +1,4 @@
+import { PreemptForTaskUseCase } from "./application/preempt.use-case";
 import { Module } from "@nestjs/common";
 
 import { GoalModule } from "../goal/goal.module";
@@ -17,6 +18,7 @@ import { SchedulingController } from "./interface/scheduling.controller";
 @Module({
   imports: [IdentityModule, TaskModule, GoalModule],
   controllers: [SchedulingController],
-  providers: [GetScheduleUseCase, GetNextForActorUseCase],
+  providers: [
+    PreemptForTaskUseCase,GetScheduleUseCase, GetNextForActorUseCase],
 })
 export class SchedulingModule {}
