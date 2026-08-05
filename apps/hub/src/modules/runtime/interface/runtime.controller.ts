@@ -24,6 +24,8 @@ import {
   Min,
 } from "class-validator";
 
+import { ConfigService } from "@nestjs/config";
+
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
 import { toHttpException } from "../../../kernel/interface/domain-error.mapping";
 import { ActorIdentity } from "../../identity/application/permissions.service";
@@ -40,6 +42,7 @@ import {
   ReportCommandUseCase,
   ResolveCommandSecretsUseCase,
 } from "../application/command.use-cases";
+import { DispatchTaskUseCase } from "../application/dispatch-task.use-case";
 import { RecoverCrashedSessionsUseCase } from "../application/recover-crashed-sessions.use-case";
 import {
   AdvanceSessionUseCase,
@@ -238,6 +241,34 @@ function toProviderView(profile: ProviderProfile, now: Date) {
     /** §4.14 — computed, never stored, so it cannot drift from its inputs. */
     effectiveAvailable: profile.isAvailableAt(now),
   };
+}
+
+export class DispatchTaskDto {
+  @IsString()
+  @IsNotEmpty()
+  taskId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  provider!: string;
+
+  /** Absent means "choose one that can run this provider" (§9.9). */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  workerId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  model?: string;
+
+  /** §18.4 — names only. Values never travel in an order. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  secretNames?: string[];
 }
 
 export class RequestEnrolmentDto {
@@ -499,11 +530,24 @@ export class WorkspaceRuntimeController {
     private readonly advance: AdvanceSessionUseCase,
     private readonly recover: RecoverCrashedSessionsUseCase,
     private readonly enqueueCommand: EnqueueCommandUseCase,
+    private readonly dispatchTask: DispatchTaskUseCase,
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(SESSION_STORE) private readonly sessions: SessionStore,
     @Inject(CLOCK) private readonly clock: Clock,
-  ) {}
+    config: ConfigService,
+  ) {
+    /**
+     * Where an agent reports back. Read once here rather than at each
+     * dispatch: a prompt that told an agent a different address each time
+     * would be a prompt nobody could reproduce.
+     */
+    this.hubUrl =
+      config.get<string>("PUBLIC_HUB_URL") ??
+      `http://localhost:${config.get<string>("PORT") ?? "8765"}`;
+  }
+
+  private readonly hubUrl: string;
 
   /**
    * §6.3 / §18.8 — the bootstrap case. The workspace authorises through
@@ -571,6 +615,35 @@ export class WorkspaceRuntimeController {
    * enqueue on an agent's behalf it will do so AS THE HUB, from a decision it
    * made — not by handing agents the route.
    */
+  /**
+   * §6.8, §7.1 — hands a task to a machine: the bridge from "assigned" to
+   * "running". Declared before the parametric routes, or one of them would
+   * swallow it (the shadowing invariant exists because that happened once).
+   */
+  @Post("dispatch")
+  @RequirePermission("manage_machines")
+  async dispatch(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: DispatchTaskDto,
+  ) {
+    const result = await this.dispatchTask.execute({
+      workspaceId,
+      taskId: dto.taskId,
+      provider: dto.provider,
+      workerId: dto.workerId,
+      model: dto.model,
+      secretNames: dto.secretNames,
+      hubUrl: this.hubUrl,
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        conflicts: ["TaskNotDispatchableError", "NoCapableWorkerError"],
+        forbidden: ["WorkerNotAttachedError"],
+      });
+    }
+    return result.value;
+  }
+
   @Post("commands")
   @RequirePermission("manage_machines")
   async enqueue(

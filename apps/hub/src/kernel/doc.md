@@ -621,3 +621,21 @@ du code — une confrontation avec ce qu'il prétend implémenter.
 - **Concurrence optimiste** : si un module en a besoin (agrégats à forte contention), un champ `version`
   s'ajoutera à `AggregateRoot` et la convention de persistance §5.19 s'étendra — rien dans le design actuel
   ne s'y oppose.
+
+### 5.10 Une substitution de texte qui ne trouve rien ne dit rien
+
+Une route entière a manqué à la compilation et aux tests parce qu'un script de
+substitution visait un commentaire modifié plus tôt dans la même session. Le
+script s'est exécuté, n'a rien remplacé, et a affiché « ok ».
+
+C'est la forme §5.9 exactement — du code qui a l'air d'avoir fait quelque chose
+sans l'avoir fait — mais par un chemin qui mérite sa propre ligne parce qu'il
+touche l'outillage plutôt que le produit :
+
+> **Toute substitution de texte porte son `assert`.** Une ancre qui n'existe
+> plus est une modification qui n'a pas eu lieu, et un script qui ne le dit pas
+> transforme une erreur en absence.
+
+Ce qui l'a rattrapée est un test e2e qui appelait la route (404). Sans lui, le
+défaut serait passé : `tsc` ne voit rien d'anormal dans une méthode qui
+n'existe pas.

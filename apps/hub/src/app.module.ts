@@ -19,6 +19,8 @@ import { ExecutionModule } from "./modules/execution/execution.module";
 import { TaskRetryModule } from "./modules/task/infrastructure/task-retry.adapter";
 import { PreemptableTasksModule } from "./modules/task/infrastructure/preemptable-tasks.adapter";
 import { ActiveRunsModule } from "./modules/execution/infrastructure/active-runs.adapter";
+import { RunLedgerModule } from "./modules/execution/infrastructure/run-ledger.adapter";
+import { DispatchableTaskModule } from "./modules/task/infrastructure/dispatchable-task.adapter";
 import { ReclaimableLeasesModule } from "./modules/lock/infrastructure/reclaimable-leases.adapter";
 import { GoalModule } from "./modules/goal/goal.module";
 import { IdentityModule } from "./modules/identity/identity.module";
@@ -61,6 +63,8 @@ import { PrismaModule } from "./prisma/prisma.module";
     ExecutionModule,
     PreemptableTasksModule,
     ActiveRunsModule,
+    RunLedgerModule,
+    DispatchableTaskModule,
     ReclaimableLeasesModule,
     ArtifactModule,
     DecisionModule,

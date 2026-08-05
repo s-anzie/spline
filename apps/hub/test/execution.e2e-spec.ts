@@ -3,6 +3,8 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 
 import { AppModule } from "../src/app.module";
+import { GrantWorkspaceMembershipUseCase } from "../src/modules/identity/application/grant-workspace-membership.use-case";
+import { IssueActorCredentialUseCase } from "../src/modules/identity/application/issue-actor-credential.use-case";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { resetDatabase } from "./setup/reset-database";
 
@@ -612,5 +614,349 @@ describe("Check-ins (e2e)", () => {
     expect(mine.body.next).toBeNull();
     expect(mine.body.checkIn).not.toBeNull();
     expect(mine.body.checkIn.reason).toMatch(/never|nothing/i);
+  });
+});
+
+/**
+ * §6.8, §7.1 — the whole loop, from a task to an order a machine can run.
+ *
+ * This is the piece that was missing until last: everything else existed and
+ * nothing connected it. What it proves is that dispatching a task produces an
+ * order carrying a prompt, a run to record the attempt, and the NAMES of the
+ * secrets the task needs — never their values.
+ */
+describe("Dispatching a task to an agent (e2e)", () => {
+  let app: INestApplication;
+  let http: ReturnType<INestApplication["getHttpServer"]>;
+  let prisma: PrismaService;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    await app.init();
+    http = app.getHttpServer();
+    prisma = app.get(PrismaService);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function ready() {
+    const registered = await request(http)
+      .post("/auth/register")
+      .send({ email: "o@example.com", password: "a-strong-password", displayName: "O" })
+      .expect(201);
+    const logged = await request(http)
+      .post("/auth/login")
+      .send({ email: "o@example.com", password: "a-strong-password" })
+      .expect(200);
+    const auth = (r: request.Test) =>
+      r.set("Authorization", `Bearer ${logged.body.accessToken}`);
+    const ws = await auth(request(http).post("/workspaces"))
+      .send({ organizationId: registered.body.organizationId, name: "Core" })
+      .expect(201);
+    const workspaceId = ws.body.workspaceId as string;
+
+    const worker = await auth(request(http).post("/runtime/workers"))
+      .send({
+        hostname: "workshop-01",
+        architecture: "x86_64",
+        operatingSystem: "linux",
+        // Both, so the resume tests are about providers rather than about
+        // capability matching — which has its own test below.
+        capabilities: ["claude", "codex"],
+      })
+      .expect(201);
+    const workerId = worker.body.workerId as string;
+    await auth(request(http).post(`/workspaces/${workspaceId}/runtime/workers`))
+      .send({ workerId })
+      .expect(200);
+
+    const goal = await auth(request(http).post(`/workspaces/${workspaceId}/goals`))
+      .send({ title: "Make the schedule read fast", successCriteria: ["it is fast"] })
+      .expect(201);
+    const task = await auth(request(http).post(`/workspaces/${workspaceId}/tasks`))
+      .send({
+        goalId: goal.body.goalId,
+        title: "Add the missing index",
+        description: "The query on tasks.workspaceId is sequential.",
+        acceptanceCriteria: ["the migration exists"],
+        assigneeType: "HUMAN",
+        assigneeId: registered.body.userId,
+      })
+      .expect(201);
+    const taskId = task.body.taskId as string;
+    await auth(request(http).post(`/workspaces/${workspaceId}/tasks/${taskId}/status`))
+      .send({ status: "READY" })
+      .expect(200);
+
+    await auth(request(http).post(`/workspaces/${workspaceId}/secrets`))
+      .send({ name: "ANTHROPIC_API_KEY", value: "sk-ant-the-credential" })
+      .expect(200);
+
+    return { auth, workspaceId, workerId, taskId };
+  }
+
+  it("turns a task into an order a machine can claim and run", async () => {
+    const ctx = await ready();
+
+    const dispatched = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({
+        taskId: ctx.taskId,
+        provider: "claude",
+        secretNames: ["ANTHROPIC_API_KEY"],
+      })
+      .expect(201);
+
+    // A machine was chosen by capability: nobody named one.
+    expect(dispatched.body.workerId).toBe(ctx.workerId);
+    expect(dispatched.body.runId).toEqual(expect.any(String));
+    expect(dispatched.body.resumedSessionId).toBeNull();
+
+    const claimed = await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+    expect(claimed.body).toHaveLength(1);
+
+    const payload = claimed.body[0].payload;
+    expect(payload.provider).toBe("claude");
+    expect(payload.runId).toBe(dispatched.body.runId);
+    // The task's own words reached the agent...
+    expect(payload.prompt).toContain("Add the missing index");
+    // ...fenced as data, with the warning before them (§18.12).
+    expect(payload.prompt).toContain("<<<SPLINE-TASK-DATA");
+    expect(payload.prompt.indexOf("not instructions")).toBeLessThan(
+      payload.prompt.indexOf("Add the missing index"),
+    );
+    // §18.4 — the NAME travels, never the value.
+    expect(payload.secretNames).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(JSON.stringify(payload)).not.toContain("sk-ant-the-credential");
+  });
+
+  /** §18.4 — and the machine holding the order can then obtain the value. */
+  it("lets the machine that holds the order fetch its credentials", async () => {
+    const ctx = await ready();
+    const dispatched = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({
+        taskId: ctx.taskId,
+        provider: "claude",
+        secretNames: ["ANTHROPIC_API_KEY"],
+      })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+
+    const secrets = await ctx
+      .auth(
+        request(http).post(
+          `/runtime/workers/${ctx.workerId}/commands/${dispatched.body.commandId}/secrets`,
+        ),
+      )
+      .expect(200);
+
+    expect(secrets.body).toEqual({ ANTHROPIC_API_KEY: "sk-ant-the-credential" });
+  });
+
+  /**
+   * §4.8 — the report closes the attempt AND records the provider session.
+   * Without that last part, `resumableBy()` says "yes, same provider" while
+   * having nothing to resume.
+   */
+  it("records what the agent did, and the session it left behind", async () => {
+    const ctx = await ready();
+    const dispatched = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+
+    // The run has to have an attempt open for the report to close one.
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/runs/${dispatched.body.runId}/attempts`,
+        ),
+      )
+      .send({ workerId: ctx.workerId, provider: "claude" })
+      .expect(201);
+
+    await ctx
+      .auth(
+        request(http).post(
+          `/runtime/workers/${ctx.workerId}/commands/${dispatched.body.commandId}/report`,
+        ),
+      )
+      .send({
+        outcome: "COMPLETED",
+        result: {
+          finalText: "I added the index",
+          providerSessionId: "sess-abc",
+          cost: 0.03,
+          tokenUsage: { input_tokens: 900 },
+        },
+      })
+      .expect(200);
+
+    const run = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/runs/${dispatched.body.runId}`))
+      .expect(200);
+
+    // §11 — VALIDATING, never COMPLETED: an agent never declares its own success.
+    expect(run.body.status).toBe("VALIDATING");
+    expect(run.body.attempts[0]).toMatchObject({
+      outcome: "COMPLETED",
+      cost: 0.03,
+    });
+    expect(run.body.attempts[0].providerSessionId).toBe("sess-abc");
+  });
+
+  /** §4.8 (0.3.11) — a second dispatch on the same provider resumes. */
+  it("resumes the session on a second dispatch with the same provider", async () => {
+    const ctx = await ready();
+    const first = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/runs/${first.body.runId}/attempts`,
+        ),
+      )
+      .send({ workerId: ctx.workerId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(
+        request(http).post(
+          `/runtime/workers/${ctx.workerId}/commands/${first.body.commandId}/report`,
+        ),
+      )
+      .send({ outcome: "COMPLETED", result: { providerSessionId: "sess-abc" } })
+      .expect(200);
+
+    const second = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+
+    expect(second.body.resumedSessionId).toBe("sess-abc");
+  });
+
+  it("does not resume across providers, whatever the session says", async () => {
+    const ctx = await ready();
+    const first = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/runs/${first.body.runId}/attempts`,
+        ),
+      )
+      .send({ workerId: ctx.workerId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(
+        request(http).post(
+          `/runtime/workers/${ctx.workerId}/commands/${first.body.commandId}/report`,
+        ),
+      )
+      .send({ outcome: "COMPLETED", result: { providerSessionId: "sess-abc" } })
+      .expect(200);
+
+    const second = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "codex" })
+      .expect(201);
+
+    // A Claude session cannot be resumed by Codex (§4.8).
+    expect(second.body.resumedSessionId).toBeNull();
+  });
+
+  describe("what it refuses", () => {
+    it("refuses a task whose state does not allow it, naming what would", async () => {
+      const ctx = await ready();
+      await ctx
+        .auth(
+          request(http).post(
+            `/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}/status`,
+          ),
+        )
+        .send({ status: "CANCELLED" })
+        .expect(200);
+
+      const refused = await ctx
+        .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+        .send({ taskId: ctx.taskId, provider: "claude" })
+        .expect(409);
+
+      expect(refused.body.message).toContain("CANCELLED");
+    });
+
+    /** §9.9 — the refusal names the capability, not just "no worker". */
+    it("refuses when no attached machine can run the provider", async () => {
+      const ctx = await ready();
+
+      const refused = await ctx
+        .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+        .send({ taskId: ctx.taskId, provider: "gemini" })
+        .expect(409);
+
+      // §9.9 — the refusal names the capability AND what it considered, so an
+      // operator does not go looking at machines that are perfectly available.
+      expect(refused.body.message).toContain("gemini");
+      expect(refused.body.message).toContain("workshop-01");
+    });
+
+    /** §18.12 — no agent role may dispatch: that is the whole chain. */
+    it("refuses an agent, because dispatching is a human act", async () => {
+      const ctx = await ready();
+      const organizationId = (
+        await prisma.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId } })
+      ).organizationId;
+      const issued = await app.get(IssueActorCredentialUseCase).execute({
+        actorType: "AGENT",
+        actorId: "a-1",
+        organizationId,
+        displayName: "a-1",
+      });
+      await app.get(GrantWorkspaceMembershipUseCase).execute({
+        actorType: "AGENT",
+        actorId: "a-1",
+        workspaceId: ctx.workspaceId,
+        role: "AGENT_CONTRIBUTOR",
+      });
+
+      await request(http)
+        .post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`)
+        .set("Authorization", `Bearer ${issued.value.token}`)
+        .send({ taskId: ctx.taskId, provider: "claude" })
+        .expect(403);
+    });
   });
 });

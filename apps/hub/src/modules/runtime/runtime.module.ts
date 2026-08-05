@@ -23,6 +23,7 @@ import {
   ReportCommandUseCase,
   ResolveCommandSecretsUseCase,
 } from "./application/command.use-cases";
+import { DispatchTaskUseCase } from "./application/dispatch-task.use-case";
 import { CommandHealthProbe } from "./infrastructure/command-health.probe";
 import {
   ClaimEnrolmentUseCase,
@@ -73,6 +74,7 @@ import {
     RequestEnrolmentUseCase,
     DecideEnrolmentUseCase,
     ClaimEnrolmentUseCase,
+    DispatchTaskUseCase,
     RegisterWorkerUseCase,
     AttachWorkerUseCase,
     WorkerHeartbeatUseCase,

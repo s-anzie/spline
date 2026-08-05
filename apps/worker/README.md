@@ -153,10 +153,11 @@ without it: a provider missing its key fails somewhere far from the cause.
 
 ## What it does not do yet
 
-**The bridge from a Task to an order.** Nothing turns "this task is assigned
-to this agent" into a `RuntimeCommand` carrying a prompt. The worker can drive
-an agent, receive its credentials and report what it said; the hub does not
-yet ask it to. That is the last piece.
+**Choosing WHEN to dispatch.** The hub can hand a task to a machine
+(`POST /workspaces/:id/runtime/dispatch`), and does so when an operator asks.
+Nothing decides on its own that a ready task should be dispatched — that is
+scheduling policy (§9), and a module that decided it would be deciding
+something it does not own.
 
 ## The rule worth knowing before changing anything
 

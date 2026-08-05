@@ -44,6 +44,12 @@ export interface Attempt {
   provider: string;
   model: string | null;
   promptVersion: string | null;
+  /**
+   * §4.8 — what a resume would resume, as the provider itself names it. Null
+   * until the run reports one: an attempt whose session is unknown cannot be
+   * continued, and recording that plainly beats guessing.
+   */
+  providerSessionId: string | null;
   tokenUsage: Record<string, number> | null;
   cost: number | null;
   durationMs: number | null;
@@ -63,6 +69,8 @@ export interface FinishAttemptInput {
   outcome: AttemptOutcome;
   tokenUsage?: Record<string, number>;
   cost?: number;
+  /** §4.8 — reported by the worker, from what the CLI said or was told. */
+  providerSessionId?: string;
 }
 
 export class RunStarted extends BaseDomainEvent {
@@ -238,6 +246,7 @@ export class Run extends AggregateRoot<RunProps> {
       provider: input.provider,
       model: input.model ?? null,
       promptVersion: input.promptVersion ?? null,
+      providerSessionId: null,
       tokenUsage: null,
       cost: null,
       durationMs: null,
@@ -260,6 +269,9 @@ export class Run extends AggregateRoot<RunProps> {
       return Result.fail(new NoAttemptInFlightError(this.id.value));
     }
     attempt.outcome = input.outcome;
+    // Kept when the report carries none: a second call must not erase what
+    // the first one learned.
+    attempt.providerSessionId = input.providerSessionId ?? attempt.providerSessionId;
     attempt.tokenUsage = input.tokenUsage ?? null;
     attempt.cost = input.cost ?? null;
     attempt.finishedAt = now;

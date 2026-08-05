@@ -22,6 +22,7 @@ import {
   MissingSecretsError,
   ResolveSecretsUseCase,
 } from "../../secret/application/secret.use-cases";
+import { RUN_LEDGER, RunLedger } from "../domain/ports/dispatch.port";
 import {
   CommandAlreadyClaimedError,
   WorkerImpersonationError,
@@ -185,6 +186,7 @@ export class ReportCommandUseCase
   constructor(
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
+    @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
   ) {}
@@ -227,6 +229,24 @@ export class ReportCommandUseCase
 
     await this.commands.save(command);
     await flushDomainEvents(command, this.publisher);
+
+    /**
+     * §4.8 — the run learns what the attempt cost and, crucially, which
+     * provider session it left behind. Without that last part `resumableBy()`
+     * can say "yes, same provider" while having nothing to resume.
+     *
+     * Best-effort on purpose: an order that finished is finished, and a
+     * bookkeeping failure must not un-finish it. The order carries the run,
+     * so a run that cannot be closed here is still findable.
+     */
+    await this.runs.recordOutcome({
+      workspaceId: command.workspaceId,
+      runId: typeof command.payload.runId === "string" ? command.payload.runId : null,
+      outcome: input.outcome,
+      result: input.result ?? {},
+      failureReason: input.failureReason ?? null,
+    });
+
     return Result.ok(undefined);
   }
 }

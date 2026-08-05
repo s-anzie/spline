@@ -33,6 +33,6 @@ import { ExecutionController } from "./interface/execution.controller";
     CheckResumableUseCase,
     SweepOverrunRunsUseCase,
   ],
-  exports: [RUN_REPOSITORY],
+  exports: [RUN_REPOSITORY, StartRunUseCase],
 })
 export class ExecutionModule {}

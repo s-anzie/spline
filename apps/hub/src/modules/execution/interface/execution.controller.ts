@@ -126,6 +126,8 @@ function toRunView(run: Run) {
       provider: attempt.provider,
       model: attempt.model,
       promptVersion: attempt.promptVersion,
+      /** §4.8 — what a resume would resume. Rendered so a client can offer it. */
+      providerSessionId: attempt.providerSessionId,
       tokenUsage: attempt.tokenUsage,
       cost: attempt.cost,
       durationMs: attempt.durationMs,

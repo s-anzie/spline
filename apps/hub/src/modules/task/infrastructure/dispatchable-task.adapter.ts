@@ -1,0 +1,68 @@
+import { Global, Inject, Injectable, Module } from "@nestjs/common";
+
+import {
+  DISPATCHABLE_TASK,
+  DispatchableTask,
+  TaskBriefing,
+} from "../../runtime/domain/ports/dispatch.port";
+import { GOAL_REPOSITORY, GoalRepository } from "../../goal/domain/ports/goal.repository.port";
+import { TASK_REPOSITORY, TaskRepository } from "../domain/ports/task.repository.port";
+import { TaskModule } from "../task.module";
+import { GoalModule } from "../../goal/goal.module";
+
+/** The states from which handing a task to a machine makes sense. */
+const DISPATCHABLE = new Set(["READY", "ASSIGNED", "RUNNING"]);
+
+/**
+ * §6.8 — supplies what runtime declares. Only this module knows what a task's
+ * states mean, so only this module decides which of them may be dispatched.
+ *
+ * One call returns both the verdict and the content, so the answer cannot be
+ * true when read and false when used.
+ */
+@Injectable()
+export class DispatchableTaskAdapter implements DispatchableTask {
+  constructor(
+    @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
+    @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
+  ) {}
+
+  async briefingFor(workspaceId: string, taskId: string): Promise<TaskBriefing> {
+    const task = await this.tasks.findById(taskId);
+    // §4.2 — a task of another workspace is simply not there.
+    if (!task || task.workspaceId !== workspaceId) {
+      return { dispatchable: false, reason: `Task "${taskId}" was not found` };
+    }
+    if (!DISPATCHABLE.has(task.status)) {
+      return {
+        dispatchable: false,
+        reason:
+          `A ${task.status} task cannot be handed to a machine. From here it ` +
+          `can go to: ${task.allowedStatusTargets().join(", ") || "nowhere"} (§6.8)`,
+      };
+    }
+
+    /**
+     * The goal's title travels into the prompt because an agent that knows
+     * only its task does not know what the task is for — and §10.5 asks it to
+     * plan, which needs the objective.
+     */
+    const goal = await this.goals.findById(task.goalId);
+    return {
+      dispatchable: true,
+      title: task.title,
+      description: task.description,
+      acceptanceCriteria: task.acceptanceCriteria,
+      goalTitle: goal?.title ?? null,
+    };
+  }
+}
+
+/** Global, and importing TaskModule: see the note in task-retry.adapter.ts. */
+@Global()
+@Module({
+  imports: [TaskModule, GoalModule],
+  providers: [{ provide: DISPATCHABLE_TASK, useClass: DispatchableTaskAdapter }],
+  exports: [DISPATCHABLE_TASK],
+})
+export class DispatchableTaskModule {}
