@@ -94,6 +94,7 @@ model Workspace {
   runs           Run[]
   threads        Thread[]
   secrets        Secret[]
+  taskGrants     TaskGrant[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -850,6 +851,30 @@ model WorkerNode {
   @@index([status])
   @@index([registeredByType, registeredById])
   @@map("worker_nodes")
+}
+
+/// §18.2, §18.10 — a credential that can do one job, in one workspace, for a
+/// short while. Minted when a machine collects it, so it lives from the claim
+/// to the run rather than from a decision that may be much older.
+model TaskGrant {
+  id          String    @id @default(uuid())
+  workspaceId String
+  taskId      String
+  /// The AGENT this acts as. A machine carries it; it never becomes one.
+  actorType   ActorType
+  actorId     String
+  /// Already intersected with what the actor's role allows (§18.10).
+  scopes      Json      @default("[]")
+  tokenHash   String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, taskId])
+  @@index([expiresAt])
+  @@map("task_grants")
 }
 
 /// §18.4 — a secret a task may be given. The value is stored SEALED

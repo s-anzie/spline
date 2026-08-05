@@ -6,6 +6,11 @@ import { ChangeMembershipRoleUseCase } from "./application/change-membership-rol
 import { GrantWorkspaceMembershipUseCase } from "./application/grant-workspace-membership.use-case";
 import { InviteWorkspaceMemberUseCase } from "./application/invite-workspace-member.use-case";
 import { IssueActorCredentialUseCase } from "./application/issue-actor-credential.use-case";
+import {
+  IssueTaskGrantUseCase,
+  VerifyTaskGrantUseCase,
+} from "./application/task-grant.use-cases";
+import { PrismaTaskGrantRepository } from "./infrastructure/prisma-task-grant.repository";
 import { LoginUseCase } from "./application/login.use-case";
 import { PermissionsService } from "./application/permissions.service";
 import { WORKSPACE_AUDIENCE_PROVIDER } from "./infrastructure/identity-workspace-audience.adapter";
@@ -15,6 +20,7 @@ import { RevokeWorkspaceMembershipUseCase } from "./application/revoke-workspace
 import { VerifyActorTokenUseCase } from "./application/verify-actor-token.use-case";
 import {
   ACTOR_CREDENTIAL_REPOSITORY,
+  TASK_GRANT_REPOSITORY,
   ORGANIZATION_REPOSITORY,
   USER_REPOSITORY,
   WORKSPACE_MEMBERSHIP_REPOSITORY,
@@ -63,6 +69,7 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
       useClass: PrismaWorkspaceMembershipRepository,
     },
     { provide: ACTOR_CREDENTIAL_REPOSITORY, useClass: PrismaActorCredentialRepository },
+    { provide: TASK_GRANT_REPOSITORY, useClass: PrismaTaskGrantRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SIGNER, useClass: JwtTokenSigner },
     { provide: SECRET_GENERATOR, useClass: CryptoSecretGenerator },
@@ -70,6 +77,8 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
     LoginUseCase,
     IssueActorCredentialUseCase,
     RevokeActorCredentialUseCase,
+    IssueTaskGrantUseCase,
+    VerifyTaskGrantUseCase,
     VerifyActorTokenUseCase,
     GrantWorkspaceMembershipUseCase,
     InviteWorkspaceMemberUseCase,
@@ -88,6 +97,9 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
     VerifyActorTokenUseCase,
     IssueActorCredentialUseCase,
     RevokeActorCredentialUseCase,
+    IssueTaskGrantUseCase,
+    VerifyTaskGrantUseCase,
+    TASK_GRANT_REPOSITORY,
     GrantWorkspaceMembershipUseCase,
     InviteWorkspaceMemberUseCase,
     ChangeMembershipRoleUseCase,

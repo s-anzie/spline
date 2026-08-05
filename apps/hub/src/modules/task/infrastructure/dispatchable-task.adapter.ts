@@ -1,8 +1,11 @@
 import { Global, Inject, Injectable, Module } from "@nestjs/common";
 
+import { ActorRef } from "../../identity/domain/actor";
 import {
   DISPATCHABLE_TASK,
   DispatchableTask,
+  TASK_ASSIGNEE,
+  TaskAssignee,
   TaskBriefing,
 } from "../../runtime/domain/ports/dispatch.port";
 import { GOAL_REPOSITORY, GoalRepository } from "../../goal/domain/ports/goal.repository.port";
@@ -21,7 +24,16 @@ const DISPATCHABLE = new Set(["READY", "ASSIGNED", "RUNNING"]);
  * true when read and false when used.
  */
 @Injectable()
-export class DispatchableTaskAdapter implements DispatchableTask {
+export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
+  /**
+   * §18.10 — whose authority an order borrows. The task's own assignee, so a
+   * machine can never choose.
+   */
+  async assigneeOf(workspaceId: string, taskId: string): Promise<ActorRef | null> {
+    const task = await this.tasks.findById(taskId);
+    return task && task.workspaceId === workspaceId ? task.assignee : null;
+  }
+
   constructor(
     @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
     @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
@@ -62,7 +74,11 @@ export class DispatchableTaskAdapter implements DispatchableTask {
 @Global()
 @Module({
   imports: [TaskModule, GoalModule],
-  providers: [{ provide: DISPATCHABLE_TASK, useClass: DispatchableTaskAdapter }],
-  exports: [DISPATCHABLE_TASK],
+  providers: [
+    DispatchableTaskAdapter,
+    { provide: DISPATCHABLE_TASK, useExisting: DispatchableTaskAdapter },
+    { provide: TASK_ASSIGNEE, useExisting: DispatchableTaskAdapter },
+  ],
+  exports: [DISPATCHABLE_TASK, TASK_ASSIGNEE],
 })
 export class DispatchableTaskModule {}

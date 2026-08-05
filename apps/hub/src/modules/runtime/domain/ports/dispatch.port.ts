@@ -1,3 +1,5 @@
+import { ActorRef } from "../../../identity/domain/actor";
+
 /**
  * §6.8 — what dispatching needs from the two modules it cannot import.
  *
@@ -73,3 +75,13 @@ export interface RunLedger {
 }
 
 export const RUN_LEDGER = "runtime/RunLedger";
+
+/**
+ * §18.10 — whose authority an order borrows. Read from the TASK, never named
+ * by the machine: a worker that could choose would be able to borrow anyone's.
+ */
+export interface TaskAssignee {
+  assigneeOf(workspaceId: string, taskId: string): Promise<ActorRef | null>;
+}
+
+export const TASK_ASSIGNEE = "runtime/TaskAssignee";

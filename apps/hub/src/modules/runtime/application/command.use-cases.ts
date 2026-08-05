@@ -22,7 +22,12 @@ import {
   MissingSecretsError,
   ResolveSecretsUseCase,
 } from "../../secret/application/secret.use-cases";
-import { RUN_LEDGER, RunLedger } from "../domain/ports/dispatch.port";
+import { RUN_LEDGER, RunLedger, TASK_ASSIGNEE, TaskAssignee } from "../domain/ports/dispatch.port";
+import {
+  IssueTaskGrantOutput,
+  IssueTaskGrantUseCase,
+  NoGrantableScopesError,
+} from "../../identity/application/task-grant.use-cases";
 import {
   CommandAlreadyClaimedError,
   WorkerImpersonationError,
@@ -340,6 +345,95 @@ export class ResolveCommandSecretsUseCase
       names,
       actor: input.actor,
       reason: `command ${command.type} (${command.id.value})`,
+    });
+  }
+}
+
+export interface ResolveCommandGrantInput {
+  workerId: string;
+  commandId: string;
+  actor: ActorRef;
+  ttlMs: number;
+}
+
+export type ResolveCommandGrantError =
+  | WorkerNotFoundError
+  | WorkerImpersonationError
+  | CommandAlreadyClaimedError
+  | GuardViolation
+  | NoGrantableScopesError;
+
+/**
+ * §18.10, §10 — mints the credential an agent uses to call back mid-task.
+ *
+ * The same three conditions as the secrets route, for the same reasons: the
+ * caller is the machine, the machine HOLDS this order, and what is granted
+ * comes from the ORDER rather than from the request.
+ *
+ * The agent it acts as is the TASK'S ASSIGNEE, read from the order — never
+ * named by the worker. A machine that could choose whose authority it borrows
+ * is a machine that can borrow anyone's, and every entry in the journal would
+ * then be attributable to whoever the machine felt like naming (§18.10).
+ */
+@Injectable()
+export class ResolveCommandGrantUseCase
+  implements
+    UseCase<
+      ResolveCommandGrantInput,
+      Result<IssueTaskGrantOutput, ResolveCommandGrantError>
+    >
+{
+  constructor(
+    @Inject(COMMAND_STORE) private readonly commands: CommandStore,
+    @Inject(WORKER_STORE) private readonly workers: WorkerStore,
+    @Inject(TASK_ASSIGNEE) private readonly tasks: TaskAssignee,
+    private readonly issueGrant: IssueTaskGrantUseCase,
+  ) {}
+
+  async execute(
+    input: ResolveCommandGrantInput,
+  ): Promise<Result<IssueTaskGrantOutput, ResolveCommandGrantError>> {
+    const worker = await this.workers.findById(input.workerId);
+    if (!worker) {
+      return Result.fail(new WorkerNotFoundError(input.workerId));
+    }
+    if (!worker.isOperatedBy(input.actor)) {
+      return Result.fail(new WorkerImpersonationError(worker.hostname));
+    }
+
+    const command = await this.commands.findById(input.commandId);
+    if (!command) {
+      return Result.fail(new WorkerNotFoundError(input.commandId));
+    }
+    if (command.claimedBy !== input.workerId) {
+      return Result.fail(
+        new CommandAlreadyClaimedError(command.claimedBy ?? "nobody"),
+      );
+    }
+
+    const taskId =
+      typeof command.payload.taskId === "string" ? command.payload.taskId : null;
+    if (!taskId) {
+      return Result.fail(
+        new GuardViolation(
+          "taskId",
+          "this order belongs to no task, so there is no agent to act as (§10)",
+        ),
+      );
+    }
+
+    const assignee = await this.tasks.assigneeOf(command.workspaceId, taskId);
+    if (!assignee) {
+      return Result.fail(
+        new GuardViolation("taskId", `Task "${taskId}" was not found`),
+      );
+    }
+
+    return this.issueGrant.execute({
+      workspaceId: command.workspaceId,
+      taskId,
+      actor: assignee,
+      ttlMs: input.ttlMs,
     });
   }
 }

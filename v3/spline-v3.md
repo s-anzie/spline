@@ -1826,6 +1826,28 @@ la machine d'un autre — en lire les charges utiles, et les rendre inaccessible
 vérifié avant tout battement, réclamation, rapport ou ré-enregistrement. Le refus est un **403 et non un 404** : la
 ressource existe, et répondre « introuvable » enverrait un opérateur déboguer une machine qui va bien (§20.6).
 
+### 18.10bis Le jeton de tâche — l'identité d'un agent qui rappelle
+
+Un agent qui exécute une tâche doit rappeler le hub : c'est le cycle §10 (Synchronize, Publish, Validate). La
+question « avec quelle identité ? » n'a que deux mauvaises réponses et une bonne.
+
+- **Le credential de la machine** : chaque entrée du journal dirait que la machine a fait ce que l'agent a fait.
+  C'est exactement l'usurpation que §18.10 interdit.
+- **Un credential d'agent longue durée** : une tâche empoisonnée disposerait de toute l'autorité de l'agent, pour
+  toujours.
+- **Un jeton de tâche** : l'identité de l'agent, ce workspace, cette tâche, ces portées, cette heure.
+
+**Frappé au retrait, jamais au dispatch.** Comme les secrets : un jeton créé au moment d'une décision vivrait
+jusqu'à une exécution qui peut être bien plus tardive.
+
+**La portée effective est une intersection** — demandé ∩ détenu par le rôle — et jamais un sur-ensemble. La règle
+n'est pas théorique : OpenClaw a livré une rotation de jeton sans elle (CVE-2026-32922, CVSS 9.9), et un appelant
+détenant une portée d'appairage pouvait frapper une portée d'administration. Le contrôle coûte deux lignes et vit
+là où toute requête passe.
+
+**Ce qu'un jeton de tâche ne peut pas être** : sans portée (un credential qui ne permet rien donne des refus sans
+explication à son porteur), sans expiration, ou valable dans un autre workspace.
+
 ### 18.11 Le durcissement HTTP appartient à une fonction testable, pas au bootstrap
 
 CORS, en-têtes de sécurité, limite de débit et plafond de taille de corps sont des contrôles de sécurité comme les

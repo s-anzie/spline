@@ -67,6 +67,32 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException("A workspace scope is required for this action");
     }
 
+    /**
+     * §18.10 — the intersection, and the one place it happens.
+     *
+     * A task grant RESTRICTS what its holder may do; it never widens it. The
+     * role is still asked below, so a grant carrying a scope the role lost
+     * since it was minted is refused by the role — and a role that would
+     * allow something the grant does not carry is refused here.
+     *
+     * OpenClaw shipped a token path that skipped this (CVE-2026-32922, 9.9):
+     * a caller holding a pairing scope could mint an admin one. The check
+     * costs two lines and lives where every request passes.
+     */
+    const grant = request.grant;
+    if (grant) {
+      if (grant.workspaceId !== workspaceId) {
+        throw new ForbiddenException(
+          "This grant belongs to another workspace (§18.10)",
+        );
+      }
+      if (!grant.scopes.includes(permission)) {
+        throw new ForbiddenException(
+          `This grant does not carry "${permission}". It carries: ${grant.scopes.join(", ")}`,
+        );
+      }
+    }
+
     const allowed = await this.permissions.can(request.actor, permission, workspaceId);
     if (!allowed) {
       throw new ForbiddenException(`Missing permission: ${permission}`);

@@ -21,6 +21,7 @@ import {
   ClaimCommandsUseCase,
   EnqueueCommandUseCase,
   ReportCommandUseCase,
+  ResolveCommandGrantUseCase,
   ResolveCommandSecretsUseCase,
 } from "./application/command.use-cases";
 import { DispatchTaskUseCase } from "./application/dispatch-task.use-case";
@@ -86,6 +87,7 @@ import {
     ClaimCommandsUseCase,
     ReportCommandUseCase,
     ResolveCommandSecretsUseCase,
+    ResolveCommandGrantUseCase,
     WorkerHealthProbe,
     SessionHealthProbe,
     CommandHealthProbe,

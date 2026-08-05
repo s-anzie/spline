@@ -1,5 +1,6 @@
 import { ActorRef } from "../actor";
 import { ActorCredential } from "../actor-credential";
+import { TaskGrant } from "../task-grant";
 import { Organization } from "../organization";
 import { WorkspaceRole } from "../permission-matrix";
 import { User } from "../user";
@@ -46,3 +47,12 @@ export interface ActorCredentialRepository {
   listByOrganization(organizationId: string, limit?: number): Promise<ActorCredential[]>;
 }
 export const ACTOR_CREDENTIAL_REPOSITORY = "identity/ActorCredentialRepository";
+
+/** §18.2 — short-lived, task-scoped credentials (§18.10). */
+export interface TaskGrantRepository {
+  save(grant: TaskGrant): Promise<void>;
+  findById(id: string): Promise<TaskGrant | null>;
+  /** Live grants for a task, so revoking one revokes the set. */
+  listForTask(workspaceId: string, taskId: string): Promise<TaskGrant[]>;
+}
+export const TASK_GRANT_REPOSITORY = "identity/TaskGrantRepository";

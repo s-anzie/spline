@@ -40,6 +40,7 @@ import {
   ClaimCommandsUseCase,
   EnqueueCommandUseCase,
   ReportCommandUseCase,
+  ResolveCommandGrantUseCase,
   ResolveCommandSecretsUseCase,
 } from "../application/command.use-cases";
 import { DispatchTaskUseCase } from "../application/dispatch-task.use-case";
@@ -321,6 +322,14 @@ export class DecideEnrolmentDto {
   approve?: boolean;
 }
 
+/**
+ * §18.10 — how long a task grant lives. Long enough for a run that takes its
+ * full timeout, short enough that a leaked one is worth little. It is not the
+ * task's timeout because the two answer different questions: one bounds work,
+ * the other bounds a credential.
+ */
+const GRANT_TTL_MS = 60 * 60 * 1000;
+
 /** §17.7 default, until a workspace policy tightens it. */
 const DEFAULT_WORKER_STALE_MS = 2 * 60 * 1000;
 
@@ -351,6 +360,7 @@ export class RuntimeController {
     private readonly claimCommands: ClaimCommandsUseCase,
     private readonly reportCommand: ReportCommandUseCase,
     private readonly resolveCommandSecrets: ResolveCommandSecretsUseCase,
+    private readonly resolveCommandGrant: ResolveCommandGrantUseCase,
     @Inject(PROVIDER_STORE) private readonly providers: ProviderStore,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -443,6 +453,35 @@ export class RuntimeController {
     if (result.isFailure) {
       throw toHttpException(result.error, {
         forbidden: [...IMPERSONATION, "CommandAlreadyClaimedError"],
+      });
+    }
+    return result.value;
+  }
+
+  /**
+   * §18.10, §10 — the credential an agent uses to call back mid-task.
+   *
+   * Same conditions as the secrets route: the caller is the machine, the
+   * machine holds the order, and whose authority it borrows comes from the
+   * TASK rather than from the request. The token expires with the run.
+   */
+  @Post("workers/:workerId/commands/:commandId/grant")
+  @HttpCode(200)
+  async grant(
+    @Param("workerId") workerId: string,
+    @Param("commandId") commandId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ) {
+    const result = await this.resolveCommandGrant.execute({
+      workerId,
+      commandId,
+      actor: asActorRef(actor),
+      ttlMs: GRANT_TTL_MS,
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        forbidden: [...IMPERSONATION, "CommandAlreadyClaimedError"],
+        conflicts: ["NoGrantableScopesError"],
       });
     }
     return result.value;

@@ -940,3 +940,256 @@ describe("Dispatching a task to an agent (e2e)", () => {
     });
   });
 });
+
+/**
+ * §18.10, §10 — the credential an agent uses to call back mid-task.
+ *
+ * Every property here is about what a grant CANNOT do. The alternatives were
+ * both bad: the machine's own credential would make the journal say the
+ * machine did what the agent did, and a lasting agent credential would hand a
+ * poisoned task the agent's whole authority for ever.
+ */
+describe("Task grants (e2e)", () => {
+  let app: INestApplication;
+  let http: ReturnType<INestApplication["getHttpServer"]>;
+  let prisma: PrismaService;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    await app.init();
+    http = app.getHttpServer();
+    prisma = app.get(PrismaService);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function dispatched(
+    role: "AGENT_CONTRIBUTOR" | "AGENT_MANAGER" = "AGENT_CONTRIBUTOR",
+  ) {
+    const registered = await request(http)
+      .post("/auth/register")
+      .send({ email: "o@example.com", password: "a-strong-password", displayName: "O" })
+      .expect(201);
+    const logged = await request(http)
+      .post("/auth/login")
+      .send({ email: "o@example.com", password: "a-strong-password" })
+      .expect(200);
+    const organizationId = registered.body.organizationId as string;
+    const auth = (r: request.Test) =>
+      r.set("Authorization", `Bearer ${logged.body.accessToken}`);
+    const ws = await auth(request(http).post("/workspaces"))
+      .send({ organizationId, name: "Core" })
+      .expect(201);
+    const workspaceId = ws.body.workspaceId as string;
+
+    await app.get(IssueActorCredentialUseCase).execute({
+      actorType: "AGENT",
+      actorId: "a-1",
+      organizationId,
+      displayName: "a-1",
+    });
+    await app.get(GrantWorkspaceMembershipUseCase).execute({
+      actorType: "AGENT",
+      actorId: "a-1",
+      workspaceId,
+      role,
+    });
+
+    const worker = await auth(request(http).post("/runtime/workers"))
+      .send({
+        hostname: "workshop-01",
+        architecture: "x86_64",
+        operatingSystem: "linux",
+        capabilities: ["claude"],
+      })
+      .expect(201);
+    const workerId = worker.body.workerId as string;
+    await auth(request(http).post(`/workspaces/${workspaceId}/runtime/workers`))
+      .send({ workerId })
+      .expect(200);
+
+    const goal = await auth(request(http).post(`/workspaces/${workspaceId}/goals`))
+      .send({ title: "Ship", successCriteria: ["ok"] })
+      .expect(201);
+    const task = await auth(request(http).post(`/workspaces/${workspaceId}/tasks`))
+      .send({
+        goalId: goal.body.goalId,
+        title: "Do it",
+        acceptanceCriteria: ["ok"],
+        assigneeType: "AGENT",
+        assigneeId: "a-1",
+      })
+      .expect(201);
+    const taskId = task.body.taskId as string;
+    await auth(request(http).post(`/workspaces/${workspaceId}/tasks/${taskId}/status`))
+      .send({ status: "READY" })
+      .expect(200);
+
+    const command = await auth(
+      request(http).post(`/workspaces/${workspaceId}/runtime/dispatch`),
+    )
+      .send({ taskId, provider: "claude" })
+      .expect(201);
+    await auth(request(http).post(`/runtime/workers/${workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+
+    return {
+      auth,
+      workspaceId,
+      workerId,
+      taskId,
+      commandId: command.body.commandId as string,
+      grantUrl: `/runtime/workers/${workerId}/commands/${command.body.commandId}/grant`,
+    };
+  }
+
+  it("mints a credential that acts as the task's agent, not as the machine", async () => {
+    const ctx = await dispatched();
+
+    const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+    expect(grant.body.token).toMatch(/^grant_[^.]+\..+/);
+    expect(grant.body.expiresAt).toEqual(expect.any(String));
+
+    // Used, it IS the agent — the whole reason this exists.
+    const me = await request(http)
+      .get("/auth/me")
+      .set("Authorization", `Bearer ${grant.body.token}`)
+      .expect(200);
+    expect(me.body.actorType).toBe("AGENT");
+    expect(me.body.actorId).toBe("a-1");
+  });
+
+  /**
+   * §18.10 — the intersection, and the property everything else rests on.
+   * OpenClaw shipped a rotation path without it (CVE-2026-32922) and a
+   * pairing scope could mint an admin one.
+   */
+  describe("the intersection", () => {
+    /**
+     * The observable direction today. Both agent roles that may hold a task
+     * carry every protocol scope — a task cannot be assigned to an actor
+     * without `execute_tasks` — so "role holds less than asked" cannot be
+     * reached from here. What CAN be shown is the other side, and it is the
+     * one that matters: an AGENT_MANAGER holds `manage_tasks` and
+     * `manage_goals`, and the grant carries neither.
+     */
+    it("grants only the protocol's scopes, even to a role that holds more", async () => {
+      const ctx = await dispatched("AGENT_MANAGER");
+
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+      expect(grant.body.scopes).toContain("read_workspace_state");
+      expect(grant.body.scopes).toContain("execute_tasks");
+      // Held by the role, absent from the grant.
+      expect(grant.body.scopes).not.toContain("manage_tasks");
+      expect(grant.body.scopes).not.toContain("manage_goals");
+    });
+
+    it("refuses a route the grant does not carry, naming what it does", async () => {
+      const ctx = await dispatched("AGENT_MANAGER");
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+      // The agent's ROLE allows this; its grant does not.
+      const refused = await request(http)
+        .patch(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}`)
+        .set("Authorization", `Bearer ${grant.body.token}`)
+        .send({ title: "Renamed by a grant that may not" })
+        .expect(403);
+
+      expect(refused.body.message).toContain("does not carry");
+      // §20.6 — the refusal says what would have worked.
+      expect(refused.body.message).toContain("read_workspace_state");
+    });
+
+    it("allows what it does carry", async () => {
+      const ctx = await dispatched();
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+      await request(http)
+        .get(`/workspaces/${ctx.workspaceId}/tasks`)
+        .set("Authorization", `Bearer ${grant.body.token}`)
+        .expect(200);
+    });
+
+    /** A credential minted for one workspace must not work in another. */
+    it("refuses another workspace outright", async () => {
+      const ctx = await dispatched();
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+      const other = await ctx
+        .auth(request(http).post("/workspaces"))
+        .send({
+          organizationId: (
+            await prisma.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId } })
+          ).organizationId,
+          name: "Other",
+        })
+        .expect(201);
+
+      await request(http)
+        .get(`/workspaces/${other.body.workspaceId}/tasks`)
+        .set("Authorization", `Bearer ${grant.body.token}`)
+        .expect(403);
+    });
+  });
+
+  describe("who may ask for one", () => {
+    it("refuses a machine that does not hold the order", async () => {
+      const ctx = await dispatched();
+      // Report it finished, so the claim no longer stands... actually the
+      // simplest proof: a second, unclaimed order.
+      const second = await ctx
+        .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/commands`))
+        .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { taskId: ctx.taskId } })
+        .expect(201);
+
+      await ctx
+        .auth(
+          request(http).post(
+            `/runtime/workers/${ctx.workerId}/commands/${second.body.commandId}/grant`,
+          ),
+        )
+        .expect(403);
+    });
+
+    it("refuses an order that belongs to no task", async () => {
+      const ctx = await dispatched();
+      const loose = await ctx
+        .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/commands`))
+        .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: {} })
+        .expect(201);
+      await ctx
+        .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+        .send({})
+        .expect(200);
+
+      await ctx
+        .auth(
+          request(http).post(
+            `/runtime/workers/${ctx.workerId}/commands/${loose.body.commandId}/grant`,
+          ),
+        )
+        .expect(400);
+    });
+  });
+
+  /** Only the hash is kept: a token in the table is a token in every backup. */
+  it("stores no readable token", async () => {
+    const ctx = await dispatched();
+    const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+    const row = await prisma.taskGrant.findFirstOrThrow();
+    expect(row.tokenHash).not.toContain(grant.body.token.split(".")[1]);
+  });
+});
