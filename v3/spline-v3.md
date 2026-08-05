@@ -1326,24 +1326,46 @@ OpenClaw est le point de comparaison assumé du projet (0.1). Son modèle d'agen
 éprouver celui-ci. Quatre mécanismes qu'il possède et que Spline n'a pas, et deux manques qu'il documente
 lui-même et que Spline couvre déjà.
 
-**a) Deux verbes distincts, pas un seul.** OpenClaw sépare `sessions_spawn` (déléguer un travail : il
-s'exécute dans une session isolée et **annonce son résultat en retour**) de `sessions_send` (parler à un
-agent et attendre sa réponse). Spline ne possède aujourd'hui que l'assignation d'une Task — ce n'est
-ni l'un ni l'autre : personne n'attend rien en retour, et rien ne relie le résultat au demandeur. La
-délégation-avec-attente est donc **un manque réel** du §10, pas un raffinement.
+**a) Deux verbes distincts, pas un seul.** ~~Manque réel~~ — **livré** (module `conversation`). OpenClaw
+sépare `sessions_spawn` (déléguer un travail : il s'exécute dans une session isolée et **annonce son
+résultat en retour**) de `sessions_send` (parler à un agent et attendre sa réponse). Spline ne possédait
+que l'assignation d'une Task, qui n'est ni l'un ni l'autre : personne n'attendait rien en retour, et rien
+ne reliait le résultat au demandeur.
 
-**b) Une borne sur les échanges.** `session.agentToAgent.maxPingPongTurns` (0–5, défaut 5) plafonne les
-allers-retours, et un jeton explicite — l'agent répond exactement `REPLY_SKIP` — permet de dire « je n'ai
-rien à ajouter ». Spline n'a **aucune borne** : deux acteurs qui se répondent via Notification, ou un
-écouteur qui réagit à un fait en produisant un fait du même type, bouclent indéfiniment. Le protocole
-§10.11 dit « Await » mais n'offre aucun moyen de terminer un échange. À corriger avec le premier
-mécanisme de conversation entre agents (fil + budget de tours + terminaison explicite).
+Un **fil** porte désormais les deux : ouvert avec un `taskId`, il délègue et attend ; ouvert sans, il
+parle. Un écouteur répond au fil de lui-même quand la tâche se règle — succès, échec **ou** annulation,
+parce qu'un échec est une réponse et que c'est celle dont un demandeur a le plus besoin. Sans cet
+écouteur, le demandeur devrait scruter, ce qui est exactement le goulot d'étranglement dont leur propre
+issue se plaint.
+
+**b) Une borne sur les échanges.** ~~Aucune borne~~ — **livré**. Cinq tours au plus, comme chez eux, et
+un jeton de terminaison explicite (leur `REPLY_SKIP`). Trois points appris en l'écrivant :
+
+- **Demander EST un tour.** Le compter à part ferait qu'un budget de 1 signifie « tu demandes, il
+  répond » — ce qui fait deux.
+- **La borne s'applique sur la tentative qui déborderait**, pas la suivante : finir un tour trop tard
+  voudrait dire que le budget était déjà dépassé au moment où on s'en aperçoit.
+- **Terminer et être tronqué doivent rester distinguables** (`CLOSED` vs `EXHAUSTED`), sinon personne ne
+  sait laquelle des deux a eu lieu.
+
+`ReactionDepth` (kernel §5.2) ne pouvait pas couvrir ce cas et ne le pourra jamais : il borne une cascade
+**technique**, et ici chaque tour est un appel séparé, avec sa propre pile.
 
 **c) La communication est fermée par défaut.** `tools.agentToAgent.enabled` est faux par défaut, et
 chaque agent autorisé doit figurer dans une liste `allow`. L'isolement est la valeur par défaut, se
-parler est un choix. Spline fait l'inverse : tout membre d'un workspace peut écrire à tout autre membre.
-Cela relève du Policy Engine (§12), mais le point d'accroche doit exister avant, sinon la politique
-n'aura rien à décider.
+parler est un choix.
+
+**Ne pas copier ce défaut-là est délibéré**, et la raison tient en une phrase : chez eux l'unité
+d'isolement est l'**agent**, ici c'est le **workspace** — l'appartenance *est* l'autorisation (§4.2).
+Copier leur liste `allow` importerait une frontière que ce système trace ailleurs.
+
+Ce que cette section demandait vraiment — « le point d'accroche doit exister avant, sinon la politique
+n'aura rien à décider » — **existe désormais** : un fil nomme ses **deux** côtés, et y parler sans en
+être est refusé quelle que soit l'appartenance au workspace. Ouvrir un fil est un acte identifiable,
+donc un endroit où une règle du Policy Engine (§12) peut vivre le jour où il y en aura une.
+
+Aucun port permissif n'est posé d'avance. Un branchement qui répond toujours « oui » a déjà été retiré
+une fois de ce code : il ne prouve rien et se lit comme une garantie.
 
 **d) Une résolution déterministe et ordonnée, jamais un score.** Le routage d'OpenClaw suit une
 précédence écrite (pair exact → pair parent → joker → guilde+rôles → guilde → équipe → compte → canal →
@@ -1360,8 +1382,8 @@ file de rebut.
 
 Spline répond déjà à trois de ces quatre points, et c'est la confirmation que le socle est le bon :
 persistance et ordre total des faits (§14, Event), état de lecture individuel par destinataire (§4.19,
-Notification), isolation par workspace absolue (§4.2). La limitation de débit et la file de rebut restent
-ouvertes ici aussi.
+Notification), isolation par workspace absolue (§4.2). La limitation de débit est **livrée** depuis
+(§18.11) ; la file de rebut reste ouverte.
 
 **Une leçon d'architecture, enfin, qui n'est pas un manque mais un pari opposé.** OpenClaw garde un
 noyau d'exécution minimal (quatre outils) et laisse les agents s'étendre en écrivant du code ; Spline

@@ -559,6 +559,28 @@ plutôt que porteuse : c'est sa bonne place, mais ça ne la transforme pas en fr
 > **La règle générale** : une liste de manques nommés est un plan de travail. Une liste de manques tus est
 > une promesse fausse. Le premier tour de cette revue a produit la liste ; le second l'a consommée.
 
+### 5.9 Un écouteur abonné à un événement qui n'existe pas
+
+Trois défauts de cette session partagent une forme, et elle mérite son entrée parce qu'aucun compilateur
+ne l'attrape :
+
+1. Un commentaire revendiquait §9.16 alors que la moitié de la section manquait.
+2. Un écouteur s'abonnait à `task.completed` et `task.failed` — que ce système n'émet pas. Il compilait,
+   passait la revue, et n'aurait **jamais** tiré une seule fois.
+3. Un adaptateur répondait toujours « oui » à une condition de sécurité, ce qui la vidait de son sens.
+
+Le point commun : **du code qui a l'air de faire quelque chose et ne le fait pas**, et dont l'absence
+d'effet ne se distingue pas d'un cas qui ne se présente jamais. Un test ne les attrape que s'il est écrit
+contre le comportement *observé*, pas contre l'intention.
+
+Ce qui les a trouvés, à chaque fois, est le même geste : **comparer le code à sa source**. La spec pour
+le commentaire, `task-events.ts` pour l'écouteur, le modèle de verrou pour l'adaptateur. Pas une relecture
+du code — une confrontation avec ce qu'il prétend implémenter.
+
+> **Un nom qu'on n'a pas vérifié est une supposition.** Un événement, un champ, un statut : s'il vient
+> d'un autre module, il se lit là-bas avant d'être écrit ici. Et une condition qu'aucun adaptateur ne
+> peut faire échouer se dit tel quel, sinon elle se lit comme une garantie.
+
 ## 6. Décisions notables (et leurs raisons)
 
 | Décision | Raison |
