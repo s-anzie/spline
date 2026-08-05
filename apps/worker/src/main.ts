@@ -156,9 +156,11 @@ async function main(): Promise<void> {
       maxOutputBytes: config.maxOutputBytes,
     },
     workspaceRoot: config.workspaceRoot,
-    // §18.4 — nothing yet: secrets are granted per task by the hub, and it
-    // has no route that grants them. An empty set is the honest answer; a
-    // spread of this process's environment would be the dishonest one.
+    /**
+     * §18.4 — replaced below, per order. The executor takes a synchronous
+     * resolver because a plan is built synchronously; the secrets are
+     * fetched before the plan, so by then there is nothing to await.
+     */
     secretsFor: () => ({}),
   };
 
@@ -172,7 +174,30 @@ async function main(): Promise<void> {
       .claimCommands(1)
       .then(async (commands) => {
         for (const command of commands) {
-          const report = await executeCommand(command, executor);
+          /**
+           * §18.4 — fetched now, for THIS order, and held only long enough to
+           * put in the child's environment. Never written anywhere: not to
+           * the state file, not to a log, not back to the hub.
+           */
+          let secrets: Record<string, string> = {};
+          try {
+            secrets = await hub.commandSecrets(command.id);
+          } catch (error) {
+            // A credential the hub will not give is a refusal to run, not a
+            // reason to run without it: a provider without its key fails
+            // somewhere far from the cause (§18.4).
+            await hub.reportCommand(command.id, {
+              outcome: "FAILED",
+              failureReason: `could not obtain this order's secrets: ${String(error)}`,
+            });
+            console.warn(`${command.type} (${command.id}): no secrets — declined`);
+            continue;
+          }
+
+          const report = await executeCommand(command, {
+            ...executor,
+            secretsFor: () => secrets,
+          });
           await hub.reportCommand(
             command.id,
             report.outcome === "COMPLETED"

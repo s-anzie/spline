@@ -32,6 +32,7 @@ import { ObservabilityModule } from "./modules/observability/observability.modul
 import { MemoryModule } from "./modules/memory/memory.module";
 import { LockModule } from "./modules/lock/lock.module";
 import { PolicyModule } from "./modules/policy/policy.module";
+import { SecretModule } from "./modules/secret/secret.module";
 import { ValidationModule } from "./modules/validation/validation.module";
 import { WorkspaceModule } from "./modules/workspace/workspace.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -67,6 +68,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     EventModule,
     NotificationModule,
     PolicyModule,
+    SecretModule,
     LockModule,
     MemoryModule,
     ObservabilityModule,

@@ -142,6 +142,25 @@ export class HubClient implements PairingHub {
     );
   }
 
+  /**
+   * §18.4 — the credentials this order declared, asked for while holding it.
+   *
+   * Fetched at execution time rather than carried in the order: a secret in a
+   * command payload is a secret in the database, in every backup, and in
+   * whatever reads the queue. Here it exists for the length of one response
+   * and goes straight into the child process's environment.
+   */
+  async commandSecrets(commandId: string): Promise<Record<string, string>> {
+    if (!this.workerId) {
+      throw new Error("cannot resolve secrets before registering");
+    }
+    return this.call<Record<string, string>>(
+      "POST",
+      `/runtime/workers/${this.workerId}/commands/${commandId}/secrets`,
+      {},
+    );
+  }
+
   /** Says what became of an order. Only its holder may. */
   async reportCommand(
     commandId: string,

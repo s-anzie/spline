@@ -19,6 +19,10 @@ import {
 } from "../domain/ports/runtime.repository.port";
 import { ActorRef } from "../../identity/domain/actor";
 import {
+  MissingSecretsError,
+  ResolveSecretsUseCase,
+} from "../../secret/application/secret.use-cases";
+import {
   CommandAlreadyClaimedError,
   WorkerImpersonationError,
   WorkerNotAttachedError,
@@ -224,5 +228,81 @@ export class ReportCommandUseCase
     await this.commands.save(command);
     await flushDomainEvents(command, this.publisher);
     return Result.ok(undefined);
+  }
+}
+
+export interface ResolveCommandSecretsInput {
+  workerId: string;
+  commandId: string;
+  actor: ActorRef;
+}
+
+export type ResolveCommandSecretsError =
+  | WorkerNotFoundError
+  | WorkerImpersonationError
+  | CommandAlreadyClaimedError
+  | MissingSecretsError;
+
+/**
+ * §18.4 — hands a worker the secrets its order declared, and only those.
+ *
+ * Three conditions, and each closes something specific:
+ *
+ * 1. **The caller is the machine.** Same check as every other machine route
+ *    (§18.10): an id in a path is not a credential.
+ * 2. **The machine HOLDS this order.** A worker that could ask about an order
+ *    it never claimed could ask about every order, and read every secret any
+ *    of them declared.
+ * 3. **The names come from the ORDER**, never from the request. A worker that
+ *    named its own secrets would be choosing what to receive, which is the
+ *    opposite of "uniquement les secrets nécessaires à la tâche".
+ */
+@Injectable()
+export class ResolveCommandSecretsUseCase
+  implements
+    UseCase<
+      ResolveCommandSecretsInput,
+      Result<Record<string, string>, ResolveCommandSecretsError>
+    >
+{
+  constructor(
+    @Inject(COMMAND_STORE) private readonly commands: CommandStore,
+    @Inject(WORKER_STORE) private readonly workers: WorkerStore,
+    private readonly resolveSecrets: ResolveSecretsUseCase,
+  ) {}
+
+  async execute(
+    input: ResolveCommandSecretsInput,
+  ): Promise<Result<Record<string, string>, ResolveCommandSecretsError>> {
+    const worker = await this.workers.findById(input.workerId);
+    if (!worker) {
+      return Result.fail(new WorkerNotFoundError(input.workerId));
+    }
+    if (!worker.isOperatedBy(input.actor)) {
+      return Result.fail(new WorkerImpersonationError(worker.hostname));
+    }
+
+    const command = await this.commands.findById(input.commandId);
+    if (!command) {
+      return Result.fail(new WorkerNotFoundError(input.commandId));
+    }
+    // Holding the order is what entitles a machine to its credentials.
+    if (command.claimedBy !== input.workerId) {
+      return Result.fail(
+        new CommandAlreadyClaimedError(command.claimedBy ?? "nobody"),
+      );
+    }
+
+    const declared = command.payload.secretNames;
+    const names = Array.isArray(declared)
+      ? declared.filter((name): name is string => typeof name === "string")
+      : [];
+
+    return this.resolveSecrets.execute({
+      workspaceId: command.workspaceId,
+      names,
+      actor: input.actor,
+      reason: `command ${command.type} (${command.id.value})`,
+    });
   }
 }

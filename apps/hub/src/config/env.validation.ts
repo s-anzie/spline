@@ -4,6 +4,7 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
+  Matches,
   MinLength,
   validateSync,
 } from "class-validator";
@@ -43,6 +44,17 @@ class EnvironmentVariables {
   @IsString()
   @MinLength(MINIMUM_KEY_LENGTH)
   AUDIT_SIGNING_KEY!: string;
+
+  /**
+   * §18.4 — seals workspace secrets (AES-256-GCM). Exactly 32 bytes of hex,
+   * and distinct from the other two for the reason §18.9 gives about isolated
+   * copies: leaking or rotating one key must not compromise the others.
+   */
+  @IsString()
+  @Matches(/^[0-9a-fA-F]{64}$/, {
+    message: "SECRET_ENCRYPTION_KEY must be 64 hex characters (32 bytes)",
+  })
+  SECRET_ENCRYPTION_KEY!: string;
 
   /**
    * Comma-separated list of browser origins allowed to call this API. Absent

@@ -38,6 +38,7 @@ import {
   ClaimCommandsUseCase,
   EnqueueCommandUseCase,
   ReportCommandUseCase,
+  ResolveCommandSecretsUseCase,
 } from "../application/command.use-cases";
 import { RecoverCrashedSessionsUseCase } from "../application/recover-crashed-sessions.use-case";
 import {
@@ -318,6 +319,7 @@ export class RuntimeController {
     private readonly setAvailability: SetProviderAvailabilityUseCase,
     private readonly claimCommands: ClaimCommandsUseCase,
     private readonly reportCommand: ReportCommandUseCase,
+    private readonly resolveCommandSecrets: ResolveCommandSecretsUseCase,
     @Inject(PROVIDER_STORE) private readonly providers: ProviderStore,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -379,6 +381,38 @@ export class RuntimeController {
     });
     if (result.isFailure) {
       throw toHttpException(result.error, { forbidden: IMPERSONATION });
+    }
+    return result.value;
+  }
+
+  /**
+   * §18.4 — the only path a secret value ever takes out of this system.
+   *
+   * Everything about this route is shaped by that. The worker asks while
+   * HOLDING the order, so the credential goes to the machine that is about to
+   * use it and nowhere else. The names come from the order the hub itself
+   * enqueued, never from the request — a worker that could name the secrets
+   * it wants would be able to ask for all of them. Nothing is stored: the
+   * value exists for the length of one response, never in the command row,
+   * never in the journal. And reading one is an act, so it is audited
+   * (§18.7).
+   */
+  @Post("workers/:workerId/commands/:commandId/secrets")
+  @HttpCode(200)
+  async secrets(
+    @Param("workerId") workerId: string,
+    @Param("commandId") commandId: string,
+    @CurrentActor() actor: ActorIdentity,
+  ): Promise<Record<string, string>> {
+    const result = await this.resolveCommandSecrets.execute({
+      workerId,
+      commandId,
+      actor: asActorRef(actor),
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        forbidden: [...IMPERSONATION, "CommandAlreadyClaimedError"],
+      });
     }
     return result.value;
   }

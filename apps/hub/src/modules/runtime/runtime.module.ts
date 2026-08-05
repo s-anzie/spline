@@ -21,6 +21,7 @@ import {
   ClaimCommandsUseCase,
   EnqueueCommandUseCase,
   ReportCommandUseCase,
+  ResolveCommandSecretsUseCase,
 } from "./application/command.use-cases";
 import { CommandHealthProbe } from "./infrastructure/command-health.probe";
 import {
@@ -82,6 +83,7 @@ import {
     EnqueueCommandUseCase,
     ClaimCommandsUseCase,
     ReportCommandUseCase,
+    ResolveCommandSecretsUseCase,
     WorkerHealthProbe,
     SessionHealthProbe,
     CommandHealthProbe,

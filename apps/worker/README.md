@@ -136,17 +136,27 @@ lying about what it can do.
 Output that is not the expected shape is a **broken run**, never a result to
 guess at (§7.15). Inventing one would hand the hub a fact nobody produced.
 
-## What it does not do yet
+### Credentials (§18.4)
 
-**Secrets.** `secretsFor` returns nothing, because the hub has no route that
-grants a task its secrets yet (§18.4) — so a real `claude` would run without a
-credential. An empty set is the honest answer; a spread of this process's
-environment would be the dishonest one. **This is the next thing that has to
-land for an agent to actually run.**
+Fetched **per order, at execution time**, from a route that only answers a
+machine holding that order — never carried in the order itself. A secret in a
+command payload is a secret in the database, in every backup, and in whatever
+reads the queue.
+
+The names come from the order the hub enqueued, never from the worker's
+request: a machine that could name the secrets it wants could ask for all of
+them. The values go straight into the child process's environment and are
+written nowhere — not to the state file, not to a log, not back to the hub.
+
+A credential the hub refuses is a **refusal to run**, not a reason to run
+without it: a provider missing its key fails somewhere far from the cause.
+
+## What it does not do yet
 
 **The bridge from a Task to an order.** Nothing turns "this task is assigned
 to this agent" into a `RuntimeCommand` carrying a prompt. The worker can drive
-an agent; the hub does not yet ask it to.
+an agent, receive its credentials and report what it said; the hub does not
+yet ask it to. That is the last piece.
 
 ## The rule worth knowing before changing anything
 

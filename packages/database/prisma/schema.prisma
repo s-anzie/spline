@@ -93,6 +93,7 @@ model Workspace {
   commands       RuntimeCommand[]
   runs           Run[]
   threads        Thread[]
+  secrets        Secret[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -849,6 +850,28 @@ model WorkerNode {
   @@index([status])
   @@index([registeredByType, registeredById])
   @@map("worker_nodes")
+}
+
+/// §18.4 — a secret a task may be given. The value is stored SEALED
+/// (AES-256-GCM): a row an attacker edited fails authentication rather than
+/// decrypting to something they chose. Never returned by any read route.
+model Secret {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  /// Becomes an environment variable, so it is constrained like one.
+  name           String
+  sealed         String
+  createdByType  ActorType
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  lastAccessedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// One value per name per workspace: rotation replaces, never duplicates.
+  @@unique([workspaceId, name])
+  @@map("secrets")
 }
 
 enum ThreadStatus {
