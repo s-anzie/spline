@@ -105,11 +105,48 @@ not as a failure. The program ran and said what it had to say; what that means
 is the hub's to decide (§6.9), and reporting FAILED would throw away the exit
 code and the output.
 
+## Driving a coding agent (§7.1, §4.8)
+
+An order that names a **provider** is an agent run: it carries a prompt rather
+than a command line, and its answer is a session and a result rather than an
+exit code. Dispatched on the payload rather than on a second order type —
+§6.8's types say WHAT to do, not WITH WHAT, and `ExecuteTaskWithClaude` would
+mean a new type per provider.
+
+Each provider is described by one object (`provider-spec.ts`): how to start
+it, how to resume it, how to read what it said. Adding a third is data, not a
+branch in the executor. The shape is taken from OpenClaw's CLI backends, which
+solved the same problem.
+
+| | claude | codex |
+| --- | --- | --- |
+| Start | `-p <prompt> --output-format json` | `exec --json <prompt>` |
+| Session id | **assigned** by us (`--session-id`) | reported by it (`thread.started`) |
+| Resume | `--resume <id>` | `exec resume <id>` — a subcommand, not a flag |
+| Output | one JSON envelope | JSONL event stream |
+
+**Where a CLI accepts an assigned session id, we assign it**, and that is a
+deliberate improvement on capturing it from the output. Capture-only — the
+only mechanism OpenClaw has — means a run that dies between the spawn and the
+parse can never be resumed, because nobody ever learned what to resume. Codex
+cannot be told, so there the id is read from the stream and that difference is
+carried rather than flattened: a shared abstraction that hid it would be
+lying about what it can do.
+
+Output that is not the expected shape is a **broken run**, never a result to
+guess at (§7.15). Inventing one would hand the hub a fact nobody produced.
+
 ## What it does not do yet
 
 **Secrets.** `secretsFor` returns nothing, because the hub has no route that
-grants a task its secrets yet (§18.4). An empty set is the honest answer; a
-spread of this process's environment would be the dishonest one.
+grants a task its secrets yet (§18.4) — so a real `claude` would run without a
+credential. An empty set is the honest answer; a spread of this process's
+environment would be the dishonest one. **This is the next thing that has to
+land for an agent to actually run.**
+
+**The bridge from a Task to an order.** Nothing turns "this task is assigned
+to this agent" into a `RuntimeCommand` carrying a prompt. The worker can drive
+an agent; the hub does not yet ask it to.
 
 ## The rule worth knowing before changing anything
 

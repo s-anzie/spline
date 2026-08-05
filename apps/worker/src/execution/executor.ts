@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { ClaimedCommand } from "../hub/hub-client";
+import { runAgent } from "../providers/agent-run";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
 import { ExecutionLimits, ExecutionOutcome, superviseProcess } from "../supervision/supervisor";
 import { SpawnPlan } from "../supervision/spawn-plan";
@@ -64,6 +65,26 @@ export async function executeCommand(
   }
 
   const payload = command.payload;
+
+  /**
+   * §7.1 — an order that names a provider is an AGENT run: it carries a
+   * prompt rather than a command line, and its answer is a session and a
+   * result rather than an exit code alone.
+   *
+   * Dispatched on the payload rather than on a second order type, because
+   * §6.8's types say WHAT to do (execute a task) and not WITH WHAT. A worker
+   * that needed `ExecuteTaskWithClaude` would need a new type per provider.
+   */
+  if (typeof payload.provider === "string" && payload.provider !== "") {
+    return runAgent(command, {
+      settings: deps.settings,
+      limits: deps.limits,
+      workspaceRoot: deps.workspaceRoot,
+      secretsFor: deps.secretsFor,
+      supervise: deps.supervise,
+      realpath: deps.realpath,
+    });
+  }
   const program = typeof payload.command === "string" ? payload.command : "";
   if (program === "") {
     return failed("this order names no command to run");
