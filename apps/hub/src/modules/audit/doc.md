@@ -38,7 +38,7 @@ réagit dessus.
 | **Permission Change** | identity — changement de rôle, révocation d'appartenance | ✅ câblé |
 | **Policy Update** | policy — pose et désactivation d'une règle | ✅ câblé |
 | **Delete** | workspace (suppression logique), artifact (statut DELETED) | ✅ câblé |
-| Merge | Repository Engine (§8) | ✗ n'existe pas |
+| **Merge** | repository — décision de fusion (§8.7) | ✅ câblé |
 | Secret Access | Runtime (§18.4) | ✗ n'existe pas |
 | Extension Install / Publish | Registry (§19) | ✗ n'existe pas |
 
@@ -151,7 +151,7 @@ fabriquer un passé. Le test le vérifie (404 sur POST et DELETE).
 
 Reports explicites, avec leur raison :
 
-- **Merge, Secret Access, Extension Install/Publish** (§18.7) : leurs producteurs n'existent pas
+- **Secret Access, Extension Install/Publish** (§18.7) : leurs producteurs n'existent pas
   (Repository Engine §8, Runtime §18.4, Registry §19).
 - **La signature n'est pas une preuve d'antériorité.** Qui détient la clé **et** l'accès à la base peut
   réécrire toute la chaîne. S'en prémunir demande une ancre externe — journal en écriture seule,

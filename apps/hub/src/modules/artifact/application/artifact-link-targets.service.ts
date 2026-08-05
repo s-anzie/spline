@@ -6,6 +6,10 @@ import {
   DECISION_REPOSITORY,
   DecisionRepository,
 } from "../../decision/domain/ports/decision.repository.port";
+import {
+  REPOSITORY_STORE,
+  RepositoryStore,
+} from "../../repository/domain/ports/repository.repository.port";
 import { TASK_REPOSITORY, TaskRepository } from "../../task/domain/ports/task.repository.port";
 import { ArtifactLinkError } from "../domain/artifact.errors";
 
@@ -17,10 +21,13 @@ export interface LinkTargets {
 }
 
 /**
- * The schema carries real foreign keys to goals and tasks, so a link must be
- * checked before it reaches the database — a dangling reference is a 500, and
- * a silent one would be worse. repositoryId stays unchecked until the
- * Repository Engine owns that table (§8).
+ * The schema carries real foreign keys, so a link must be checked before it
+ * reaches the database — a dangling reference is a 500, and a silent one
+ * would be worse.
+ *
+ * `repositoryId` was the one left unchecked, "until the Repository Engine
+ * owns that table (§8)". It does now, so it is checked like the others — a
+ * deferral is a debt, and the module that closes it has arrived.
  */
 @Injectable()
 export class ArtifactLinkTargets {
@@ -28,6 +35,7 @@ export class ArtifactLinkTargets {
     @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
     @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
     @Inject(DECISION_REPOSITORY) private readonly decisions: DecisionRepository,
+    @Inject(REPOSITORY_STORE) private readonly repositories: RepositoryStore,
   ) {}
 
   async verify(
@@ -62,6 +70,19 @@ export class ArtifactLinkTargets {
       if (decision.workspaceId !== workspaceId) {
         return Result.fail(
           new ArtifactLinkError("the decision belongs to another workspace"),
+        );
+      }
+    }
+    if (targets.repositoryId !== undefined) {
+      const repository = await this.repositories.findById(targets.repositoryId);
+      if (!repository) {
+        return Result.fail(
+          new ArtifactLinkError(`repository "${targets.repositoryId}" does not exist`),
+        );
+      }
+      if (repository.workspaceId !== workspaceId) {
+        return Result.fail(
+          new ArtifactLinkError("the repository belongs to another workspace"),
         );
       }
     }

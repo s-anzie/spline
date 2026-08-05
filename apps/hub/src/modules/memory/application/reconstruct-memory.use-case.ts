@@ -17,6 +17,10 @@ import {
   DECISION_REPOSITORY,
   DecisionRepository,
 } from "../../decision/domain/ports/decision.repository.port";
+import {
+  REPOSITORY_STORE,
+  RepositoryStore,
+} from "../../repository/domain/ports/repository.repository.port";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { MemoryEntry } from "../domain/memory-entry";
 import {
@@ -59,6 +63,7 @@ export class ReconstructMemoryUseCase
     @Inject(MEMORY_REPOSITORY) private readonly memory: MemoryRepository,
     @Inject(DECISION_REPOSITORY) private readonly decisions: DecisionRepository,
     @Inject(ARTIFACT_REPOSITORY) private readonly artifacts: ArtifactRepository,
+    @Inject(REPOSITORY_STORE) private readonly repositories: RepositoryStore,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
   ) {}
@@ -119,7 +124,6 @@ export class ReconstructMemoryUseCase
       // Said rather than quietly omitted: a caller must not read a partial
       // rebuild as a complete one (§17.8).
       notReconstructed: [
-        "repository — the Repository Engine (§8) does not exist",
         "event — the journal is already queryable; mirroring it as notes would duplicate a source of truth (§16 opening)",
       ],
     });
@@ -128,9 +132,12 @@ export class ReconstructMemoryUseCase
   private async gather(workspaceId: string): Promise<
     { sourceType: string; items: { id: string; title: string }[] }[]
   > {
-    const [decisions, artifacts] = await Promise.all([
+    const [decisions, artifacts, repositories] = await Promise.all([
       this.decisions.list({ workspaceId }),
       this.artifacts.list({ workspaceId }),
+      // §16.10 lists Repositories among the sources. It was deferred while
+      // §8 did not exist; it does now, and a deferral is a debt.
+      this.repositories.list({ workspaceId }),
     ]);
     return [
       {
@@ -145,6 +152,13 @@ export class ReconstructMemoryUseCase
         items: artifacts.map((artifact) => ({
           id: artifact.id.value,
           title: artifact.name,
+        })),
+      },
+      {
+        sourceType: "repository",
+        items: repositories.map((repository) => ({
+          id: repository.id.value,
+          title: repository.name,
         })),
       },
     ];

@@ -3,6 +3,13 @@ import { arch, platform } from "node:os";
 import { WorkerConfig } from "../config/config";
 import { ProviderFailure } from "../supervision/failure-detector";
 
+export interface ClaimedCommand {
+  id: string;
+  workspaceId: string;
+  type: string;
+  payload: Record<string, unknown>;
+}
+
 export interface Capabilities {
   capabilities: string[];
   labels: string[];
@@ -63,6 +70,38 @@ export class HubClient {
       until: new Date(Date.now() + failure.retryAfterSeconds * 1000).toISOString(),
       reason: `${failure.channel}: ${failure.evidence}`,
     });
+  }
+
+  /**
+   * §6.8 — the worker PULLS. Doubles as a heartbeat on the hub side, so a
+   * busy worker asking for its next order never looks silent.
+   */
+  async claimCommands(max = 5): Promise<ClaimedCommand[]> {
+    if (!this.workerId) {
+      throw new Error("cannot claim commands before registering");
+    }
+    return this.call<ClaimedCommand[]>(
+      "POST",
+      `/runtime/workers/${this.workerId}/commands/claim`,
+      { max },
+    );
+  }
+
+  /** Says what became of an order. Only its holder may. */
+  async reportCommand(
+    commandId: string,
+    outcome:
+      | { outcome: "COMPLETED"; result: Record<string, unknown> }
+      | { outcome: "FAILED"; failureReason: string },
+  ): Promise<void> {
+    if (!this.workerId) {
+      throw new Error("cannot report a command before registering");
+    }
+    await this.call(
+      "POST",
+      `/runtime/workers/${this.workerId}/commands/${commandId}/report`,
+      outcome,
+    );
   }
 
   private async call<T>(method: string, path: string, body: unknown): Promise<T> {

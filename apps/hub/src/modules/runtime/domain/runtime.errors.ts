@@ -37,3 +37,13 @@ export class ProviderUnavailableError extends DomainError {
     );
   }
 }
+
+/**
+ * §13.7's second path, in a queue: another worker already holds this order.
+ * Two workers executing the same command is what a queue exists to prevent.
+ */
+export class CommandAlreadyClaimedError extends DomainError {
+  constructor(readonly heldBy: string) {
+    super(`This command is already claimed by "${heldBy}"`);
+  }
+}

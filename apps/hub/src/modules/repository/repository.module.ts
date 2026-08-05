@@ -52,5 +52,8 @@ import { RepositoryController } from "./interface/repository.controller";
     DecideMergeUseCase,
     RepositoryReadService,
   ],
+  // Read-only access for the two modules that need to know a repository
+  // exists: artifact validates a link against it, memory rebuilds from it.
+  exports: [REPOSITORY_STORE],
 })
 export class RepositoryModule {}

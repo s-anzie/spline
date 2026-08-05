@@ -9,6 +9,7 @@ import { PolicyModule } from "../policy/policy.module";
 import { TaskModule } from "../task/task.module";
 import { TaskHealthProbe } from "../task/infrastructure/task-health.probe";
 import { RuntimeModule } from "../runtime/runtime.module";
+import { CommandHealthProbe } from "../runtime/infrastructure/command-health.probe";
 import { SessionHealthProbe } from "../runtime/infrastructure/session-health.probe";
 import { WorkerHealthProbe } from "../runtime/infrastructure/worker-health.probe";
 import { ValidationModule } from "../validation/validation.module";
@@ -47,6 +48,7 @@ import { ObservabilityController } from "./interface/observability.controller";
         // exists, and observability did not have to change to accept them.
         WorkerHealthProbe,
         SessionHealthProbe,
+        CommandHealthProbe,
       ],
     },
   ],

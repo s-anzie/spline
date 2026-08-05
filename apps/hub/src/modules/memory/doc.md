@@ -160,7 +160,7 @@ Reports explicites, avec leur raison :
   session (§4.12). La seconde moitié de l'exigence — « ne contient jamais d'information critique » — est
   en revanche tenue dès maintenant, et pour tous les niveaux, précisément parce qu'aucune mémoire n'est
   source de vérité.
-- **Reconstruction depuis les Repositories** (§16.10) : le Repository Engine (§8) n'existe pas. Depuis
+- ~~**Reconstruction depuis les Repositories**~~ (§16.10) : **fermée** — les dépôts sont désormais une source. Depuis
   les **Events** : délibérément non fait — le journal est déjà interrogeable et le recopier en notes
   dupliquerait une source de vérité, ce que l'ouverture du §16 interdit. Les deux sont nommés dans la
   réponse de l'opération, pas seulement ici.

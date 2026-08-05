@@ -88,6 +88,7 @@ model Workspace {
   memoryEntries  MemoryEntry[]
   repositories   Repository[]
   sessions       AgentSession[]
+  commands       RuntimeCommand[]
 
   @@index([organizationId])
   @@map("workspaces")
@@ -822,6 +823,7 @@ model WorkerNode {
   updatedAt       DateTime     @updatedAt
 
   sessions AgentSession[]
+  commands RuntimeCommand[]
 
   @@unique([hostname])
   @@index([status])
@@ -868,4 +870,40 @@ model ProviderProfile {
   updatedAt             DateTime  @updatedAt
 
   @@map("provider_profiles")
+}
+
+enum CommandStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  FAILED
+}
+
+/// Spec 6.8 — an order addressed TO a worker. The hub decides and enqueues;
+/// the worker pulls, executes and reports. A queue rather than a push,
+/// because a worker connects outward (it may sit behind a home router) and
+/// because an order nobody claimed must survive a hub restart.
+model RuntimeCommand {
+  id          String        @id @default(uuid())
+  workspaceId String
+  workerId    String
+  type        String
+  payload     Json          @default("{}")
+  status      CommandStatus @default(PENDING)
+  /// Set while claimed and NULL otherwise, so the unique index below stops
+  /// two workers holding the same command — same mechanism as a lock.
+  claimedBy   String?
+  claimedAt   DateTime?
+  finishedAt  DateTime?
+  result      Json?
+  failureReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  worker    WorkerNode @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId, status])
+  @@index([workspaceId, status])
+  @@map("runtime_commands")
 }

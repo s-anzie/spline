@@ -19,11 +19,13 @@ import { TASK_REPOSITORY } from "./domain/ports/task.repository.port";
 import { PrismaTaskRepository } from "./infrastructure/prisma-task.repository";
 import { TaskController } from "./interface/task.controller";
 import { TaskHealthProbe } from "./infrastructure/task-health.probe";
+import { ReleaseTaskOnSessionCrashedListener } from "./application/release-task-on-session-crashed.listener";
 
 @Module({
   imports: [IdentityModule, WorkspaceModule, GoalModule],
   controllers: [TaskController],
   providers: [
+    ReleaseTaskOnSessionCrashedListener,
     TaskHealthProbe,
     { provide: TASK_REPOSITORY, useClass: PrismaTaskRepository },
     CreateTaskUseCase,

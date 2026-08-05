@@ -16,9 +16,10 @@ import { UpdateArtifactMetadataUseCase } from "./application/update-artifact-met
 import { ARTIFACT_REPOSITORY } from "./domain/ports/artifact.repository.port";
 import { PrismaArtifactRepository } from "./infrastructure/prisma-artifact.repository";
 import { ArtifactController } from "./interface/artifact.controller";
+import { RepositoryModule } from "../repository/repository.module";
 
 @Module({
-  imports: [IdentityModule, WorkspaceModule, GoalModule, TaskModule, DecisionModule],
+  imports: [RepositoryModule, IdentityModule, WorkspaceModule, GoalModule, TaskModule, DecisionModule],
   controllers: [ArtifactController],
   providers: [
     { provide: ARTIFACT_REPOSITORY, useClass: PrismaArtifactRepository },

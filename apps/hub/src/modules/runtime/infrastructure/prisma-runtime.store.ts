@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import {
+  RuntimeCommand as CommandRow,
   AgentSession as SessionRow,
   ProviderProfile as ProviderRow,
   WorkerNode as WorkerRow,
@@ -10,8 +11,11 @@ import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import { AgentSession, SessionStatus } from "../domain/agent-session";
 import { ProviderProfile } from "../domain/provider-profile";
+import { CommandStatus, RuntimeCommand } from "../domain/runtime-command";
 import { WorkerNode, WorkerStatus } from "../domain/worker-node";
 import {
+  CommandStore,
+  ListCommandsFilter,
   ListSessionsFilter,
   ProviderStore,
   SessionStore,
@@ -200,6 +204,88 @@ function toProvider(row: ProviderRow): ProviderProfile {
       quotaReason: row.quotaReason,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    },
+    row.id,
+  );
+}
+
+@Injectable()
+export class PrismaCommandStore implements CommandStore {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async save(command: RuntimeCommand): Promise<void> {
+    const data = {
+      workspaceId: command.workspaceId,
+      workerId: command.workerId,
+      type: command.type,
+      payload: command.payload as object,
+      status: command.status,
+      claimedBy: command.claimedBy,
+      claimedAt: command.claimedAt,
+      finishedAt: command.finishedAt,
+      result: (command.result ?? undefined) as object | undefined,
+      failureReason: command.failureReason,
+      createdAt: command.createdAt,
+    };
+    await this.prisma.runtimeCommand.upsert({
+      where: { id: command.id.value },
+      create: { id: command.id.value, ...data },
+      update: data,
+    });
+  }
+
+  async findById(id: string): Promise<RuntimeCommand | null> {
+    const row = await this.prisma.runtimeCommand.findUnique({ where: { id } });
+    return row ? toCommand(row) : null;
+  }
+
+  async list(filter: ListCommandsFilter): Promise<RuntimeCommand[]> {
+    const rows = await this.prisma.runtimeCommand.findMany({
+      where: {
+        workspaceId: filter.workspaceId,
+        ...(filter.workerId && { workerId: filter.workerId }),
+        ...(filter.pendingOnly && { status: "PENDING" }),
+      },
+      orderBy: { createdAt: "desc" },
+      take: pageSize(filter.limit),
+    });
+    return rows.map(toCommand);
+  }
+
+  /** Oldest first: a queue serves in order, or it is a pile. */
+  async listPendingForWorker(workerId: string, limit: number): Promise<RuntimeCommand[]> {
+    const rows = await this.prisma.runtimeCommand.findMany({
+      where: { workerId, status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+      take: pageSize(limit, { fallback: 10, ceiling: 50 }),
+    });
+    return rows.map(toCommand);
+  }
+
+  async listClaimed(workspaceId: string): Promise<RuntimeCommand[]> {
+    const rows = await this.prisma.runtimeCommand.findMany({
+      where: { workspaceId, status: "CLAIMED" },
+      orderBy: { claimedAt: "asc" },
+      take: pageSize(undefined),
+    });
+    return rows.map(toCommand);
+  }
+}
+
+function toCommand(row: CommandRow): RuntimeCommand {
+  return RuntimeCommand.reconstitute(
+    {
+      workspaceId: row.workspaceId,
+      workerId: row.workerId,
+      type: row.type,
+      payload: (row.payload ?? {}) as Record<string, unknown>,
+      status: row.status as CommandStatus,
+      claimedBy: row.claimedBy,
+      claimedAt: row.claimedAt,
+      finishedAt: row.finishedAt,
+      result: (row.result ?? null) as Record<string, unknown> | null,
+      failureReason: row.failureReason,
+      createdAt: row.createdAt,
     },
     row.id,
   );

@@ -338,6 +338,166 @@ describe("Runtime (e2e)", () => {
     ).toEqual([]);
   });
 
+  /**
+   * §6.6 — "aucune tâche ne doit disparaître". A task whose session died
+   * stayed RUNNING with nobody running it: the scheduler counted it in
+   * flight, so it appeared in neither the ready queue nor the waiting list.
+   * Invisible is lost, whatever the row says.
+   */
+  it("brings back a task whose session died", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+    const goal = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/goals`))
+      .send({ title: "Ship", successCriteria: ["it works"] })
+      .expect(201);
+    const task = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks`))
+      .send({
+        goalId: goal.body.goalId,
+        title: "Long job",
+        acceptanceCriteria: ["done"],
+        assigneeType: "AGENT",
+        assigneeId: "a-1",
+      })
+      .expect(201);
+    for (const status of ["READY", "ASSIGNED", "RUNNING"] as const) {
+      await ctx
+        .asAgent(
+          request(http).post(
+            `/workspaces/${ctx.workspaceId}/tasks/${task.body.taskId}/status`,
+          ),
+        )
+        .send({ status })
+        .expect(200);
+    }
+    await ctx
+      .asAgent(request(http).post(`${ctx.base}/sessions`))
+      .send({
+        workerId: ctx.workerId,
+        agentType: "AGENT",
+        agentId: "a-1",
+        provider: "claude",
+        taskId: task.body.taskId,
+      })
+      .expect(201);
+
+    // Before: the task is in flight and shows up nowhere actionable.
+    const before = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/schedule`))
+      .expect(200);
+    expect(before.body.summary.inFlightCount).toBe(1);
+    expect(before.body.ready).toHaveLength(0);
+    expect(before.body.waiting).toHaveLength(0);
+
+    // The session and its machine both fall silent.
+    const longAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.agentSession.updateMany({ data: { lastHeartbeatAt: longAgo } });
+
+    const report = await ctx
+      .auth(request(http).post(`${ctx.base}/recover`))
+      .expect(200);
+    expect(report.body.recovered).toHaveLength(1);
+    expect(report.body.recovered[0].taskId).toBe(task.body.taskId);
+
+    // After: the task is out of flight and visible again — FAILED, because
+    // nobody knows how far the interrupted work got.
+    const after = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/tasks/${task.body.taskId}`))
+      .expect(200);
+    expect(after.body.status).toBe("FAILED");
+    expect(after.body.allowedStatusTargets).toContain("ASSIGNED");
+  });
+
+  /** §6.8 — the hub decides and enqueues; the worker pulls and reports. */
+  it("hands a worker its orders, one holder at a time", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+
+    const command = await ctx
+      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { taskId: "t-1" } })
+      .expect(201);
+
+    const claimed = await ctx
+      .auth(
+        request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`),
+      )
+      .send({})
+      .expect(200);
+    expect(claimed.body).toHaveLength(1);
+    expect(claimed.body[0].payload).toEqual({ taskId: "t-1" });
+
+    // Claiming again gets nothing: an order is served once.
+    expect(
+      (
+        await ctx
+          .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+          .send({})
+      ).body,
+    ).toHaveLength(0);
+
+    await ctx
+      .auth(
+        request(http).post(
+          `/runtime/workers/${ctx.workerId}/commands/${command.body.commandId}/report`,
+        ),
+      )
+      .send({ outcome: "COMPLETED", result: { exitCode: 0 } })
+      .expect(200);
+
+    const listed = await ctx.auth(request(http).get(`${ctx.base}/commands`)).expect(200);
+    expect(listed.body[0].status).toBe("COMPLETED");
+    expect(listed.body[0].result).toEqual({ exitCode: 0 });
+  });
+
+  it("refuses an order for a machine that does not serve the workspace", async () => {
+    const ctx = await setup();
+
+    await ctx
+      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .send({ workerId: ctx.workerId, type: "ExecuteTask" })
+      .expect(403);
+  });
+
+  /** §17.7's third resource, and the observation 0.3.3 records. */
+  it("names the stuck commands rather than counting them", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+    await ctx
+      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .send({ workerId: ctx.workerId, type: "ExecuteTask" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+
+    await prisma.runtimeCommand.updateMany({
+      data: { claimedAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+
+    const health = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/health`))
+      .expect(200);
+    const commands = health.body.signals.find(
+      (s: { probe: string }) => s.probe === "runtime_commands",
+    );
+    expect(commands.count).toBe(1);
+    // Which one, and since when — never just how many (§17.8).
+    expect(commands.resources[0].type).toBe("command:ExecuteTask");
+    expect(commands.resources[0].degradedForMs).toBeGreaterThan(0);
+  });
+
   it("requires authentication", async () => {
     await request(http).get("/runtime/providers").expect(401);
     await request(http)

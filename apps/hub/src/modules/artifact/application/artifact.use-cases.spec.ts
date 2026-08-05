@@ -288,7 +288,14 @@ describe("link target validation", () => {
     }).value;
     await tasks.save(task);
     const decisions = new InMemoryDecisionRepository();
-    const targets = new ArtifactLinkTargets(goals, tasks, decisions);
+    // A repository store that holds nothing: every repositoryId is a ghost,
+    // which is exactly what the link check must refuse.
+    const repositories = {
+      save: async () => undefined,
+      findById: async () => null,
+      list: async () => [],
+    };
+    const targets = new ArtifactLinkTargets(goals, tasks, decisions, repositories);
 
     return {
       ...ctx,

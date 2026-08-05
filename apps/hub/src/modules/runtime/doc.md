@@ -24,7 +24,7 @@ local ; **en cas de divergence, le Control Plane fait autorité** » :
 | §4.14 | le catalogue de providers et leur disponibilité | l'appel au provider |
 | §6.3 | l'enregistrement, le rattachement à un workspace | ce qu'on envoie en s'enregistrant |
 | §6.4 | juger qu'un heartbeat manque | l'émettre |
-| §6.6 | **détecter** l'absence (la sonde) ; *marquer* et remettre en file restent à faire, voir §3 | rien : elle est morte |
+| §6.6 | détecter l'absence, marquer les sessions perdues, rendre la tâche visible | rien : elle est morte |
 | §6.8 | les points d'entrée de l'API Runtime | leurs appelants |
 
 **Ce module est donc un registre et un arbitre**, pas un exécuteur. `apps/worker` est un livrable
@@ -109,9 +109,11 @@ laquelle cette primitive existe.
   ce qu'il écrit.
 - **Il ne renouvelle pas les leases** (§6.5) : le module lock le fait déjà, et un second mécanisme serait
   deux vérités sur la même échéance.
-- **Il n'implémente pas §6.8 en entier.** `ExecuteTask`, `KillProcess`, `CreateWorktree`, `InvokeEngine`
-  et `InvokeTool` sont des ordres **adressés au worker** ; ils apparaîtront comme commandes quand il y
-  aura quelqu'un pour les recevoir.
+- ~~**Il n'implémente pas §6.8 en entier.**~~ La **file de commandes** existe : le hub décide et
+  enfile, le worker tire et rapporte. Une file plutôt qu'un envoi, pour deux raisons également concrètes —
+  un worker se connecte **vers l'extérieur** (il peut être derrière une box, et §1 veut trois machines
+  d'un opérateur), et un ordre que personne n'a pris doit survivre au redémarrage du hub, ce qu'un envoi
+  perdrait. **Ce qui reste** : l'exécution elle-même, côté `apps/worker`.
 
 ## 2. Modèle de domaine
 
@@ -182,8 +184,10 @@ Reports explicites, avec leur raison :
   (§6.8) ; elles naîtront avec lui.
 - **`ExecuteTask`, `KillProcess`, `CreateWorktree`, `InvokeEngine`, `InvokeTool`** (§6.8) : mêmes
   raisons.
-- **La reprise après panne** (§6.6) : le hub **détecte** déjà l'absence — c'est la sonde. Marquer les
-  sessions perdues et remettre les tâches en file est une **décision**, pas un effet de bord de la
-  lecture d'un tableau de bord ; elle appartient au Scheduler quand il pourra réassigner.
+- ~~**La reprise après panne**~~ (§6.6) : **fermée**. Marquer une session perdue reste une **décision**,
+  pas un effet de bord de la lecture d'un tableau de bord — d'où une route explicite plutôt qu'un balayage.
+  La tâche est libérée par le module task lui-même, qui écoute `runtime.session_crashed` : §22.6 fait de
+  la machine d'un agrégat son autorité, et runtime écrivant un statut de tâche serait deux propriétaires
+  d'un même champ. **Ce qui reste** : le déclencheur périodique du §9.16, qui n'existe nulle part.
 - **§7.14, la resynchronisation des identifiants isolés** : elle concerne une copie de secret dans un
   sandbox. Le hub ne copie aucun secret.

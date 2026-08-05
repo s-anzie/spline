@@ -169,4 +169,4 @@ Reports explicites :
   une abstraction sans consommateur.
 - **Filtre par tags en mémoire** : les tags vivent dans une colonne JSON ; le périmètre workspace borne
   déjà l'ensemble. À revoir si le volume l'exige, pas avant.
-- **`repositoryId` non vérifié** : sa table n'existe pas encore (§8).
+- ~~**`repositoryId` non vérifié**~~ : **fermé** — la table existe (§8) et le lien est contrôlé comme les autres.

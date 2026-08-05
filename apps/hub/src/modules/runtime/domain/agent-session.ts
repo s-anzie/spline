@@ -71,6 +71,13 @@ export class SessionCrashed extends BaseDomainEvent {
     workspaceId: string,
     readonly agent: ActorRef,
     readonly reason: string,
+    /**
+     * The task this session was executing, if any. Carried on the fact
+     * because §6.6 requires the task to be put back, and whoever does that
+     * has no other way to know which task it was — a listener reading the
+     * session afterwards would be reading state that has already moved on.
+     */
+    readonly taskId: string | null,
   ) {
     super(aggregateId, occurredAt, workspaceId);
   }
@@ -240,6 +247,7 @@ export class AgentSession extends AggregateRoot<SessionProps> {
                   this.props.workspaceId,
                   this.props.agent,
                   reason ?? "the session stopped reporting",
+                  this.props.taskId,
                 )
               : new SessionEnded(
                   this.id.value,

@@ -11,13 +11,22 @@ import {
   WorkerHeartbeatUseCase,
 } from "./application/runtime.use-cases";
 import {
+  COMMAND_STORE,
   PROVIDER_STORE,
   SESSION_STORE,
   WORKER_STORE,
 } from "./domain/ports/runtime.repository.port";
+import {
+  ClaimCommandsUseCase,
+  EnqueueCommandUseCase,
+  ReportCommandUseCase,
+} from "./application/command.use-cases";
+import { CommandHealthProbe } from "./infrastructure/command-health.probe";
+import { RecoverCrashedSessionsUseCase } from "./application/recover-crashed-sessions.use-case";
 import { SessionHealthProbe } from "./infrastructure/session-health.probe";
 import { WorkerHealthProbe } from "./infrastructure/worker-health.probe";
 import {
+  PrismaCommandStore,
   PrismaProviderStore,
   PrismaSessionStore,
   PrismaWorkerStore,
@@ -42,15 +51,21 @@ import {
     { provide: WORKER_STORE, useClass: PrismaWorkerStore },
     { provide: SESSION_STORE, useClass: PrismaSessionStore },
     { provide: PROVIDER_STORE, useClass: PrismaProviderStore },
+    { provide: COMMAND_STORE, useClass: PrismaCommandStore },
     RegisterWorkerUseCase,
     AttachWorkerUseCase,
     WorkerHeartbeatUseCase,
     StartSessionUseCase,
     AdvanceSessionUseCase,
     SetProviderAvailabilityUseCase,
+    RecoverCrashedSessionsUseCase,
+    EnqueueCommandUseCase,
+    ClaimCommandsUseCase,
+    ReportCommandUseCase,
     WorkerHealthProbe,
     SessionHealthProbe,
+    CommandHealthProbe,
   ],
-  exports: [WorkerHealthProbe, SessionHealthProbe],
+  exports: [WorkerHealthProbe, SessionHealthProbe, CommandHealthProbe],
 })
 export class RuntimeModule {}

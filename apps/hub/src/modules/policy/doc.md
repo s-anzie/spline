@@ -86,7 +86,7 @@ l'action apprend pourquoi elle est refusée.
 | **Worker / Agent Runtime** (§6, §7) | types Security et Runtime : accès réseau, secrets, timeout, mémoire | le stockage et la résolution sont génériques ; les valeurs sont du `Json` que le Runtime interprétera |
 | **Repository Engine** (§8) | type Git, et **l'étape conditionnelle** de la hiérarchie | `REPOSITORY` est déjà un niveau de portée, sauté tant qu'aucune tâche n'a de dépôt |
 | **Extension Registry** (§19) | type Extension : quelles extensions, signature obligatoire, source de confiance | idem |
-| **Audit** (§4.23, §18.7) | l'entrée d'audit qu'exige §12.5 | **dette nommée** : l'Event et la Notification sont produits, l'AuditEntry n'existe pas encore |
+| **Audit** (§4.23, §18.7) | l'entrée d'audit qu'exige §12.5 | ~~dette~~ **fermée** : poser et désactiver une règle écrivent une entrée avec l'avant et l'après |
 | **AgentSession** (§4.12) | « peut suspendre une Session » (§12.5) | **dette nommée** : rien à suspendre aujourd'hui |
 
 ### 1.6 Ce qu'il ne fait pas, et pourquoi
@@ -102,7 +102,7 @@ l'action apprend pourquoi elle est refusée.
   point d'accroche qui manquait. Mais **aucune règle de ce genre n'est écrite ici** : personne n'a demandé
   à restreindre les messages, et une politique sans utilisateur est l'abstraction que ce projet refuse
   ailleurs. Le hameçon existe, l'hameçon suffit.
-- **Il n'audite pas.** §12.5 l'exige, §4.23 définit l'entité, elle n'existe pas. Nommé, pas simulé.
+- ~~**Il n'audite pas.**~~ Il audite : §12.5 est tenu depuis que le module audit existe.
 
 ### 1.7 Une décision de conception qui pourrait surprendre
 
@@ -179,7 +179,7 @@ Reports explicites, avec leur raison :
   résolus, jamais appliqués : rien n'alloue de mémoire, ne compte de jetons, ne touche un dépôt ni
   n'installe d'extension. Un évaluateur de `max_memory` sans allocateur produirait une fausse assurance,
   ce qui est pire que l'absence.
-- **L'entrée d'Audit du §12.5** : `AuditEntry` (§4.23) n'existe pas.
+- ~~**L'entrée d'Audit du §12.5**~~ : **fermée**.
 - **« Peut suspendre une Session »** (§12.5) : il n'y a pas de Session (§4.12).
 - **La communication fermée par défaut** (§10.18c) : le moteur peut désormais porter la règle — c'est le
   point d'accroche qui manquait — mais aucune règle de ce genre n'est écrite. Personne n'a demandé à

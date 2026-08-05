@@ -15,6 +15,7 @@ import { ReconstructMemoryUseCase } from "./application/reconstruct-memory.use-c
 import { MEMORY_REPOSITORY } from "./domain/ports/memory.repository.port";
 import { PrismaMemoryRepository } from "./infrastructure/prisma-memory.repository";
 import { MemoryController } from "./interface/memory.controller";
+import { RepositoryModule } from "../repository/repository.module";
 
 /**
  * Imports decision and artifact for §16.10 reconstruction only — to READ what
@@ -22,7 +23,7 @@ import { MemoryController } from "./interface/memory.controller";
  * knows this module exists.
  */
 @Module({
-  imports: [IdentityModule, WorkspaceModule, DecisionModule, ArtifactModule],
+  imports: [RepositoryModule, IdentityModule, WorkspaceModule, DecisionModule, ArtifactModule],
   controllers: [MemoryController],
   providers: [
     { provide: MEMORY_REPOSITORY, useClass: PrismaMemoryRepository },

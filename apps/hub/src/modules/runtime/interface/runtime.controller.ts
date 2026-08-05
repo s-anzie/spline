@@ -33,6 +33,12 @@ import {
   RequirePermission,
 } from "../../identity/interface/permissions.guard";
 import {
+  ClaimCommandsUseCase,
+  EnqueueCommandUseCase,
+  ReportCommandUseCase,
+} from "../application/command.use-cases";
+import { RecoverCrashedSessionsUseCase } from "../application/recover-crashed-sessions.use-case";
+import {
   AdvanceSessionUseCase,
   AttachWorkerUseCase,
   RegisterWorkerUseCase,
@@ -43,6 +49,8 @@ import {
 import { AgentSession, SESSION_STATUSES, SessionStatus } from "../domain/agent-session";
 import { ProviderProfile } from "../domain/provider-profile";
 import {
+  COMMAND_STORE,
+  CommandStore,
   PROVIDER_STORE,
   ProviderStore,
   SESSION_STORE,
@@ -140,6 +148,41 @@ export class ProviderAvailabilityDto {
   reason?: string;
 }
 
+export class EnqueueCommandDto {
+  @IsString()
+  @IsNotEmpty()
+  workerId!: string;
+
+  /** Free string: §19.3 will publish Tools with their own orders. */
+  @IsString()
+  @IsNotEmpty()
+  type!: string;
+
+  @IsOptional()
+  payload?: Record<string, unknown>;
+}
+
+export class ClaimCommandsDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  max?: number;
+}
+
+export class ReportCommandDto {
+  @IsIn(["COMPLETED", "FAILED"])
+  outcome!: "COMPLETED" | "FAILED";
+
+  @IsOptional()
+  result?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  failureReason?: string;
+}
+
 export class ListQueryDto {
   @IsOptional()
   @IsInt()
@@ -209,6 +252,8 @@ export class RuntimeController {
     private readonly registerWorker: RegisterWorkerUseCase,
     private readonly heartbeat: WorkerHeartbeatUseCase,
     private readonly setAvailability: SetProviderAvailabilityUseCase,
+    private readonly claimCommands: ClaimCommandsUseCase,
+    private readonly reportCommand: ReportCommandUseCase,
     @Inject(PROVIDER_STORE) private readonly providers: ProviderStore,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -235,6 +280,48 @@ export class RuntimeController {
     const result = await this.heartbeat.execute({ workerId, status: dto.status });
     if (result.isFailure) {
       throw toHttpException(result.error);
+    }
+    return { ok: true };
+  }
+
+  /**
+   * §6.8 — a worker PULLS its orders. The hub never pushes: a worker
+   * connects outward, and an unclaimed order must survive a hub restart.
+   * Pulling doubles as a heartbeat — a worker asking for work is plainly
+   * there, and needing a separate beat would let a busy one look silent.
+   */
+  @Post("workers/:workerId/commands/claim")
+  @HttpCode(200)
+  async claim(
+    @Param("workerId") workerId: string,
+    @Body() dto: ClaimCommandsDto,
+  ) {
+    const result = await this.claimCommands.execute({ workerId, max: dto.max });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return result.value;
+  }
+
+  /** Only the worker holding an order may say what became of it. */
+  @Post("workers/:workerId/commands/:commandId/report")
+  @HttpCode(200)
+  async report(
+    @Param("workerId") workerId: string,
+    @Param("commandId") commandId: string,
+    @Body() dto: ReportCommandDto,
+  ): Promise<{ ok: true }> {
+    const result = await this.reportCommand.execute({
+      commandId,
+      workerId,
+      outcome: dto.outcome,
+      result: dto.result,
+      failureReason: dto.failureReason,
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        forbidden: ["CommandAlreadyClaimedError"],
+      });
     }
     return { ok: true };
   }
@@ -294,6 +381,9 @@ export class WorkspaceRuntimeController {
     private readonly attach: AttachWorkerUseCase,
     private readonly startSession: StartSessionUseCase,
     private readonly advance: AdvanceSessionUseCase,
+    private readonly recover: RecoverCrashedSessionsUseCase,
+    private readonly enqueueCommand: EnqueueCommandUseCase,
+    @Inject(COMMAND_STORE) private readonly commands: CommandStore,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(SESSION_STORE) private readonly sessions: SessionStore,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -350,6 +440,41 @@ export class WorkspaceRuntimeController {
     );
   }
 
+  /** §6.8 — the hub decides what a machine should do. */
+  @Post("commands")
+  @RequirePermission("execute_tasks")
+  async enqueue(
+    @Param("workspaceId") workspaceId: string,
+    @Body() dto: EnqueueCommandDto,
+  ): Promise<{ commandId: string }> {
+    const result = await this.enqueueCommand.execute({ workspaceId, ...dto });
+    if (result.isFailure) {
+      throw toHttpException(result.error, {
+        forbidden: ["WorkerNotAttachedError"],
+      });
+    }
+    return result.value;
+  }
+
+  @Get("commands")
+  @RequirePermission("read_workspace_state")
+  async listCommands(
+    @Param("workspaceId") workspaceId: string,
+    @Query() query: ListQueryDto,
+  ) {
+    const commands = await this.commands.list({ workspaceId, limit: query.limit });
+    return commands.map((command) => ({
+      id: command.id.value,
+      workerId: command.workerId,
+      type: command.type,
+      status: command.status,
+      claimedBy: command.claimedBy,
+      result: command.result,
+      failureReason: command.failureReason,
+      allowedStatusTargets: command.allowedStatusTargets(),
+    }));
+  }
+
   @Post("sessions")
   @RequirePermission("execute_tasks")
   async start(
@@ -375,6 +500,23 @@ export class WorkspaceRuntimeController {
     return (
       await this.sessions.list({ workspaceId, limit: query.limit })
     ).map(toSessionView);
+  }
+
+  /**
+   * §6.6 — "aucune tâche ne doit disparaître". Marks sessions that stopped
+   * reporting, so the tasks they held come back into view. Explicit rather
+   * than periodic: §9.16's second trigger does not exist yet, so this runs
+   * when an operator or a reconnecting worker asks.
+   */
+  @Post("recover")
+  @HttpCode(200)
+  @RequirePermission("operate_workspace")
+  async recoverSessions(@Param("workspaceId") workspaceId: string) {
+    const result = await this.recover.execute({ workspaceId });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return result.value;
   }
 
   @Post("sessions/:sessionId")
