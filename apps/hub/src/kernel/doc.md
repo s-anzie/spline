@@ -525,6 +525,40 @@ La leçon générale, écrite dans le README du worker et en §18.5-18.6 :
 
 Le dire est un contrôle en soi : lue comme un bac à sable, cette liste promettrait ce qu'elle ne tient pas.
 
+### 5.8 Nommer un manque le rend réparable — les quatre trous, fermés
+
+La section précédente listait quatre choses qu'un processus ne peut pas s'appliquer à lui-même : la course
+TOCTOU, le réseau, le reste du disque, les ressources. Les avoir **nommées** a suffi à les rendre
+adressables ; le backend d'exécution conteneurisé les ferme toutes les quatre d'un coup, et il est le
+défaut.
+
+Ce qui vaut d'être retenu tient en quatre points, dont un seul concerne les conteneurs.
+
+**1. Les deux couches s'appliquent dans l'ordre, et toujours les deux.** `planSpawn` passe *avant*
+`planContainer` : liste blanche, variables de chargement de code, confinement du répertoire. Un conteneur
+est une frontière, pas une raison d'arrêter de vérifier ce qu'on y met. Trois tests de `execution.spec.ts`
+n'existent que pour dire ça — et le jour où quelqu'un « simplifiera » en sautant la première couche parce
+que « de toute façon c'est dans un conteneur », ils échoueront.
+
+**2. Une frontière ne s'affirme pas, elle se prouve.** `container-plan.spec.ts` vérifie l'argv construit ;
+`container-plan.integration.spec.ts` vérifie ce que le noyau en fait, sous un vrai runtime — le réseau
+coupé, le disque de l'hôte hors d'atteinte, le lien symbolique qui ne mène plus nulle part, la mémoire
+bornée, la bombe à fork arrêtée. Le test mémoire porte **son propre contrôle** : la même commande affiche
+`SURVIVED` sans `--memory`, donc l'assertion prouve la limite et pas seulement que la commande échoue. Une
+assertion négative sans contrôle est une assertion qui passe pour la mauvaise raison.
+
+**3. Une configuration incomplète refuse, elle ne retombe pas.** Sans `CONTAINER_IMAGE`, le backend
+conteneur échoue au lieu de basculer sur l'hôte. Retomber transformerait un réglage oublié en **frontière
+silencieusement supprimée** — la pire classe de défaut de sécurité, celle où tout a l'air de marcher.
+
+**4. Ce qui reste ouvert reste écrit.** L'image est de confiance, le démon de conteneurs est de confiance
+(et un `docker` joignable équivaut à root sur l'hôte — Podman sans privilèges est l'assise plus solide), et
+la liste de refus de variables énumère toujours le connu. Elle est désormais *redondante* avec la frontière
+plutôt que porteuse : c'est sa bonne place, mais ça ne la transforme pas en frontière.
+
+> **La règle générale** : une liste de manques nommés est un plan de travail. Une liste de manques tus est
+> une promesse fausse. Le premier tour de cette revue a produit la liste ; le second l'a consommée.
+
 ## 6. Décisions notables (et leurs raisons)
 
 | Décision | Raison |

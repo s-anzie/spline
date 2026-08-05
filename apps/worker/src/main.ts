@@ -47,6 +47,25 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * §18.5 — the one line that tells an operator what this machine actually
+   * protects. A worker that quietly ran tasks on the host would look
+   * identical to one that isolates them, right up until it mattered.
+   */
+  if (config.backend === "host") {
+    console.warn(
+      "EXECUTION_BACKEND=host: tasks run directly on this machine. The " +
+        "allowlist, the environment rules and the timeouts still apply, but " +
+        "there is NO boundary — a task can reach the network, the rest of " +
+        "the disk, and this machine's resources (§18.5).",
+    );
+  } else {
+    console.info(
+      `tasks run in ${config.containerRuntime} (${config.containerImage || "no image configured"}), ` +
+        `network none, ${config.containerMemory} memory, ${config.containerPids} processes`,
+    );
+  }
+
   const workerId = await hub.register({
     capabilities: config.capabilities,
     labels: config.labels,

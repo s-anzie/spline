@@ -1,5 +1,7 @@
 import { hostname } from "node:os";
 
+import { ExecutionBackend } from "../supervision/execution";
+
 export interface WorkerConfig {
   hubUrl: string;
   token: string;
@@ -21,6 +23,19 @@ export interface WorkerConfig {
   /** How long a task may run, and how much of its output is kept. */
   taskTimeoutMs: number;
   maxOutputBytes: number;
+  /**
+   * §18.5 — where a task runs, which decides what a task can reach.
+   * `container` by default: a process cannot confine itself, and the four
+   * things it cannot do about that (the TOCTOU race, the network, the rest of
+   * the disk, resources) are exactly what a kernel boundary closes.
+   */
+  backend: ExecutionBackend;
+  containerRuntime: string;
+  containerImage: string;
+  containerMemory: string;
+  containerCpus: string;
+  containerPids: number;
+  containerUser: string;
 }
 
 function list(value: string | undefined): string[] {
@@ -44,6 +59,12 @@ function bounded(
     throw new Error(`${name} must be a number of at least ${floor}`);
   }
   return parsed;
+}
+
+function defaultContainerUser(): string {
+  const uid = process.getuid?.() ?? 1000;
+  const gid = process.getgid?.() ?? 1000;
+  return `${uid}:${gid}`;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -94,7 +115,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   if (!Number.isFinite(interval) || interval < 1000) {
     throw new Error("HEARTBEAT_INTERVAL_MS must be at least 1000");
   }
+  const backend = env.EXECUTION_BACKEND?.trim() || "container";
+  if (backend !== "container" && backend !== "host") {
+    throw new Error(`EXECUTION_BACKEND must be "container" or "host", got "${backend}"`);
+  }
+
   return {
+    backend,
+    containerRuntime: env.CONTAINER_RUNTIME?.trim() || "docker",
+    containerImage: env.CONTAINER_IMAGE?.trim() ?? "",
+    containerMemory: env.CONTAINER_MEMORY?.trim() || "1g",
+    containerCpus: env.CONTAINER_CPUS?.trim() || "2",
+    containerPids: bounded(env.CONTAINER_PIDS, 512, "CONTAINER_PIDS", 16),
+    // The worker's own identity by default, so files a task creates in the
+    // workspace belong to whoever will read them afterwards. Never root: the
+    // preflight refuses to start there in the first place.
+    containerUser: env.CONTAINER_USER?.trim() || defaultContainerUser(),
     allowedCommands: list(env.WORKER_ALLOWED_COMMANDS),
     taskTimeoutMs: bounded(env.TASK_TIMEOUT_MS, 15 * 60_000, "TASK_TIMEOUT_MS", 1000),
     maxOutputBytes: bounded(

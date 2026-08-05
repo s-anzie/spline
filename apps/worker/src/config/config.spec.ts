@@ -49,6 +49,46 @@ describe("loadConfig", () => {
     });
   });
 
+  /**
+   * §18.5 — a process cannot confine itself, so the boundary is the default
+   * and running without one is something an operator has to type.
+   */
+  describe("where a task runs", () => {
+    it("puts a task in a container unless told otherwise", () => {
+      expect(loadConfig(complete).backend).toBe("container");
+    });
+
+    it("lets an operator opt out explicitly", () => {
+      expect(loadConfig({ ...complete, EXECUTION_BACKEND: "host" }).backend).toBe(
+        "host",
+      );
+    });
+
+    it("refuses a backend it does not know, rather than falling back", () => {
+      expect(() =>
+        loadConfig({ ...complete, EXECUTION_BACKEND: "maybe" }),
+      ).toThrow(/must be "container" or "host"/);
+    });
+
+    it("never proposes root as the user inside the container", () => {
+      expect(loadConfig(complete).containerUser).not.toBe("0:0");
+    });
+
+    it("bounds memory, CPU and processes without being asked", () => {
+      const config = loadConfig(complete);
+
+      expect(config.containerMemory).not.toBe("");
+      expect(config.containerCpus).not.toBe("");
+      expect(config.containerPids).toBeGreaterThan(0);
+    });
+
+    it("refuses a process ceiling too low to run anything", () => {
+      expect(() => loadConfig({ ...complete, CONTAINER_PIDS: "2" })).toThrow(
+        /at least 16/,
+      );
+    });
+  });
+
   it("refuses a heartbeat interval too short to mean anything", () => {
     expect(() => loadConfig({ ...complete, HEARTBEAT_INTERVAL_MS: "10" })).toThrow(
       /at least 1000/,

@@ -13,15 +13,15 @@ The hub decides; this executes.
   that is recent enough (§17.7) — this daemon never decides it is healthy.
 - **§7.15 Failure detection.** Reads **process-level channels only**: stderr,
   exit code, structured tool errors. Never stdout.
-- **§18.1 / §18.4 / §7.9 Execution safety.** See the next section — it is the
-  part of this daemon most worth reading before changing anything.
+- **§18.1 / §18.4 / §18.5 / §7.9 Execution safety.** See the next section — it
+  is the part of this daemon most worth reading before changing anything.
 
 ## What isolation this actually gives you
 
-**A process cannot confine itself.** Everything below is discipline, not a
-boundary, and the distinction matters: read as a sandbox, this list would
-promise something it does not deliver. Each line closes a class of escape that
-has been exploited in a comparable agent runtime.
+Two layers, and the distinction between them is the most important thing in
+this file. **A process cannot confine itself**: everything in the first table
+is discipline, and each line closes a class of escape that has been exploited
+in a comparable agent runtime. The boundary comes after, from the kernel.
 
 | Control | What it closes |
 | --- | --- |
@@ -37,31 +37,54 @@ has been exploited in a comparable agent runtime.
 | Refuses to start as **root** | Everything above being decorative |
 | Refuses a token file readable beyond its owner | Credential theft by another account on the machine |
 
-**What it does NOT give you, and needs a kernel boundary — container, VM, or a
-provider sandbox:**
+### The boundary the kernel draws
 
-- **The TOCTOU race.** The directory checked can be swapped between the check
-  and the spawn. No amount of re-checking from inside the process closes it;
-  the kernel has to hold the descriptor.
-- **The network.** An allowed task can reach the internet and take with it
-  whatever it read.
-- **The rest of the disk.** The working directory is constrained; reading
-  elsewhere is not.
-- **Resources.** No memory, CPU or descriptor limits.
-- **The denylist itself.** A list of forbidden variables enumerates the known.
-  A boundary does not enumerate.
+The table above is discipline. This is the part a process genuinely cannot do
+for itself, and it is why `EXECUTION_BACKEND=container` is the **default**.
 
-So: **a task whose content is not trusted must run behind a kernel boundary**,
-and the content an agent reads is never trusted (spec §18.12). Until this
-daemon provides one, what it offers is defence in depth, not isolation.
+Every task is planned twice: `planSpawn` first — the allowlist and the
+environment rules still apply, a container is not a reason to stop checking
+what goes into it — then `planContainer` wraps the result in a run that has:
+
+| Flag | Gap it closes |
+| --- | --- |
+| One bind mount, `--read-only` root, `noexec` tmpfs for `/tmp` | **The rest of the disk**, and **the TOCTOU race**: a symlink inside the workspace now resolves inside the CONTAINER. Its `/etc` is the image's. Winning the race buys nothing, because there is nothing outside to reach. |
+| `--network none` | **The network.** Nothing to exfiltrate to. |
+| `--memory`, `--memory-swap`, `--cpus`, `--pids-limit` | **Resources.** Swap is pinned to memory, or a task simply swaps past the limit. |
+| `--cap-drop ALL`, `--security-opt no-new-privileges`, `--user` | Privilege inside the boundary |
+| `--rm` | Anything surviving the task |
+
+Secrets are forwarded **by name** (`--env NAME`), the value travelling in the
+runtime's own environment: a value in argv is a value in `ps`, readable by
+every account on the machine (§18.4).
+
+`container-plan.integration.spec.ts` proves each row against a real runtime —
+including the memory limit with its control, since the same command prints
+`SURVIVED` when run without `--memory`. It skips rather than fails where no
+runtime is installed.
+
+**What remains open, honestly:**
+
+- **`EXECUTION_BACKEND=host` gives none of this.** It is a deliberate choice,
+  logged loudly at every start, and it exists because a machine without a
+  container runtime should still be able to register and report.
+- **The image is trusted.** Nothing here verifies what `CONTAINER_IMAGE`
+  contains; a poisoned image is a poisoned task.
+- **The container runtime is trusted**, and the worker talks to its socket.
+  A `docker` daemon reachable by this user is root-equivalent on the host —
+  rootless Podman is the stronger footing, and the code already accepts it.
+- **The denylist of code-loading variables still enumerates the known.** It is
+  now redundant with the boundary rather than load-bearing, which is the right
+  place for it, but it is still a list.
 
 ## What it does not do yet
 
 Executing orders. The hub has a command queue (§6.8) and this daemon claims
 from it, but declines every order rather than running it: wiring an executor
-before the payload shapes are settled would guess at them. The pieces that
-have to be right when it lands — `planSpawn`, `superviseProcess`,
-`detectProviderFailure` — are written and tested here already.
+before the payload shapes are settled would guess at them. Every piece that
+has to be right when it lands is written and tested here already —
+`planExecution` (which is the door: `planSpawn`, then `planContainer`),
+`superviseProcess`, and `detectProviderFailure`.
 
 ## The rule worth knowing before changing anything
 
@@ -89,3 +112,7 @@ Three things will stop it starting, on purpose: a `HUB_URL` that is plain
 root, and a `.env` readable beyond its owner. `WORKER_ALLOWED_COMMANDS` is
 empty in the example, which means this machine refuses every order that asks
 it to run a program — that is the intended default, not an oversight.
+
+To actually run tasks you also need `CONTAINER_IMAGE`. Without it the
+container backend refuses rather than falling back to the host: falling back
+would turn a missing setting into a silently removed boundary.

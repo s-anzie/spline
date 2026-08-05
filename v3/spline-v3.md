@@ -1701,11 +1701,11 @@ la tâche, filtrés par ce que l'Extension a explicitement déclaré requérir.
 Isolation entre Workspaces, Repositories, Worktrees, Sessions, Providers, Extensions. Sessions exécutées dans
 Docker, VM, Sandbox Provider, ou process isolé.
 
-**Ce que « process isolé » veut dire exactement, et ce qu'il ne veut pas dire.** Un processus ne peut pas se
-confiner lui-même : tout ce qu'un Worker applique sans le noyau relève de la discipline, pas de la frontière. La
-distinction doit rester écrite, sinon la liste de contrôles se lit comme un bac à sable qu'elle n'est pas.
+**Deux couches, et la distinction entre elles doit rester écrite.** Un processus ne peut pas se confiner
+lui-même : tout ce qu'un Worker applique sans le noyau relève de la **discipline**, jamais de la frontière. Sans
+cette phrase, la première liste ci-dessous se lirait comme un bac à sable qu'elle n'est pas.
 
-Ce qu'un Worker applique, et qui est vérifiable par test :
+**Couche 1 — la discipline.** Ce qu'un Worker applique lui-même, et qui est vérifiable par test :
 
 | Contrôle | Ce qu'il ferme |
 | --- | --- |
@@ -1721,21 +1721,36 @@ Ce qu'un Worker applique, et qui est vérifiable par test :
 | Refus de démarrer en **root** | Que tout ce qui précède soit décoratif |
 | Fichier de jeton refusé s'il est lisible au-delà de son propriétaire | Le vol de credential par un autre compte de la machine |
 
-Ce qu'un Worker **ne peut pas** appliquer, et qui exige une frontière du noyau — conteneur, VM ou sandbox de
-provider :
+**Couche 2 — la frontière.** Ce qu'un Worker ne peut pas appliquer lui-même, et que **le noyau applique** : le
+backend d'exécution conteneurisé, qui est **le défaut**.
 
-- **La course TOCTOU.** Le répertoire vérifié peut être échangé entre la vérification et le lancement. C'est une
-  classe exploitée en pratique dans un runtime comparable, et aucune revérification côté processus ne la ferme :
-  il faut que le noyau tienne le descripteur.
-- **Le réseau.** Rien n'empêche une tâche autorisée de sortir vers Internet et d'exfiltrer ce qu'elle a lu.
-- **Le reste du disque.** Le répertoire de travail est contraint ; la lecture ailleurs ne l'est pas.
-- **Les ressources.** Ni mémoire, ni CPU, ni descripteurs.
-- **La liste de refus elle-même.** Une liste de variables interdites est une énumération du connu ; une frontière
-  n'énumère pas.
+| Ce que le noyau tient | Comment |
+| --- | --- |
+| **La course TOCTOU** | L'espace de noms de montage. Un lien symbolique dans le workspace résout désormais *dans le conteneur* : son `/etc` est celui de l'image, et le système de fichiers de l'hôte n'est pas atteignable. Gagner la course ne rapporte plus rien, parce qu'il n'y a plus rien dehors à atteindre. |
+| **Le réseau** | `--network none` |
+| **Le reste du disque** | Un seul montage, racine en lecture seule, tmpfs `noexec` pour `/tmp` |
+| **Les ressources** | `--memory`, `--memory-swap` (épinglé à la mémoire, sinon la tâche déborde simplement en swap), `--cpus`, `--pids-limit` |
+| **Le privilège à l'intérieur** | `--cap-drop ALL`, `--security-opt no-new-privileges`, `--user` non-root, `--rm` |
 
-**La règle qui en découle** : une tâche dont le contenu n'est pas de confiance — et le contenu qu'un agent lit
-n'est jamais de confiance (§18.12) — doit s'exécuter derrière une frontière du noyau. Tant que le Worker n'en
-fournit pas, ce qu'il offre est la défense en profondeur du principe §18.1, pas l'isolation du §18.5.
+Les deux couches s'appliquent **dans cet ordre et toujours les deux** : la liste blanche et les règles
+d'environnement passent avant la frontière. Un conteneur est une frontière, pas une raison d'arrêter de vérifier
+ce qu'on y met (§18.1, défense en profondeur).
+
+Les secrets sont transmis **par nom**, jamais par valeur : une valeur en argv est une valeur dans `ps`, lisible
+par tout compte de la machine (§18.4).
+
+**Ce qui reste vrai malgré tout**, et doit rester écrit :
+
+- **Le mode `host` ne donne rien de tout cela.** Il existe pour une machine sans runtime de conteneurs — elle peut
+  encore s'enregistrer et rapporter — et c'est un choix explicite, journalisé bruyamment à chaque démarrage. Une
+  configuration incomplète (image absente) **refuse** plutôt que de retomber sur l'hôte : retomber transformerait
+  un réglage oublié en frontière silencieusement supprimée.
+- **L'image est de confiance.** Rien ne vérifie ce qu'elle contient ; une image empoisonnée est une tâche
+  empoisonnée. C'est le point d'accroche de la chaîne d'approvisionnement (§19.3).
+- **Le runtime de conteneurs est de confiance.** Un démon `docker` joignable par cet utilisateur équivaut à root
+  sur l'hôte ; Podman sans privilèges est l'assise plus solide, et le code l'accepte déjà.
+- **La liste de refus de variables énumère toujours le connu.** Elle est désormais redondante avec la frontière
+  plutôt que porteuse — c'est sa bonne place — mais elle reste une liste.
 
 ### 18.12 L'injection indirecte est une élévation de privilège, pas une erreur de modèle
 
