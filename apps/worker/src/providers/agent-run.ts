@@ -9,7 +9,7 @@ import {
   ExecutionOutcome,
   superviseProcess,
 } from "../supervision/supervisor";
-import { providerSpec } from "./provider-spec";
+import { CLOSED_SURFACE, providerSpec, ToolSurface } from "./provider-spec";
 
 export interface AgentRunDeps {
   settings: ExecutionSettings;
@@ -24,6 +24,8 @@ export interface AgentRunDeps {
   realpath?: (path: string) => string;
   /** Injected so a test can say which id was assigned. */
   newSessionId?: () => string;
+  /** §18.12 — what this run may reach. Closed when absent. */
+  toolSurface?: ToolSurface;
   /**
    * §7.9 — makes the workspace's directory. Injected for the same reason
    * `realpath` is: a test about planning should not have to create
@@ -86,10 +88,15 @@ export async function runAgent(
     ? (deps.newSessionId ?? randomUUID)()
     : null;
 
+  /**
+   * §18.5, §18.12 — closed unless the order opened something. An agent
+   * inherits nothing from the machine it happens to run on.
+   */
+  const surface = deps.toolSurface ?? CLOSED_SURFACE;
   const args =
     resumeSessionId && spec.resumeArgs
-      ? spec.resumeArgs(prompt, resumeSessionId)
-      : spec.startArgs(prompt, assignedSessionId ?? "");
+      ? spec.resumeArgs(prompt, resumeSessionId, surface)
+      : spec.startArgs(prompt, assignedSessionId ?? "", surface);
 
   const plan = planExecution(
     {

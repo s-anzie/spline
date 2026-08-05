@@ -136,6 +136,22 @@ lying about what it can do.
 Output that is not the expected shape is a **broken run**, never a result to
 guess at (§7.15). Inventing one would hand the hub a fact nobody produced.
 
+### What an agent may reach (§18.5, §18.12)
+
+**Closed by default**, the way OpenClaw closes its own MCP bridges: an agent
+inherits nothing from the machine it happens to run on. Three flags, and the
+first is the one this was missing:
+
+| Flag | Why |
+| --- | --- |
+| `--strict-mcp-config` | Without it a run inherits the MCP servers configured on the machine — the operator's personal ones, whatever a project directory declares. An agent driven by a poisoned task would reach every one of them. |
+| `--permission-mode dontAsk` | A headless run that ASKS is a run that waits until its timeout. The first real execution here spent its budget requesting `curl`. |
+| `--allowedTools` | The narrow yes, passed only when something was listed. |
+
+Codex has **no equivalent flags today**, and that is recorded as a test rather
+than papered over: a surface this cannot narrow is one an operator must know
+is wide.
+
 ### Credentials (§18.4)
 
 Fetched **per order, at execution time**, from a route that only answers a

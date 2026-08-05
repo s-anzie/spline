@@ -28,6 +28,22 @@ export type ParseResult =
   | { isFailure: false; value: ProviderResult; error?: undefined }
   | { isFailure: true; error: string; value?: undefined };
 
+/**
+ * §18.5, §18.12 — what an agent may reach beyond its own reasoning.
+ *
+ * Closed by default, the way OpenClaw closes its own MCP bridges: an agent
+ * inherits nothing from the machine it happens to run on. Opening a door is
+ * an act, never a leftover.
+ */
+export interface ToolSurface {
+  /** MCP servers, as the CLI's own config shape. Empty means none. */
+  mcpServers: Record<string, unknown>;
+  /** Exactly which tools may be called. Empty means none. */
+  allowedTools: readonly string[];
+}
+
+export const CLOSED_SURFACE: ToolSurface = { mcpServers: {}, allowedTools: [] };
+
 export interface ProviderSpec {
   /** A program name — `planSpawn` refuses a path, and the allowlist decides. */
   command: string;
@@ -37,8 +53,8 @@ export interface ProviderSpec {
    * crash loses it.
    */
   assignsSessionId: boolean;
-  startArgs(prompt: string, sessionId: string): string[];
-  resumeArgs?(prompt: string, sessionId: string): string[];
+  startArgs(prompt: string, sessionId: string, surface: ToolSurface): string[];
+  resumeArgs?(prompt: string, sessionId: string, surface: ToolSurface): string[];
   parse(stdout: string): ParseResult;
 }
 
@@ -57,6 +73,34 @@ function usageOf(value: unknown): Record<string, number> | null {
 }
 
 /**
+ * §18.5, §18.12 — the flags that decide what an agent can reach, and the
+ * three that matter are not obvious.
+ *
+ * `--strict-mcp-config` is the one this was missing. Without it a run
+ * inherits the MCP servers configured on the machine — the operator's
+ * personal ones, whatever a project directory declares — and an agent driven
+ * by a poisoned task would reach every one of them. With it, and with no
+ * `--mcp-config`, it inherits nothing.
+ *
+ * `--permission-mode dontAsk` turns a prompt into a refusal instead of a
+ * wait. A headless run that asks is a run that hangs until its timeout, which
+ * is how the first real execution here spent its budget asking for `curl`.
+ *
+ * `--allowedTools` is the narrow yes. Passed even when empty, because
+ * "nothing was listed" and "the flag was forgotten" must not look the same.
+ */
+function isolation(surface: ToolSurface): string[] {
+  const args = ["--strict-mcp-config", "--permission-mode", "dontAsk"];
+  if (Object.keys(surface.mcpServers).length > 0) {
+    args.push("--mcp-config", JSON.stringify({ mcpServers: surface.mcpServers }));
+  }
+  if (surface.allowedTools.length > 0) {
+    args.push("--allowedTools", surface.allowedTools.join(","));
+  }
+  return args;
+}
+
+/**
  * Claude Code, headless. `-p` runs the same agent loop without a terminal UI,
  * `--output-format json` returns one envelope carrying the result, the
  * session and the cost.
@@ -65,7 +109,7 @@ const CLAUDE: ProviderSpec = {
   command: "claude",
   assignsSessionId: true,
 
-  startArgs(prompt, sessionId) {
+  startArgs(prompt, sessionId, surface) {
     return [
       "-p",
       prompt,
@@ -74,11 +118,20 @@ const CLAUDE: ProviderSpec = {
       // Ours, not theirs: see the note at the top of this file.
       "--session-id",
       sessionId,
+      ...isolation(surface),
     ];
   },
 
-  resumeArgs(prompt, sessionId) {
-    return ["-p", prompt, "--output-format", "json", "--resume", sessionId];
+  resumeArgs(prompt, sessionId, surface) {
+    return [
+      "-p",
+      prompt,
+      "--output-format",
+      "json",
+      "--resume",
+      sessionId,
+      ...isolation(surface),
+    ];
   },
 
   parse(stdout) {
@@ -120,6 +173,9 @@ const CODEX: ProviderSpec = {
   assignsSessionId: false,
 
   startArgs(prompt) {
+    // No equivalent flags today: Codex has no `--strict-mcp-config`. Recorded
+    // rather than faked — a surface this cannot narrow is one an operator
+    // must know is wide.
     return ["exec", "--json", prompt];
   },
 

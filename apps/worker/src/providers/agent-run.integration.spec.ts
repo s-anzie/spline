@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runAgent } from "./agent-run";
-import { providerSpec } from "./provider-spec";
+import { providerSpec, CLOSED_SURFACE } from "./provider-spec";
 
 /**
  * A REAL process, driven end to end: plan → spawn → supervise → parse.
@@ -176,8 +176,8 @@ describe("running an agent for real (integration)", () => {
 
       // Every flag the spec puts on a command line must be one the CLI knows.
       for (const flag of [
-        ...claude.startArgs("x", "y"),
-        ...claude.resumeArgs!("x", "y"),
+        ...claude.startArgs("x", "y", CLOSED_SURFACE),
+        ...claude.resumeArgs!("x", "y", CLOSED_SURFACE),
       ].filter((argument) => argument.startsWith("--"))) {
         expect(help).toContain(flag);
       }

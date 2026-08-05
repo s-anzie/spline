@@ -1,4 +1,4 @@
-import { providerSpec, PROVIDERS } from "./provider-spec";
+import { providerSpec, PROVIDERS, CLOSED_SURFACE } from "./provider-spec";
 
 describe("provider specs", () => {
   it("knows the providers this worker can drive", () => {
@@ -13,7 +13,7 @@ describe("provider specs", () => {
     const claude = providerSpec("claude")!;
 
     it("runs headless and asks for a machine-readable answer", () => {
-      const args = claude.startArgs("Review the migration", "sess-1");
+      const args = claude.startArgs("Review the migration", "sess-1", CLOSED_SURFACE);
 
       expect(claude.command).toBe("claude");
       expect(args).toContain("-p");
@@ -29,17 +29,68 @@ describe("provider specs", () => {
      * nobody ever learned what to resume.
      */
     it("assigns the session id rather than discovering it", () => {
-      expect(claude.startArgs("go", "sess-1")).toContain("--session-id");
-      expect(claude.startArgs("go", "sess-1")).toContain("sess-1");
+      expect(claude.startArgs("go", "sess-1", CLOSED_SURFACE)).toContain("--session-id");
+      expect(claude.startArgs("go", "sess-1", CLOSED_SURFACE)).toContain("sess-1");
       expect(claude.assignsSessionId).toBe(true);
     });
 
     it("resumes by that same id", () => {
-      const args = claude.resumeArgs!("Now write the tests", "sess-1");
+      const args = claude.resumeArgs!("Now write the tests", "sess-1", CLOSED_SURFACE);
 
       expect(args).toContain("--resume");
       expect(args).toContain("sess-1");
       expect(args).toContain("Now write the tests");
+    });
+
+    /**
+     * §18.5, §18.12 — what the first real run got wrong.
+     *
+     * Without `--strict-mcp-config` an agent inherits the MCP servers
+     * configured on the machine: the operator's personal ones, whatever a
+     * project directory declares. A run driven by a poisoned task would reach
+     * every one of them.
+     */
+    describe("what the agent may reach", () => {
+      it("inherits nothing from the machine", () => {
+        const args = claude.startArgs("go", "sess-1", CLOSED_SURFACE);
+
+        expect(args).toContain("--strict-mcp-config");
+        // Nothing listed means nothing configured, so no config is passed.
+        expect(args).not.toContain("--mcp-config");
+        expect(args).not.toContain("--allowedTools");
+      });
+
+      /**
+       * A headless run that ASKS is a run that waits until its timeout — how
+       * the first real execution here spent its budget requesting `curl`.
+       */
+      it("never blocks on a permission prompt", () => {
+        const args = claude.startArgs("go", "sess-1", CLOSED_SURFACE);
+        const mode = args[args.indexOf("--permission-mode") + 1];
+
+        expect(mode).toBe("dontAsk");
+      });
+
+      it("opens exactly what it was given, and no more", () => {
+        const args = claude.startArgs("go", "sess-1", {
+          mcpServers: { spline: { command: "node", args: ["mcp.js"] } },
+          allowedTools: ["mcp__spline__publish_progress"],
+        });
+
+        expect(args[args.indexOf("--mcp-config") + 1]).toContain("spline");
+        expect(args[args.indexOf("--allowedTools") + 1]).toBe(
+          "mcp__spline__publish_progress",
+        );
+        // Still strict: an opened door is not an open house.
+        expect(args).toContain("--strict-mcp-config");
+      });
+
+      it("carries the same isolation into a resume", () => {
+        const args = claude.resumeArgs!("go", "sess-1", CLOSED_SURFACE);
+
+        expect(args).toContain("--strict-mcp-config");
+        expect(args).toContain("dontAsk");
+      });
     });
 
     it("reads the final answer, the cost and the session out of the envelope", () => {
@@ -77,7 +128,7 @@ describe("provider specs", () => {
     const codex = providerSpec("codex")!;
 
     it("runs its non-interactive subcommand, streaming events", () => {
-      const args = codex.startArgs("Review the migration", "sess-1");
+      const args = codex.startArgs("Review the migration", "sess-1", CLOSED_SURFACE);
 
       expect(codex.command).toBe("codex");
       expect(args.slice(0, 2)).toEqual(["exec", "--json"]);
@@ -90,14 +141,29 @@ describe("provider specs", () => {
      * The two providers genuinely differ here, and pretending otherwise is
      * how a shared abstraction starts lying.
      */
+    /**
+     * Codex has no equivalent flags today. Stated as a test so the gap is a
+     * known fact rather than an assumption: a surface this cannot narrow is
+     * one an operator must know is wide.
+     */
+    it("cannot narrow its tool surface, and that is recorded rather than faked", () => {
+      const args = codex.startArgs("go", "sess-1", {
+        mcpServers: { spline: {} },
+        allowedTools: ["mcp__spline__x"],
+      });
+
+      expect(args).not.toContain("--strict-mcp-config");
+      expect(args).not.toContain("--allowedTools");
+    });
+
     it("discovers the session id instead of being given one", () => {
       expect(codex.assignsSessionId).toBe(false);
-      expect(codex.startArgs("go", "sess-1")).not.toContain("sess-1");
+      expect(codex.startArgs("go", "sess-1", CLOSED_SURFACE)).not.toContain("sess-1");
     });
 
     /** Resuming is a SUBCOMMAND with different args, not a flag. */
     it("resumes through its own subcommand", () => {
-      const args = codex.resumeArgs!("Now write the tests", "thread-9");
+      const args = codex.resumeArgs!("Now write the tests", "thread-9", CLOSED_SURFACE);
 
       expect(args.slice(0, 3)).toEqual(["exec", "resume", "thread-9"]);
     });
