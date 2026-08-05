@@ -184,3 +184,33 @@ Reports explicites, avec leur raison :
   ajoute aucun à la machine de Task. §22.6 en fait l'autorité de l'agrégat, et deux propriétaires d'un
   même champ est une divergence garantie. `WAITING` et `SCHEDULED` sont d'ailleurs des **vues** que la
   file exprime sans rien écrire.
+
+
+## §9.16 — le double déclencheur, livré
+
+**Le défaut trouvé en l'écrivant est plus intéressant que la fonctionnalité.** Le commentaire de
+`GetNextForActorUseCase` revendiquait déjà §9.16 — alors que seule la moitié « jamais une liste vide »
+existait. C'est exactement la classe de report périmé que le doc du kernel enregistre (§5.5) : une phrase
+qui se lit comme faite pendant que la moitié de la section manque. Le commentaire dit maintenant laquelle
+des deux moitiés il porte.
+
+**Ce que fait la moitié périodique.** Tout autre signal de ce système se déclenche quand quelque chose ne
+va pas. Celui-ci se déclenche quand **rien** ne va mal — c'est la seule façon dont « personne n'a demandé
+de travail depuis deux jours » atteigne jamais quelqu'un. Depuis une file vide, « à jour » et « abandonné »
+sont indiscernables (0.3.10).
+
+**La condition est le ET que la spec écrit** : aucun travail actionnable **et** l'intervalle écoulé. Un
+acteur qui a du travail en main n'est pas silencieux, même si on le lui a donné il y a longtemps.
+
+**Rien n'est stocké, aucun cron ne tourne.** L'intervalle est un argument, jugé à la lecture comme toute
+péremption ici (§17.7) : changer la politique d'un workspace change toutes les réponses d'un coup, pas
+seulement les futures. Un « dernier envoi » stocké serait une seconde source de vérité sur ce qui a été
+distribué, et les deux finiraient par diverger — ce sont les tâches qui font foi.
+
+`isStale(null) === true` du kernel tombe juste ici sans rien ajouter : un acteur à qui on n'a jamais rien
+donné est le plus silencieux de tous, pas le moins.
+
+L'intervalle par défaut est de **quatre heures, pas quatre secondes** (§9.16 : « délibérément plus long que
+la latence de dispatch réactif »). Un test le verrouille, parce qu'un intervalle court transformerait le
+point de contrôle en scrutation — et une scrutation qui se déclenche sans cesse est un bruit que personne
+ne lit, ce qui finit dans le même silence.

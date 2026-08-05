@@ -476,3 +476,141 @@ describe("Preemption (e2e)", () => {
       .expect(409);
   });
 });
+
+/**
+ * §9.16 — the periodic trigger, and the observation behind it (0.3.10): a
+ * system that is entirely up to date goes quiet, and nothing reports that.
+ */
+describe("Check-ins (e2e)", () => {
+  let app: INestApplication;
+  let http: ReturnType<INestApplication["getHttpServer"]>;
+  let prisma: PrismaService;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    await app.init();
+    http = app.getHttpServer();
+    prisma = app.get(PrismaService);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function setup() {
+    const registered = await request(http)
+      .post("/auth/register")
+      .send({ email: "o@example.com", password: "a-strong-password", displayName: "O" })
+      .expect(201);
+    const logged = await request(http)
+      .post("/auth/login")
+      .send({ email: "o@example.com", password: "a-strong-password" })
+      .expect(200);
+    const auth = (r: request.Test) =>
+      r.set("Authorization", `Bearer ${logged.body.accessToken}`);
+    const ws = await auth(request(http).post("/workspaces"))
+      .send({ organizationId: registered.body.organizationId, name: "Core" })
+      .expect(201);
+    const workspaceId = ws.body.workspaceId as string;
+    const goal = await auth(request(http).post(`/workspaces/${workspaceId}/goals`))
+      .send({ title: "Ship", successCriteria: ["ok"] })
+      .expect(201);
+    return {
+      auth,
+      workspaceId,
+      goalId: goal.body.goalId as string,
+      userId: registered.body.userId as string,
+      base: `/workspaces/${workspaceId}/schedule`,
+    };
+  }
+
+  it("names the owner as due when nothing has ever been assigned to them", async () => {
+    const ctx = await setup();
+
+    const due = await ctx
+      .auth(request(http).get(`${ctx.base}/check-ins`))
+      .expect(200);
+
+    expect(due.body).toHaveLength(1);
+    expect(due.body[0].actor.id).toBe(ctx.userId);
+    expect(due.body[0].silentForMs).toBeNull();
+    // §17.8 — the reason travels with the name.
+    expect(due.body[0].reason).toMatch(/never/i);
+  });
+
+  it("stops naming them once they have something actionable", async () => {
+    const ctx = await setup();
+    const task = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks`))
+      .send({
+        goalId: ctx.goalId,
+        title: "Do it",
+        acceptanceCriteria: ["ok"],
+        assigneeType: "HUMAN",
+        assigneeId: ctx.userId,
+      })
+      .expect(201);
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/tasks/${task.body.taskId}/status`,
+        ),
+      )
+      .send({ status: "READY" })
+      .expect(200);
+
+    const due = await ctx
+      .auth(request(http).get(`${ctx.base}/check-ins`))
+      .expect(200);
+
+    expect(due.body).toEqual([]);
+  });
+
+  /**
+   * The interval is an argument, not stored state: changing a workspace's
+   * policy changes every answer at once rather than only future ones (§17.7).
+   */
+  it("answers against the checkpoint it was given", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks`))
+      .send({
+        goalId: ctx.goalId,
+        title: "Done long ago",
+        acceptanceCriteria: ["ok"],
+        assigneeType: "HUMAN",
+        assigneeId: ctx.userId,
+      })
+      .expect(201);
+
+    // The task was just created, so a long checkpoint says "not silent"...
+    expect(
+      (await ctx.auth(request(http).get(`${ctx.base}/check-ins?checkpointMs=3600000`)).expect(200))
+        .body,
+    ).toEqual([]);
+    // ...and a one-minute one says the same, because it really was just now.
+    expect(
+      (await ctx.auth(request(http).get(`${ctx.base}/check-ins?checkpointMs=60000`)).expect(200))
+        .body,
+    ).toEqual([]);
+  });
+
+  /** An actor asking for its own next work learns the same thing. */
+  it("tells an actor with nothing that it has gone quiet, not merely that it is empty", async () => {
+    const ctx = await setup();
+
+    const mine = await ctx.auth(request(http).get(`${ctx.base}/mine`)).expect(200);
+
+    expect(mine.body.next).toBeNull();
+    expect(mine.body.checkIn).not.toBeNull();
+    expect(mine.body.checkIn.reason).toMatch(/never|nothing/i);
+  });
+});

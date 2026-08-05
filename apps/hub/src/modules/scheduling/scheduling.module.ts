@@ -1,3 +1,4 @@
+import { GetCheckInsDueUseCase } from "./application/schedule.use-cases";
 import { PreemptForTaskUseCase } from "./application/preempt.use-case";
 import { Module } from "@nestjs/common";
 
@@ -19,6 +20,7 @@ import { SchedulingController } from "./interface/scheduling.controller";
   imports: [IdentityModule, TaskModule, GoalModule],
   controllers: [SchedulingController],
   providers: [
-    PreemptForTaskUseCase,GetScheduleUseCase, GetNextForActorUseCase],
+    PreemptForTaskUseCase,
+    GetCheckInsDueUseCase,GetScheduleUseCase, GetNextForActorUseCase],
 })
 export class SchedulingModule {}

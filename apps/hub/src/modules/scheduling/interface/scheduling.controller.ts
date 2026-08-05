@@ -8,7 +8,8 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Min } from "class-validator";
 
 import { PRIORITIES, Priority } from "../../../kernel/domain/priority";
 
@@ -22,6 +23,7 @@ import {
 } from "../../identity/interface/permissions.guard";
 import { PreemptForTaskUseCase } from "../application/preempt.use-case";
 import {
+  GetCheckInsDueUseCase,
   GetNextForActorUseCase,
   GetScheduleUseCase,
 } from "../application/schedule.use-cases";
@@ -34,6 +36,15 @@ export class PreemptDto {
 
   @IsIn(PRIORITIES)
   claimantPriority!: Priority;
+}
+
+export class CheckInQueryDto {
+  /** §9.16 — a workspace policy. Absent means the default checkpoint. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60_000)
+  checkpointMs?: number;
 }
 
 export class ScheduleQueryDto {
@@ -72,6 +83,7 @@ export class SchedulingController {
     private readonly schedule: GetScheduleUseCase,
     private readonly next: GetNextForActorUseCase,
     private readonly preemptFor: PreemptForTaskUseCase,
+    private readonly checkInsDue: GetCheckInsDueUseCase,
   ) {}
 
   /** §9.5/§9.7 — the workspace's queue. Reading it cannot change anything. */
@@ -122,6 +134,27 @@ export class SchedulingController {
     return result.value;
   }
 
+  /**
+   * §9.16 — who has gone quiet. The one signal in this system that fires when
+   * nothing is wrong, because "up to date" and "abandoned" look identical
+   * from an empty queue (0.3.10).
+   */
+  @Get("check-ins")
+  @RequirePermission("read_workspace_state")
+  async checkIns(
+    @Param("workspaceId") workspaceId: string,
+    @Query() query: CheckInQueryDto,
+  ) {
+    const result = await this.checkInsDue.execute({
+      workspaceId,
+      checkpointMs: query.checkpointMs,
+    });
+    if (result.isFailure) {
+      throw toHttpException(result.error);
+    }
+    return result.value;
+  }
+
   @Get("mine")
   @RequirePermission("read_workspace_state")
   async mine(
@@ -137,6 +170,12 @@ export class SchedulingController {
       throw toHttpException(result.error);
     }
     return {
+      /**
+       * §9.16 — present when this actor has nothing AND has gone quiet past
+       * the checkpoint. An empty `next` alone cannot tell "the system is up
+       * to date" from "nobody has asked for work in two days" (0.3.10).
+       */
+      checkIn: result.value.checkIn,
       next: result.value.next
         ? {
             taskId: result.value.next.id,
