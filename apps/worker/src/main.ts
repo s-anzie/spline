@@ -1,7 +1,11 @@
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { config as loadDotenv } from "dotenv";
 
 import { loadConfig } from "./config/config";
 import { HubClient } from "./hub/hub-client";
+import { preflightComplaints } from "./supervision/preflight";
 
 loadDotenv();
 
@@ -15,8 +19,33 @@ loadDotenv();
  * need dependency injection to hold two objects.
  */
 async function main(): Promise<void> {
+  /**
+   * §18 — before anything else. Running as root or leaving the token
+   * world-readable makes every other control in this daemon decorative, and
+   * both are misconfigurations an operator cannot see from the outside.
+   * Refused rather than warned: a worker that starts anyway is a worker
+   * nobody will ever go back and fix.
+   */
+  const complaints = preflightComplaints({
+    uid: process.getuid?.(),
+    statMode: (path) => statSync(path).mode,
+    secretFiles: [resolve(process.cwd(), ".env")],
+  });
+  if (complaints.length > 0) {
+    throw new Error(`refusing to start:\n- ${complaints.join("\n- ")}`);
+  }
+
   const config = loadConfig();
   const hub = new HubClient(config);
+
+  if (config.allowedCommands.length === 0) {
+    // Not fatal: a worker with no allowlist is still useful for presence and
+    // reporting. Said out loud because silence would read as "it works".
+    console.warn(
+      "WORKER_ALLOWED_COMMANDS is empty: this machine will refuse every order " +
+        "that asks it to run a program (§18.1).",
+    );
+  }
 
   const workerId = await hub.register({
     capabilities: config.capabilities,

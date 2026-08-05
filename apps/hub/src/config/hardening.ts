@@ -1,5 +1,5 @@
 /**
- * §18 — rate limits.
+ * §18 — the hardening knobs: rate limits and network exposure.
  *
  * Read from the environment rather than injected, because `@Throttle(...)` is
  * a decorator: it is evaluated when the controller class is defined, long
@@ -34,4 +34,21 @@ export function globalThrottleLimit(): number {
  */
 export function authThrottleLimit(): number {
   return positiveInteger(process.env.AUTH_THROTTLE_LIMIT, 10);
+}
+
+/**
+ * The interface the hub listens on.
+ *
+ * `app.listen(port)` binds 0.0.0.0 — every interface, including whatever the
+ * machine is connected to. OpenClaw shipped that default and 40,000 of its
+ * instances ended up reachable from the internet, most of them exploitable;
+ * their own hardening guide now names a loopback bind as the first control.
+ *
+ * Loopback here too, and reaching it from elsewhere is a decision an operator
+ * makes on purpose. A reverse proxy or a tunnel keeps that decision in one
+ * place instead of spreading it across every deployment.
+ */
+export function listenHost(): string {
+  const configured = process.env.LISTEN_HOST?.trim();
+  return configured && configured !== "" ? configured : "127.0.0.1";
 }

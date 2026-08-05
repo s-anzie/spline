@@ -41,6 +41,18 @@ export class WorkerImpersonationError extends DomainError {
   }
 }
 
+/**
+ * §4.2 and §18.3 — a session names the actor it runs as, and that name came
+ * from the request body. An actor that is not a member of this workspace
+ * cannot be given one: the entry would attribute work to somebody who never
+ * acted, and would cross the isolation §4.2 calls absolute.
+ */
+export class ActorNotInWorkspaceError extends DomainError {
+  constructor(actorId: string) {
+    super(`Actor "${actorId}" is not a member of this workspace (§4.2)`);
+  }
+}
+
 /** §4.14 — a provider that is out of quota cannot take new work. */
 export class ProviderUnavailableError extends DomainError {
   constructor(provider: string, reason: string | null) {

@@ -470,9 +470,23 @@ export class WorkspaceRuntimeController {
     );
   }
 
-  /** §6.8 — the hub decides what a machine should do. */
+  /**
+   * §6.8 — "le hub DÉCIDE et enfile". The decision is the hub's.
+   *
+   * This was `execute_tasks`, which an AGENT_CONTRIBUTOR holds — so an agent
+   * could put an arbitrary order, with an arbitrary payload, on the queue of
+   * a machine an operator owns. That is the whole indirect-injection chain in
+   * one route: an agent reads a poisoned file, the injected instruction
+   * enqueues a command, and the worker executes it on the host. The agent did
+   * not have to be malicious; it only had to read.
+   *
+   * Operating a machine is a human act: `manage_machines` is held by OWNER
+   * and HUMAN_OPERATOR, by no agent role. When the Task Engine needs to
+   * enqueue on an agent's behalf it will do so AS THE HUB, from a decision it
+   * made — not by handing agents the route.
+   */
   @Post("commands")
-  @RequirePermission("execute_tasks")
+  @RequirePermission("manage_machines")
   async enqueue(
     @Param("workspaceId") workspaceId: string,
     @Body() dto: EnqueueCommandDto,
@@ -515,7 +529,7 @@ export class WorkspaceRuntimeController {
     if (result.isFailure) {
       throw toHttpException(result.error, {
         conflicts: ["ProviderUnavailableError"],
-        forbidden: ["WorkerNotAttachedError"],
+        forbidden: ["WorkerNotAttachedError", "ActorNotInWorkspaceError"],
       });
     }
     return result.value;

@@ -112,6 +112,13 @@ export class HubClient {
         authorization: `Bearer ${this.config.token}`,
       },
       body: JSON.stringify(body),
+      /**
+       * §18 — a redirect is somebody else telling this worker where to send
+       * its credential. That is the shape of CVE-2026-25253, where a URL the
+       * client was told to trust exfiltrated the auth token. The hub is at
+       * HUB_URL; anywhere else is a fault to report, never a place to follow.
+       */
+      redirect: "error",
     });
     if (!response.ok) {
       throw new Error(

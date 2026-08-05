@@ -12,6 +12,15 @@ export interface WorkerConfig {
    */
   capabilities: string[];
   labels: string[];
+  /**
+   * §18.1 — the programs this machine will run, and nothing else. Closed by
+   * default: an operator who lists nothing runs nothing, rather than quietly
+   * running everything an order happens to name.
+   */
+  allowedCommands: string[];
+  /** How long a task may run, and how much of its output is kept. */
+  taskTimeoutMs: number;
+  maxOutputBytes: number;
 }
 
 function list(value: string | undefined): string[] {
@@ -19,6 +28,22 @@ function list(value: string | undefined): string[] {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function bounded(
+  raw: string | undefined,
+  fallback: number,
+  name: string,
+  floor: number,
+): number {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < floor) {
+    throw new Error(`${name} must be a number of at least ${floor}`);
+  }
+  return parsed;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -70,6 +95,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     throw new Error("HEARTBEAT_INTERVAL_MS must be at least 1000");
   }
   return {
+    allowedCommands: list(env.WORKER_ALLOWED_COMMANDS),
+    taskTimeoutMs: bounded(env.TASK_TIMEOUT_MS, 15 * 60_000, "TASK_TIMEOUT_MS", 1000),
+    maxOutputBytes: bounded(
+      env.MAX_OUTPUT_BYTES,
+      1_000_000,
+      "MAX_OUTPUT_BYTES",
+      1024,
+    ),
     hubUrl: requireSafeHubUrl(env.HUB_URL!.trim()),
     token: env.WORKER_TOKEN!.trim(),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),

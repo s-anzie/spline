@@ -12,6 +12,10 @@ import {
 import { Result } from "../../../kernel/domain/result";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
 import {
+  WORKSPACE_MEMBERSHIP_REPOSITORY,
+  WorkspaceMembershipRepository,
+} from "../../identity/domain/ports/identity.repository.ports";
+import {
   WORKSPACE_REPOSITORY,
   WorkspaceRepository,
 } from "../../workspace/domain/ports/workspace.repository.port";
@@ -27,6 +31,7 @@ import {
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
 import {
+  ActorNotInWorkspaceError,
   ProviderUnavailableError,
   SessionNotFoundError,
   WorkerImpersonationError,
@@ -229,6 +234,7 @@ export type StartSessionError =
   | GuardViolation
   | WorkerNotFoundError
   | WorkerNotAttachedError
+  | ActorNotInWorkspaceError
   | ProviderUnavailableError;
 
 /** §7.1 — starting a session, with the two refusals that protect the system. */
@@ -240,6 +246,8 @@ export class StartSessionUseCase
     @Inject(SESSION_STORE) private readonly sessions: SessionStore,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(PROVIDER_STORE) private readonly providers: ProviderStore,
+    @Inject(WORKSPACE_MEMBERSHIP_REPOSITORY)
+    private readonly memberships: WorkspaceMembershipRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
   ) {}
@@ -272,6 +280,26 @@ export class StartSessionUseCase
     const agent = ActorRef.create(input.agentType, input.agentId);
     if (agent.isFailure) {
       return Result.fail(agent.error);
+    }
+    /**
+     * §18.3 and §4.2 — the actor a session runs as came from the request body
+     * and was believed. Any member holding `execute_tasks` could therefore
+     * open a session attributed to an agent of ANOTHER workspace, or to no
+     * workspace at all: every event and every audit entry would then name an
+     * actor that never acted, and the isolation §4.2 calls absolute would be
+     * crossed by a field in a DTO.
+     *
+     * The caller may still start a session for a colleague — an orchestrator
+     * legitimately does — but only for one that belongs here.
+     */
+    // A revoked membership is deleted, never flagged, so "found" is the whole
+    // question here.
+    const membership = await this.memberships.findByActorAndWorkspace(
+      agent.value,
+      input.workspaceId,
+    );
+    if (!membership) {
+      return Result.fail(new ActorNotInWorkspaceError(input.agentId));
     }
     const session = AgentSession.start({
       workspaceId: input.workspaceId,

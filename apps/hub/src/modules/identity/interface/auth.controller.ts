@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 
-import { authThrottleLimit, throttleTtlMs } from "../../../config/throttle";
+import { authThrottleLimit, throttleTtlMs } from "../../../config/hardening";
 import { ActorIdentity } from "../application/permissions.service";
 import { LoginUseCase } from "../application/login.use-case";
 import { RegisterUserUseCase } from "../application/register-user.use-case";

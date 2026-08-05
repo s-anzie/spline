@@ -17,6 +17,9 @@ function request(overrides: Partial<SpawnRequest> = {}): SpawnRequest {
     env: { SPLINE_TASK_ID: "t-42" },
     secrets: {},
     hostEnv: { PATH: "/usr/bin", HOME: "/home/agent", A_HOST_SECRET: "must not travel" },
+    allowedCommands: ["claude"],
+    // Identity by default: the tests that care about symlinks say so.
+    realpath: (path) => path,
     ...overrides,
   };
 }
@@ -102,6 +105,138 @@ describe("planSpawn", () => {
       // a different directory entirely.
       expect(planSpawn(request({ cwd: "/srv/spline/w-10/task" })).isFailure).toBe(true);
     });
+  });
+
+  /**
+   * The class OpenClaw shipped as CVE-2026-44115 and the Snyk sandbox
+   * bypasses: the allowlist was there, and the environment walked around it.
+   *
+   * None of these need a shell. `LD_PRELOAD` loads an attacker's library into
+   * every dynamically linked program; `NODE_OPTIONS=--require /tmp/x.js` turns
+   * any node invocation into arbitrary code; `BASH_ENV` and `PYTHONSTARTUP`
+   * do the same for their interpreters. A task-scoped variable that could set
+   * them would make the allowlist decorative.
+   */
+  describe("the environment cannot load code of its own", () => {
+    it.each([
+      "LD_PRELOAD",
+      "LD_AUDIT",
+      "LD_LIBRARY_PATH",
+      "DYLD_INSERT_LIBRARIES",
+      "NODE_OPTIONS",
+      "BASH_ENV",
+      "ENV",
+      "PYTHONSTARTUP",
+      "PYTHONPATH",
+      "PERL5OPT",
+      "RUBYOPT",
+      "GIT_SSH_COMMAND",
+    ])("refuses %s in the task environment", (name) => {
+      const plan = planSpawn(request({ env: { [name]: "/tmp/evil" } }));
+
+      expect(plan.isFailure).toBe(true);
+      expect(plan.error).toContain(name);
+    });
+
+    it("refuses it in the granted secrets too, which are just as attacker-shaped", () => {
+      expect(
+        planSpawn(request({ secrets: { LD_PRELOAD: "/tmp/evil.so" } })).isFailure,
+      ).toBe(true);
+    });
+
+    /**
+     * PATH decides which program a name resolves to, so letting a task set it
+     * would mean the allowlist authorised "git" and something else ran.
+     */
+    it("refuses a task that tries to redefine where programs are found", () => {
+      const plan = planSpawn(request({ env: { PATH: "/tmp/bin" } }));
+
+      expect(plan.isFailure).toBe(true);
+      expect(plan.error).toContain("PATH");
+    });
+  });
+
+  /**
+   * The TOCTOU/symlink class: CVE-2026-44112 and CVE-2026-44113, and the
+   * weakest defence rate in the published analysis of OpenClaw (17%).
+   *
+   * `path.resolve` is string arithmetic — it never touches the filesystem, so
+   * a directory inside the workspace that is a symlink to `/` resolved to a
+   * path that looked perfectly contained.
+   */
+  describe("containment is judged on the real path, not the written one", () => {
+    it("refuses a directory inside the workspace that points outside it", () => {
+      const plan = planSpawn(
+        request({
+          cwd: "/srv/spline/w-1/escape",
+          realpath: (p) => (p === "/srv/spline/w-1/escape" ? "/etc" : p),
+        }),
+      );
+
+      expect(plan.isFailure).toBe(true);
+      expect(plan.error).toContain("outside");
+    });
+
+    it("compares the real root too, so a symlinked root is not a false alarm", () => {
+      const plan = planSpawn(
+        request({
+          workspaceRoot: "/srv/link",
+          cwd: "/srv/link/task",
+          realpath: (p) => p.replace("/srv/link", "/mnt/data/w-1"),
+        }),
+      );
+
+      expect(plan.isFailure).toBe(false);
+    });
+
+    it("refuses when the path cannot be resolved at all", () => {
+      const plan = planSpawn(
+        request({
+          realpath: () => {
+            throw new Error("ENOENT");
+          },
+        }),
+      );
+
+      expect(plan.isFailure).toBe(true);
+    });
+  });
+
+  /**
+   * §18.1's least privilege, and the control that makes the rest mean
+   * something: a worker executes only what its operator listed. Closed by
+   * default — an empty list runs nothing, rather than everything.
+   */
+  describe("only listed programs run", () => {
+    it("runs a program on the list", () => {
+      expect(
+        planSpawn(request({ allowedCommands: ["claude", "git"] })).isFailure,
+      ).toBe(false);
+    });
+
+    it("refuses a program that is not on it", () => {
+      const plan = planSpawn(request({ command: "curl", allowedCommands: ["claude"] }));
+
+      expect(plan.isFailure).toBe(true);
+      expect(plan.error).toContain("curl");
+    });
+
+    it("refuses everything when the list is empty, rather than allowing everything", () => {
+      expect(planSpawn(request({ allowedCommands: [] })).isFailure).toBe(true);
+    });
+
+    /**
+     * A name, never a path: `/tmp/evil/claude` and `../../bin/claude` both
+     * end in "claude", and neither is the program the operator listed.
+     */
+    it.each(["/tmp/evil/claude", "../bin/claude", "./claude", "sub/claude"])(
+      "refuses %j, which merely ends in an allowed name",
+      (command) => {
+        expect(
+          planSpawn(request({ command, allowedCommands: ["claude"] })).isFailure,
+        ).toBe(true);
+      },
+    );
   });
 
   it("refuses a run with no command at all", () => {

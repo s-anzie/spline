@@ -53,7 +53,16 @@ class EnvironmentVariables {
   @IsString()
   CORS_ORIGINS?: string;
 
-  /** Rate limits and body ceiling: see config/throttle.ts and bootstrap.ts. */
+  /**
+   * The interface to listen on. Absent means loopback — reaching the hub from
+   * another machine is a decision an operator makes on purpose (§18).
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  LISTEN_HOST?: string;
+
+  /** Rate limits and body ceiling: see config/hardening.ts and bootstrap.ts. */
   @IsOptional()
   @IsNumberString()
   THROTTLE_TTL_MS?: string;

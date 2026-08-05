@@ -412,6 +412,56 @@ describe("Runtime (e2e)", () => {
     expect(after.body.allowedStatusTargets).toContain("ASSIGNED");
   });
 
+  /**
+   * §6.8 — "le hub DÉCIDE et enfile". The decision is the hub's, and it was
+   * reachable with `execute_tasks`, which an AGENT_CONTRIBUTOR holds.
+   *
+   * That is the OpenClaw chain end to end: an agent reads a poisoned README,
+   * the injected instruction makes it enqueue a command, and the worker runs
+   * that command on the operator's own machine. The agent never had to be
+   * malicious — it only had to read.
+   *
+   * Operating a machine is a human act. No agent role holds
+   * `manage_machines`, and that is the point.
+   */
+  it("refuses to let an agent enqueue an order for a machine", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+
+    await ctx
+      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { cmd: "curl" } })
+      .expect(403);
+  });
+
+  /**
+   * §18.3 — the actor a session runs as came straight from the request body
+   * and was never checked. Any member with `execute_tasks` could open a
+   * session attributed to an agent that belongs to another workspace, or to
+   * no workspace at all: every event and every audit entry would then name
+   * an actor that never acted. Attribution forged at the door (§4.2).
+   */
+  it("refuses to start a session for an actor that is not a member here", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`${ctx.base}/workers`))
+      .send({ workerId: ctx.workerId })
+      .expect(200);
+
+    await ctx
+      .auth(request(http).post(`${ctx.base}/sessions`))
+      .send({
+        workerId: ctx.workerId,
+        agentType: "AGENT",
+        agentId: "a-from-somewhere-else",
+        provider: "claude",
+      })
+      .expect(403);
+  });
+
   /** §6.8 — the hub decides and enqueues; the worker pulls and reports. */
   it("hands a worker its orders, one holder at a time", async () => {
     const ctx = await setup();
@@ -421,7 +471,7 @@ describe("Runtime (e2e)", () => {
       .expect(200);
 
     const command = await ctx
-      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .auth(request(http).post(`${ctx.base}/commands`))
       .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { taskId: "t-1" } })
       .expect(201);
 
@@ -474,7 +524,7 @@ describe("Runtime (e2e)", () => {
       .send({ workerId: ctx.workerId })
       .expect(200);
     await ctx
-      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .auth(request(http).post(`${ctx.base}/commands`))
       .send({ workerId: ctx.workerId, type: "ExecuteTask", payload: { secret: "x" } })
       .expect(201);
 
@@ -518,7 +568,7 @@ describe("Runtime (e2e)", () => {
     const ctx = await setup();
 
     await ctx
-      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .auth(request(http).post(`${ctx.base}/commands`))
       .send({ workerId: ctx.workerId, type: "ExecuteTask" })
       .expect(403);
   });
@@ -531,7 +581,7 @@ describe("Runtime (e2e)", () => {
       .send({ workerId: ctx.workerId })
       .expect(200);
     await ctx
-      .asAgent(request(http).post(`${ctx.base}/commands`))
+      .auth(request(http).post(`${ctx.base}/commands`))
       .send({ workerId: ctx.workerId, type: "ExecuteTask" })
       .expect(201);
     await ctx

@@ -1701,6 +1701,63 @@ la tâche, filtrés par ce que l'Extension a explicitement déclaré requérir.
 Isolation entre Workspaces, Repositories, Worktrees, Sessions, Providers, Extensions. Sessions exécutées dans
 Docker, VM, Sandbox Provider, ou process isolé.
 
+**Ce que « process isolé » veut dire exactement, et ce qu'il ne veut pas dire.** Un processus ne peut pas se
+confiner lui-même : tout ce qu'un Worker applique sans le noyau relève de la discipline, pas de la frontière. La
+distinction doit rester écrite, sinon la liste de contrôles se lit comme un bac à sable qu'elle n'est pas.
+
+Ce qu'un Worker applique, et qui est vérifiable par test :
+
+| Contrôle | Ce qu'il ferme |
+| --- | --- |
+| Jamais de shell, arguments en liste | L'injection par le texte qu'un agent a écrit |
+| Commande = un **nom**, ni ligne ni chemin | `sh -c …` et `/tmp/evil/git` qui finit par un nom autorisé |
+| **Liste blanche fermée par défaut** — vide n'exécute rien | Qu'un opérateur qui ne configure rien exécute tout |
+| Environnement construit à partir de rien | La fuite des secrets de la machine et des autres workspaces (§6.10) |
+| Variables de chargement de code **refusées** (`LD_PRELOAD`, `NODE_OPTIONS`, `BASH_ENV`, `GIT_SSH_COMMAND`…) | Le contournement de la liste blanche sans shell : le programme autorisé s'exécute, mais charge le code de l'attaquant |
+| `PATH` appartient à la machine, jamais à la tâche | Que le nom autorisé résolve vers un autre programme |
+| Répertoire jugé sur le **chemin réel** (`realpath`), pas écrit | Le lien symbolique qui sort du workspace en restant syntaxiquement dedans |
+| Délai d'exécution, tuant le **groupe** de processus | La tâche qui ne sort jamais, et l'enfant qui survit à sa propre tâche |
+| Plafond de sortie, lecture arrêtée à la limite | L'épuisement mémoire sans charge utile |
+| Refus de démarrer en **root** | Que tout ce qui précède soit décoratif |
+| Fichier de jeton refusé s'il est lisible au-delà de son propriétaire | Le vol de credential par un autre compte de la machine |
+
+Ce qu'un Worker **ne peut pas** appliquer, et qui exige une frontière du noyau — conteneur, VM ou sandbox de
+provider :
+
+- **La course TOCTOU.** Le répertoire vérifié peut être échangé entre la vérification et le lancement. C'est une
+  classe exploitée en pratique dans un runtime comparable, et aucune revérification côté processus ne la ferme :
+  il faut que le noyau tienne le descripteur.
+- **Le réseau.** Rien n'empêche une tâche autorisée de sortir vers Internet et d'exfiltrer ce qu'elle a lu.
+- **Le reste du disque.** Le répertoire de travail est contraint ; la lecture ailleurs ne l'est pas.
+- **Les ressources.** Ni mémoire, ni CPU, ni descripteurs.
+- **La liste de refus elle-même.** Une liste de variables interdites est une énumération du connu ; une frontière
+  n'énumère pas.
+
+**La règle qui en découle** : une tâche dont le contenu n'est pas de confiance — et le contenu qu'un agent lit
+n'est jamais de confiance (§18.12) — doit s'exécuter derrière une frontière du noyau. Tant que le Worker n'en
+fournit pas, ce qu'il offre est la défense en profondeur du principe §18.1, pas l'isolation du §18.5.
+
+### 18.12 L'injection indirecte est une élévation de privilège, pas une erreur de modèle
+
+Un agent lit du contenu qu'il n'a pas écrit — un README, une page, un ticket, la sortie d'un autre agent — et ne
+peut pas distinguer « instruction de mon opérateur » de « instruction cachée dans ce que j'ai lu ». Toute route
+qu'un agent peut appeler est donc une route qu'un attaquant peut appeler à travers lui, sans jamais authentifier
+quoi que ce soit.
+
+La conséquence est une règle d'attribution de permissions, pas un problème de filtrage :
+
+> **Aucun rôle d'agent ne détient une permission qui aboutit à l'exécution sur une machine.** Enfiler un ordre
+> pour un Worker est un acte humain (`manage_machines`). Quand le Task Engine devra le faire pour le compte d'un
+> agent, il le fera **en tant que hub**, depuis une décision qu'il a prise — jamais en ouvrant la route aux agents.
+
+Rencontré concrètement : `POST /workspaces/:id/runtime/commands` exigeait `execute_tasks`, que détient un
+`AGENT_CONTRIBUTOR`. La chaîne complète était donc : fichier empoisonné → agent → ordre enfilé → exécution sur la
+machine de l'opérateur.
+
+Corollaire de la même famille : un agent ne rapporte jamais un fait qui déclenche une décision globale. §7.15 le
+tient déjà — l'indisponibilité d'un provider se lit dans la sortie d'un **processus**, jamais dans ce qu'un agent
+affirme.
+
 ### 18.7 Audit
 
 Merge, Delete, Policy Update, Permission Change, Secret Access, Extension Install, Extension Publish.

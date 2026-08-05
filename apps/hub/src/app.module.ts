@@ -5,7 +5,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { validateEnv } from "./config/env.validation";
-import { globalThrottleLimit, throttleTtlMs } from "./config/throttle";
+import { globalThrottleLimit, throttleTtlMs } from "./config/hardening";
 import { HealthModule } from "./health/health.module";
 import { KernelModule } from "./kernel/kernel.module";
 import { AuditModule } from "./modules/audit/audit.module";

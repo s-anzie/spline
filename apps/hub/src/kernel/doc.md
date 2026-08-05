@@ -479,6 +479,52 @@ Enfin, côté worker : le jeton porteur partait vers l'URL configurée quelle qu
 d'exceptions nommée (`/health` seul). L'omission d'une garde ne se remarque pas en revue : elle ressemble
 à rien.
 
+### 5.7 Le catalogue OpenClaw, passé sur notre code
+
+Second tour de revue, mené non plus par inspection mais **contre une liste réelle** : les vulnérabilités
+publiées d'OpenClaw (138 CVE en cinq mois, plus l'analyse de leur bac à sable par Snyk et deux papiers
+académiques). Chaque classe a été cherchée chez nous. C'est un exercice différent du premier : on ne
+cherche plus ce qui a l'air faux, on cherche **ce qui a déjà été exploité ailleurs**.
+
+**La plus grave, et elle était une ligne.** `POST /workspaces/:id/runtime/commands` exigeait
+`execute_tasks` — que détient un `AGENT_CONTRIBUTOR`. Un agent pouvait donc mettre un ordre arbitraire,
+avec une charge utile arbitraire, sur la file d'une machine que l'opérateur possède. C'est la chaîne
+d'injection indirecte complète, dans une seule permission : fichier empoisonné → agent qui le lit → ordre
+enfilé → exécution sur l'hôte. L'agent n'avait pas besoin d'être malveillant, seulement de lire.
+
+La règle est maintenant §18.12 de la spec, et elle ne se négocie pas : **aucun rôle d'agent ne détient une
+permission qui aboutit à l'exécution sur une machine**. Quand le Task Engine devra enfiler pour le compte
+d'un agent, il le fera *en tant que hub*, depuis une décision qu'il a prise.
+
+**Trois autres, même famille que des CVE nommées :**
+
+| Chez OpenClaw | Chez nous |
+| --- | --- |
+| CVE-2026-44118 : un drapeau `senderIsOwner` fourni par le client servait d'autorisation | `agentType`/`agentId` venaient du corps de requête et étaient crus — n'importe quel membre pouvait ouvrir une session attribuée à un agent d'un autre workspace. Appartenance vérifiée. |
+| 40 000 instances exposées, bind par défaut sur toutes les interfaces | `app.listen(port)` faisait pareil. Loopback par défaut, `LISTEN_HOST` pour en sortir délibérément. |
+| CVE-2026-25253 : un client suivait une URL qu'on lui donnait et y envoyait son jeton | Le worker suivait les redirections avec son en-tête `Authorization`. `redirect: "error"`. |
+
+**Et le worker, où le trou était conceptuel plutôt que ponctuel.** Le lancement était sûr — pas de shell,
+arguments en liste, environnement construit à partir de rien. Ce qui manquait, ce sont les évasions qui
+n'ont pas besoin de shell :
+
+- **Les variables de chargement de code.** `LD_PRELOAD`, `NODE_OPTIONS=--require`, `BASH_ENV`,
+  `GIT_SSH_COMMAND` : le programme autorisé s'exécute, et charge le code de l'attaquant. Une liste blanche
+  de programmes sans cette fermeture-là est décorative. (Classe CVE-2026-44115.)
+- **`PATH` écrasable par la tâche** : la liste blanche autorisait `git`, et autre chose s'exécutait.
+- **Le confinement calculé sur le chemin écrit.** `path.resolve` est de l'arithmétique de chaînes : un
+  répertoire dans le workspace qui est un lien symbolique vers `/` passait. C'est la classe
+  CVE-2026-44112/44113, et **le taux de défense le plus faible mesuré chez eux (17 %)**.
+- **Aucune liste blanche du tout, aucun délai, aucun plafond de sortie, aucun refus de tourner en root.**
+
+La leçon générale, écrite dans le README du worker et en §18.5-18.6 :
+
+> **Un processus ne peut pas se confiner lui-même.** Tout ce qu'un worker applique sans le noyau est de la
+> défense en profondeur, pas une frontière. La course TOCTOU, le réseau, le reste du disque et les
+> ressources restent ouverts — et une liste de refus énumère le connu, ce qu'une frontière ne fait pas.
+
+Le dire est un contrôle en soi : lue comme un bac à sable, cette liste promettrait ce qu'elle ne tient pas.
+
 ## 6. Décisions notables (et leurs raisons)
 
 | Décision | Raison |
