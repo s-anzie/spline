@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -213,28 +213,83 @@ export function Meter({ value }: { value: number }) {
  * An identifier. Monospace because it gets compared character by character,
  * copyable because the next thing anyone does with one is paste it.
  */
+/**
+ * An identifier somebody has to be able to take away with them.
+ *
+ * Three things here were wrong in a way that only shows up when you actually
+ * need the value — which, for an organization id, is the one moment that
+ * matters: configuring a machine to knock at your door.
+ *
+ * 1. The value was the label of a BUTTON, and button text cannot be selected
+ *    with the mouse. If the clipboard refused, there was no way left to get
+ *    the id out of the screen at all. It is now a `select-all` span: one
+ *    click selects the whole thing, keyboard copy works, and the button is a
+ *    convenience rather than the only route.
+ * 2. The copy affordance was invisible until hover, so nothing said the value
+ *    could be taken.
+ * 3. Worst: it reported success unconditionally. `navigator.clipboard?.…`
+ *    does nothing at all when the API is absent — which is exactly what
+ *    happens when the console is reached over plain http from another
+ *    machine — and `writeText` can reject on top of that. The tick appeared
+ *    either way. It now only claims what happened, and when it cannot copy it
+ *    selects the text and says to use the keyboard.
+ */
 export function Id({ value, full = false }: { value: string | null; full?: boolean }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const shown = useRef<HTMLSpanElement>(null);
+
   if (!value) return <span className="measure text-muted-foreground text-xs">—</span>;
+
+  const copy = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      // Not `?.` — an absent clipboard has to throw so it lands below.
+      await navigator.clipboard.writeText(value);
+      setState("copied");
+    } catch {
+      const selection = window.getSelection();
+      if (shown.current && selection) {
+        selection.removeAllRanges();
+        selection.selectAllChildren(shown.current);
+      }
+      setState("failed");
+    }
+    setTimeout(() => setState("idle"), 2500);
+  };
+
   return (
-    <button
-      type="button"
-      title={`${value} — click to copy`}
-      onClick={(event) => {
-        event.stopPropagation();
-        void navigator.clipboard?.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      }}
-      className="text-muted-foreground hover:text-foreground hover:bg-muted group inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors"
-    >
-      <span className="measure text-xs">{full ? value : value.slice(0, 8)}</span>
-      {copied ? (
-        <Check className="size-3 text-settled" />
-      ) : (
-        <Copy className="size-3 opacity-0 transition-opacity group-hover:opacity-60" />
-      )}
-    </button>
+    <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
+      <span
+        ref={shown}
+        title={value}
+        // `select-all`: one click takes the whole id, never half of it.
+        className={cn(
+          "measure min-w-0 truncate text-xs select-all",
+          // Full form means somebody is about to transcribe it. Dense lists
+          // keep the quiet tone; a value being copied gets read.
+          full ? "text-foreground/90" : "text-muted-foreground",
+        )}
+      >
+        {full ? value : value.slice(0, 8)}
+      </span>
+      <button
+        type="button"
+        onClick={(event) => void copy(event)}
+        aria-label={state === "copied" ? "Copied" : "Copy this identifier"}
+        className="text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 rounded p-1 transition-colors"
+      >
+        {state === "copied" ? (
+          <Check className="text-settled size-3" />
+        ) : (
+          <Copy className="size-3 opacity-60" />
+        )}
+      </button>
+      {state === "failed" ? (
+        <span className="text-muted-foreground text-[0.6875rem]">
+          selected — copy with your keyboard
+        </span>
+      ) : null}
+    </span>
   );
 }
 

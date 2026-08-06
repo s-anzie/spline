@@ -104,6 +104,79 @@ describe("pairMachine", () => {
     expect(result.error).toMatch(/expired|restart/i);
   });
 
+  /**
+   * The failure this was written for, observed on a real machine.
+   *
+   * The hub throttles its unauthenticated routes, and collecting a credential
+   * is one of them. A human takes a minute to walk to the console and type
+   * eight characters, so a worker WILL be refused while it waits — and it was
+   * treating that refusal as fatal, exiting, and being restarted by systemd
+   * into the same wall. Pairing could only succeed if somebody typed the code
+   * within the first fifty seconds.
+   */
+  it("keeps waiting when the hub refuses a poll rather than dying on it", async () => {
+    const claimEnrolment = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("claiming the enrolment failed: 429 Too Many Requests"))
+      .mockRejectedValueOnce(new Error("claiming the enrolment failed: 429 Too Many Requests"))
+      .mockResolvedValue({ status: "approved", token: "worker_c.s", actorId: "a-1" });
+    const d = deps({ hub: hub({ claimEnrolment }) });
+
+    const result = await pairMachine(d);
+
+    expect(result.isFailure).toBe(false);
+    expect(claimEnrolment).toHaveBeenCalledTimes(3);
+  });
+
+  /**
+   * Backing off, not merely retrying: polling at the same rate through a
+   * refusal is what earned the refusal.
+   */
+  it("waits longer after being refused, and returns to normal once it is not", async () => {
+    const claimEnrolment = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("429"))
+      .mockRejectedValueOnce(new Error("429"))
+      .mockResolvedValueOnce({ status: "pending" })
+      .mockResolvedValue({ status: "approved", token: "worker_c.s", actorId: "a-1" });
+    const d = deps({ hub: hub({ claimEnrolment }) });
+
+    await pairMachine(d);
+
+    const waits = (d.sleep as jest.Mock).mock.calls.map((call) => call[0] as number);
+    expect(waits[0]).toBeGreaterThan(1000);
+    expect(waits[1]).toBeGreaterThan(waits[0] as number);
+    // The refusal passed; the next wait is the ordinary one again.
+    expect(waits[2]).toBe(1000);
+  });
+
+  /**
+   * A hub that never answers is a different thing from one that is busy, and
+   * a daemon that polled a dead address forever would look healthy while
+   * doing nothing. It still gives up — it just does not give up on the first
+   * refusal.
+   */
+  it("still gives up if the hub never stops refusing", async () => {
+    const d = deps({
+      hub: {
+        requestEnrolment: async () => ({
+          enrolmentId: "e-1",
+          code: "CODE1234",
+          expiresAt: new Date("2026-01-01T01:00:00.000Z").toISOString(),
+        }),
+        claimEnrolment: async () => {
+          throw new Error("ECONNREFUSED");
+        },
+      },
+      maxAttempts: 3,
+    });
+
+    const result = await pairMachine(d);
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toMatch(/ECONNREFUSED/);
+  });
+
   it("stops immediately when the request was rejected", async () => {
     const claimEnrolment = jest.fn().mockResolvedValue({ status: "rejected" });
     const d = deps({ hub: hub({ claimEnrolment }) });

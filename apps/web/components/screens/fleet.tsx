@@ -381,25 +381,53 @@ function Pairing({
   const [code, setCode] = useState("");
   const { run, pending, error } = useAction();
 
-  if (waiting.length === 0) {
-    // Requests whose window closed are shown, and shown as dead — hiding them
-    // would leave an operator wondering where their machine went, and
-    // offering a code box for them would waste their time.
-    return stale.length === 0 ? null : (
-      <Section title="Asked too long ago" count={stale.length}>
-        <Note tone="quiet">
-          {stale.map((machine) => machine.hostname).join(", ")} asked to be
-          paired, but the code stopped being valid. Nothing here can be typed:
-          restart the worker on that machine for a fresh one — or, if it is
-          already paired, attach it below instead.
-        </Note>
-      </Section>
-    );
-  }
-
   return (
-    <Section title="Waiting to be paired" count={waiting.length}>
+    <Section
+      title={waiting.length > 0 ? "Waiting to be paired" : "Pair a machine"}
+      {...(waiting.length > 0 ? { count: waiting.length } : {})}
+    >
       <Card className="gap-0 overflow-hidden py-0 shadow-none">
+        {/**
+         * The code box is here even when nothing is waiting, and that is the
+         * whole point of this block.
+         *
+         * It used to appear only alongside a pending request, which hid it
+         * exactly when somebody needs it: a brand-new organization has nothing
+         * waiting, so the one control that turns a running worker into YOUR
+         * machine was invisible. The same mistake as a fleet screen that
+         * listed no machine and offered no way to get one.
+         */}
+        {waiting.length === 0 ? (
+          <div className="border-b p-4">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Nothing has asked to join yet. Start the worker on a computer you
+              own — it prints a code on its own console, and you type that code
+              here. It has to be configured with this organization&rsquo;s id
+              first, or it knocks at nobody&rsquo;s door and appears in no list
+              at all.
+            </p>
+            {organizationId ? (
+              <div className="mt-3">
+                <p className="label mb-1.5">
+                  Set WORKER_ORGANIZATION_ID to this
+                </p>
+                <Id value={organizationId} full />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {stale.length > 0 ? (
+          <div className="border-b p-4">
+            <Note tone="quiet">
+              {stale.map((machine) => machine.hostname).join(", ")} asked to be
+              paired, but the code stopped being valid. Restart the worker on
+              that machine for a fresh one — or, if it is already paired,
+              attach it below instead.
+            </Note>
+          </div>
+        ) : null}
+
         <div className="divide-border divide-y">
           {waiting.map((machine) => (
             <Row key={machine.hostname}>

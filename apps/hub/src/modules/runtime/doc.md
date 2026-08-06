@@ -207,3 +207,39 @@ d'un opérateur qui enquête. Un test l'exige explicitement, côté domaine et c
 Une mémoire vide n'imprime **rien du tout** : un intertitre sans contenu coûte des jetons et apprend au
 modèle que les sections d'ici sont souvent vides.
 
+
+## Une machine qui change de mains (§18)
+
+**Le constat, trouvé sur une vraie machine et pas dans un test.** L'enregistrement se fait par nom
+d'hôte, et seul l'acteur qui a enregistré une machine peut se servir de son dossier. Cette règle est
+juste : sans elle, annoncer le nom d'hôte de quelqu'un d'autre rendait l'identifiant de **sa** machine
+— une prise de contrôle en un appel.
+
+Ce qu'elle n'avait pas, c'est une porte de sortie. Un ordinateur ré-appairé à une autre organisation
+arrive avec une **nouvelle** identité, trouve son propre nom d'hôte détenu par l'ancienne, et se fait
+refuser aussi longtemps que le dossier existe. Le daemon réel a passé plusieurs minutes à réessayer
+toutes les cinq secondes contre un 403 qu'il ne pouvait pas satisfaire, relancé par systemd à chaque
+fois. Une règle sans libération est un piège.
+
+**La libération, c'est la révocation.** Un acteur dont tous les justificatifs sont révoqués n'opère
+plus rien — c'est exactement ce que révoquer voulait dire. Le dossier passe alors à qui la machine
+répond désormais. Tant que l'autre identité est vivante, rien ne change : c'est toujours l'usurpation
+que la règle existe pour refuser.
+
+**Trois choses portent cette décision, et chacune vaut d'être lue :**
+
+- `ACTOR_STANDING`, déclaré par runtime et fourni par identity, pose la seule question que runtime ne
+  peut pas trancher seul. Il est distinct de `ORGANIZATION_FLEET` volontairement : lister une flotte
+  **doit** montrer une machine dont le justificatif a été révoqué — elle existe encore et elle a agi —
+  alors que décider si elle peut encore agir ne le doit pas. Deux questions, deux ports.
+- `WorkerNode.handOverTo` **vide les rattachements au passage**. Les workspaces que la machine servait
+  appartenaient à l'organisation qu'elle vient de quitter ; les reporter prêterait la machine d'un
+  inconnu à des workspaces qui ne lui ont jamais rien accordé — la fuite §4.2, par la porte de service.
+- `runtime.worker_handed_over` est journalisé. Le dossier garde tout ce que cette machine a exécuté
+  sous son identité précédente, et quiconque tombe sur ces lignes mérite de savoir pourquoi le
+  propriétaire a changé.
+
+**Reste ouvert.** Une machine dont l'appairage est approuvé mais qui n'arrive pas à s'enregistrer est
+**invisible** dans la console : la liste des machines lit `worker_nodes`, et cette machine-là n'existe
+que comme une demande `CLAIMED`. C'est précisément l'état dans lequel l'opérateur s'est retrouvé, sans
+rien à l'écran pour le lui dire. §17 demande mieux.

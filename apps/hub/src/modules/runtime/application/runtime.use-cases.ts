@@ -11,6 +11,7 @@ import {
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
+import { ACTOR_STANDING, ActorStanding } from "../domain/ports/actor-standing.port";
 import {
   WORKSPACE_MEMBERSHIP_REPOSITORY,
   WorkspaceMembershipRepository,
@@ -72,6 +73,7 @@ export class RegisterWorkerUseCase
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(ACTOR_STANDING) private readonly standing: ActorStanding,
   ) {}
 
   async execute(
@@ -84,7 +86,30 @@ export class RegisterWorkerUseCase
       // machine's hostname used to hand back that machine's id: a takeover in
       // one call. A restart is the same actor and still succeeds.
       if (!existing.isOperatedBy(input.registeredBy)) {
-        return Result.fail(new WorkerImpersonationError(existing.hostname));
+        /**
+         * …unless the actor holding it can no longer act at all.
+         *
+         * The rule above had no release, and a rule without one is a trap:
+         * a computer legitimately re-paired to another organization arrives
+         * with a new identity, finds its own hostname held by its old one,
+         * and is refused for as long as the record exists. A real daemon sat
+         * in that 403 retrying every five seconds.
+         *
+         * Revocation is the release. An actor whose credentials are all
+         * revoked operates nothing — that is what revoking them meant — so
+         * the record passes to whoever the machine now answers to. While the
+         * other identity is live, nothing changes: this is still the
+         * impersonation the rule exists for.
+         */
+        const stillTheirs = await this.standing.holdsLiveCredential(
+          existing.registeredBy,
+        );
+        if (stillTheirs) {
+          return Result.fail(new WorkerImpersonationError(existing.hostname));
+        }
+        // A change of hands is a fact, not a detail: §14 records who a
+        // machine answered to before, because its history stays reachable.
+        existing.handOverTo(input.registeredBy, now);
       }
       existing.heartbeat(now);
       await this.workers.save(existing);

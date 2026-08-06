@@ -55,10 +55,19 @@ async function credentialFor(
     now: () => new Date(),
     announce: (line) => console.info(line),
     sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
-    pollIntervalMs: 5_000,
+    /**
+     * Under the hub's own ceiling, on purpose.
+     *
+     * Collecting a credential is one of the routes the hub throttles hardest
+     * (ten a minute by default, §18) because it is unauthenticated. Polling
+     * every five seconds is twelve a minute — so the daemon was guaranteed to
+     * be refused about fifty seconds into every wait. Ten seconds is six a
+     * minute, which leaves room for the retries that follow a refusal.
+     */
+    pollIntervalMs: 10_000,
     // Just past the hub's ten-minute window: waiting longer would poll a
     // request that can never be approved.
-    maxAttempts: 125,
+    maxAttempts: 70,
   });
   if (paired.isFailure) {
     throw new Error(paired.error);

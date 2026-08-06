@@ -124,12 +124,40 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
     deps.announce(line);
   }
 
+  /**
+   * A refusal while waiting is not a failure to pair.
+   *
+   * The hub throttles its unauthenticated routes, and collecting a credential
+   * is one of them — deliberately, because it is a route a stranger could
+   * hammer. But a human takes a minute to reach the console and type eight
+   * characters, so a worker polling through that minute WILL be refused. This
+   * daemon used to treat that as fatal: it exited, systemd restarted it, and
+   * it hit the same wall. Pairing could only ever succeed if somebody typed
+   * the code within the first fifty seconds.
+   *
+   * So a transient failure backs off and keeps waiting. What it does NOT do
+   * is wait forever: the attempt budget still runs down, so a hub that is
+   * actually gone is still reported rather than polled in silence.
+   */
+  const BACKOFF_CEILING_MS = 60_000;
+  let refusals = 0;
+  let lastRefusal: string | null = null;
+
   for (let attempt = 0; attempt < deps.maxAttempts; attempt += 1) {
     let outcome: ClaimOutcome;
     try {
       outcome = await deps.hub.claimEnrolment(ticket.enrolmentId, deps.machine.deviceId);
+      refusals = 0;
+      lastRefusal = null;
     } catch (error) {
-      return { isFailure: true, error: `could not collect the credential: ${String(error)}` };
+      refusals += 1;
+      lastRefusal = String(error);
+      // Doubling, capped: backing off at the same rate that earned the
+      // refusal would simply earn it again.
+      await deps.sleep(
+        Math.min(deps.pollIntervalMs * 2 ** refusals, BACKOFF_CEILING_MS),
+      );
+      continue;
     }
 
     if (outcome.status === "approved") {
@@ -155,6 +183,14 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
   // approved — otherwise the next start picks up exactly where this left off.
   if (hasExpired(ticket, deps.now())) {
     deps.tickets.save(null);
+  }
+  // Which of the two ways it ran out matters to whoever reads the log: a code
+  // nobody typed is a person's problem, a hub that never answered is not.
+  if (lastRefusal) {
+    return {
+      isFailure: true,
+      error: `could not collect the credential: ${lastRefusal}`,
+    };
   }
   return {
     isFailure: true,

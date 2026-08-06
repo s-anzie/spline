@@ -43,6 +43,27 @@ export class WorkerRegistered extends BaseDomainEvent {
   }
 }
 
+/**
+ * §18, §14 — a machine changed hands.
+ *
+ * Recorded rather than done quietly: the record keeps everything this machine
+ * ran under its previous identity, and a reader who finds those rows deserves
+ * to know why the owner is different now.
+ */
+export class WorkerHandedOver extends BaseDomainEvent {
+  readonly eventName = "runtime.worker_handed_over";
+
+  constructor(
+    aggregateId: string,
+    occurredAt: Date,
+    readonly hostname: string,
+    readonly previousActorId: string,
+    readonly actorId: string,
+  ) {
+    super(aggregateId, occurredAt, null);
+  }
+}
+
 export class WorkerOffline extends BaseDomainEvent {
   readonly eventName = "runtime.worker_offline";
 
@@ -217,6 +238,32 @@ export class WorkerNode extends AggregateRoot<WorkerProps> {
       return false;
     }
     return isStale(this.props.lastHeartbeatAt, ttlMs, now);
+  }
+
+  /**
+   * §18 — the machine now answers to somebody else.
+   *
+   * The caller decides whether that is allowed; this only performs it, and
+   * refuses to pretend nothing happened. Attachments are dropped on the way
+   * through: the workspaces it served belonged to the organization it has
+   * just left, and carrying them over would lend a stranger's machine to
+   * workspaces it was never granted to — the §4.2 leak, through the back
+   * door.
+   */
+  handOverTo(actor: ActorRef, now: Date): void {
+    const previous = this.props.registeredBy;
+    this.props.registeredBy = actor;
+    this.props.workspaceIds = [];
+    this.props.updatedAt = now;
+    this.addDomainEvent(
+      new WorkerHandedOver(
+        this.id.value,
+        now,
+        this.props.hostname,
+        previous.actorId,
+        actor.actorId,
+      ),
+    );
   }
 
   /** §6.4 — and it brings a machine back from OFFLINE, which is the point. */
