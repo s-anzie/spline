@@ -24,6 +24,7 @@ import {
   ResolveCommandGrantUseCase,
   ResolveCommandSecretsUseCase,
 } from "./application/command.use-cases";
+import { AutoDispatchListener } from "./application/auto-dispatch.listener";
 import { DispatchTaskUseCase } from "./application/dispatch-task.use-case";
 import { CommandHealthProbe } from "./infrastructure/command-health.probe";
 import {
@@ -78,6 +79,7 @@ import {
     DecideEnrolmentUseCase,
     ClaimEnrolmentUseCase,
     DispatchTaskUseCase,
+    AutoDispatchListener,
     RegisterWorkerUseCase,
     AttachWorkerUseCase,
     WorkerHeartbeatUseCase,

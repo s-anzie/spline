@@ -138,6 +138,15 @@ export class RunLedgerAdapter implements RunLedger {
       providerSessionId: last?.providerSessionId ?? null,
     };
   }
+
+  /** §9 — what the automatic ceiling is judged against. */
+  async countLive(workspaceId: string): Promise<number> {
+    return this.runs.countLive(workspaceId);
+  }
+
+  async countSince(workspaceId: string, since: Date): Promise<number> {
+    return this.runs.countSince(workspaceId, since);
+  }
 }
 
 @Global()

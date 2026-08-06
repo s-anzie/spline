@@ -70,6 +70,23 @@ export class PrismaRunRepository implements RunRepository {
     });
     return rows.map(toRun);
   }
+
+  async countLive(workspaceId: string): Promise<number> {
+    return this.prisma.run.count({
+      where: { workspaceId, status: { in: LIVE_STATUSES } },
+    });
+  }
+
+  /**
+   * Counted on `createdAt`, not `startedAt`: a run that was ordered and never
+   * taken still cost a dispatch and still occupies the ceiling. Judging on
+   * `startedAt` would let a machine that claims nothing be asked forever.
+   */
+  async countSince(workspaceId: string, since: Date): Promise<number> {
+    return this.prisma.run.count({
+      where: { workspaceId, createdAt: { gte: since } },
+    });
+  }
 }
 
 function toRun(row: RunRow): Run {

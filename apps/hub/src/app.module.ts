@@ -24,6 +24,7 @@ import { AgentMemoryModule } from "./modules/memory/infrastructure/agent-memory.
 import { OrganizationFleetModule } from "./modules/identity/infrastructure/organization-fleet.adapter";
 import { OrganizationSubjectsModule } from "./modules/runtime/infrastructure/organization-subjects.adapter";
 import { WorkIntakeModule } from "./modules/task/infrastructure/work-intake.adapter";
+import { AutomationPolicyModule } from "./modules/workspace/infrastructure/automation-policy.adapter";
 import { DispatchableTaskModule } from "./modules/task/infrastructure/dispatchable-task.adapter";
 import { ReclaimableLeasesModule } from "./modules/lock/infrastructure/reclaimable-leases.adapter";
 import { GoalModule } from "./modules/goal/goal.module";
@@ -72,6 +73,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     OrganizationFleetModule,
     OrganizationSubjectsModule,
     WorkIntakeModule,
+    AutomationPolicyModule,
     DispatchableTaskModule,
     ReclaimableLeasesModule,
     ArtifactModule,

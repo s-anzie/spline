@@ -23,6 +23,13 @@ export interface RunRepository {
    * stale the moment a policy changes.
    */
   listLive(workspaceId: string, limit?: number): Promise<Run[]>;
+  /**
+   * §9 — the two numbers the automatic ceiling is judged against, counted in
+   * the database. `listLive(...).length` would answer the first, and would
+   * load every live run to do arithmetic on it.
+   */
+  countLive(workspaceId: string): Promise<number>;
+  countSince(workspaceId: string, since: Date): Promise<number>;
 }
 
 export const RUN_REPOSITORY = "execution/RunRepository";

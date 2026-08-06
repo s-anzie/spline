@@ -69,6 +69,17 @@ export interface RunLedger {
   /** The last run of this task, whatever became of it. */
   latestFor(workspaceId: string, taskId: string): Promise<LatestRun | null>;
   /**
+   * §9 — what the automatic ceiling is judged against.
+   *
+   * Two counts rather than one because they answer different questions:
+   * how much is happening at once (a machine and a wallet can only take so
+   * much in parallel) and how much has happened lately (what stops a night
+   * from being spent). Counted in the database — the run history is kept for
+   * reading, not for arithmetic.
+   */
+  countLive(workspaceId: string): Promise<number>;
+  countSince(workspaceId: string, since: Date): Promise<number>;
+  /**
    * §4.8 — closes the attempt with what the worker reported, including the
    * provider session it left behind. Best-effort: an order that finished is
    * finished, and bookkeeping must not un-finish it.
@@ -103,3 +114,20 @@ export interface OrganisingActor {
 }
 
 export const ORGANISING_ACTOR = "runtime/OrganisingActor";
+
+/**
+ * §9 — how much this workspace may do without anybody clicking.
+ *
+ * Declared here and supplied by `workspace`, which owns the settings the
+ * numbers live in. Runtime dispatches; it does not decide what a workspace
+ * allows.
+ */
+export interface AutomationPolicy {
+  limitsFor(workspaceId: string): Promise<{
+    automatic: boolean;
+    concurrentRuns: number;
+    runsPerDay: number;
+  }>;
+}
+
+export const AUTOMATION_POLICY = "runtime/AutomationPolicy";
