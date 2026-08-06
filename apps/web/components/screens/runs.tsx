@@ -297,6 +297,8 @@ export function RunDetail({ runId }: { runId: string }) {
           )}
         </Section>
 
+        <Trace attempts={view.attempts} />
+
         <Card className="h-fit gap-0 p-4 shadow-none">
           <Facts
             items={[
@@ -328,5 +330,79 @@ export function RunDetail({ runId }: { runId: string }) {
         </Card>
       </div>
     </>
+  );
+}
+
+/**
+ * §17 — what the agent was doing, rather than only what it cost.
+ *
+ * A run used to report a number and one final sentence. An operator asking
+ * "is it working, and on what?" had nothing to read — the same position as
+ * having no agent, minus the money.
+ *
+ * The newest attempt's trace, because that is the one somebody is looking at.
+ * Earlier attempts keep theirs, which is what makes "why did the first one
+ * fail" answerable at all.
+ */
+function Trace({ attempts }: { attempts: RunView["attempts"] }) {
+  const latest = attempts.at(-1);
+  const trace = latest?.trace ?? [];
+
+  if (trace.length === 0) {
+    return (
+      <Section title="What it did">
+        <Note tone="quiet">
+          Nothing was recorded for this attempt. A run started before the
+          machine learned to watch its agent has no trace, and one that failed
+          before the agent spoke has nothing to show.
+        </Note>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="What it did" count={trace.length}>
+      <Card className="gap-0 overflow-hidden py-0 shadow-none">
+        <div className="divide-border/60 max-h-[28rem] divide-y overflow-y-auto">
+          {trace.map((entry, at) => (
+            <div
+              key={`${entry.at}-${at}`}
+              className="flex items-start gap-3 px-4 py-2.5"
+            >
+              <span
+                aria-hidden
+                className="mt-1 w-0.5 shrink-0 self-stretch rounded-full"
+                style={{
+                  background:
+                    entry.kind === "used"
+                      ? "var(--live)"
+                      : entry.kind === "result"
+                        ? "var(--settled)"
+                        : "var(--muted-foreground)",
+                }}
+              />
+              <span className="label text-muted-foreground w-14 shrink-0 pt-0.5">
+                {entry.kind === "used" ? "tool" : entry.kind === "result" ? "end" : "said"}
+              </span>
+              <span
+                className={
+                  entry.kind === "used"
+                    ? "measure min-w-0 flex-1 text-xs leading-relaxed"
+                    : "min-w-0 flex-1 text-sm leading-relaxed"
+                }
+              >
+                {entry.text}
+              </span>
+              <span
+                className="measure text-muted-foreground/60 shrink-0 text-[0.6875rem]"
+                title={stamp(entry.at)}
+              >
+                {entry.at.slice(11, 19)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </Section>
   );
 }

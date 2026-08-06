@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CornerDownLeft,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { api, type MemberView, type ThreadView } from "@/lib/api";
+import { api, type MemberView, type RunView, type ThreadView } from "@/lib/api";
 import { humanise, since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
@@ -21,7 +21,6 @@ import {
   Area,
   BackTo,
   Empty,
-  Facts,
   Field,
   Id,
   Loading,
@@ -32,7 +31,6 @@ import {
   Picker,
   Payload,
   Row,
-  Section,
   Segmented,
   Stat,
   StatRow,
@@ -154,6 +152,20 @@ export function ThreadList() {
   );
 }
 
+/**
+ * §10.18a, §17 — the thread, and what the agent did inside it.
+ *
+ * Laid out as a conversation rather than as a page of sections, and the
+ * difference is not cosmetic: a thread is read from the bottom, where the
+ * newest thing is, and answered from a box that should not move. The old
+ * layout scrolled the whole page, so the composer wandered off-screen exactly
+ * when the thread got long enough to need one.
+ *
+ * The agent's ACTIVITY is interleaved with the turns, in time order. Watching
+ * a manager say nothing for four minutes and then answer is indistinguishable
+ * from watching it die; seeing it read three files and reach for a fourth is
+ * the difference between waiting and worrying.
+ */
 export function ThreadDetail({ threadId }: { threadId: string }) {
   const workspaceId = useSession((state) => state.workspaceId)!;
   const userId = useSession((state) => state.userId);
@@ -166,6 +178,20 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
   // into "Scout". Resolved here rather than in the hub, because the mapping
   // is workspace-scoped and this is the only screen that needs it.
   const members = useResource(() => api.members.list(workspaceId), [workspaceId]);
+
+  /**
+   * §17 — the work this thread delegated, and what it did while doing it.
+   *
+   * Polled faster than the thread because it is the part that moves: a turn
+   * arrives every few minutes, a tool call every few seconds.
+   */
+  const taskId = thread.data?.taskId ?? null;
+  const runs = useResource(
+    () => api.runs.list(workspaceId, { taskId: taskId! }),
+    [workspaceId, taskId],
+    { pollMs: 5_000, enabled: Boolean(taskId) },
+  );
+
   const nameOf = (actor: { type: string; id: string }) => {
     const member = (members.data ?? []).find(
       (entry) => entry.actorId === actor.id && entry.actorType === actor.type,
@@ -179,6 +205,20 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
   const [message, setMessage] = useState("");
   const { run, pending, error } = useAction();
 
+  const bottom = useRef<HTMLDivElement>(null);
+  const entries = useMemo(
+    () => timeline(thread.data, runs.data ?? []),
+    [thread.data, runs.data],
+  );
+
+  /**
+   * Kept at the newest entry as things arrive. Without this the interesting
+   * end of a live thread sits below the fold and somebody has to chase it.
+   */
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: "end" });
+  }, [entries.length]);
+
   if (thread.loading) return <Loading rows={4} />;
   if (thread.error || !thread.data) return <Note>{thread.error ?? "Not found"}</Note>;
   const view: ThreadView = thread.data;
@@ -190,88 +230,169 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
     });
 
   const live = view.status === "OPEN";
+  const working = (runs.data ?? []).some((entry) => entry.status === "RUNNING");
 
   return (
-    <>
-      <BackTo label="Conversations" href={routes.threads} />
-      <PageHeader title={view.subject} actions={<Status value={view.status} />} />
+    /**
+     * The frame is the height of the console's own content area, and only the
+     * thread inside it scrolls. `min-h-0` on the scrolling child is what makes
+     * that true in a flex column — without it the child grows instead, and the
+     * page scrolls after all.
+     */
+    <div className="flex h-[calc(100vh-7rem)] flex-col">
+      <div className="shrink-0">
+        <BackTo label="Conversations" href={routes.threads} />
+        <PageHeader
+          title={view.subject}
+          actions={
+            <div className="flex items-center gap-2.5">
+              {working ? (
+                <span className="text-live inline-flex items-center gap-1.5 text-xs">
+                  <span className="bg-live size-1.5 animate-pulse rounded-full" />
+                  working
+                </span>
+              ) : null}
+              <Status value={view.status} />
+            </div>
+          }
+        />
+        {/**
+         * The column that used to hold these is gone — a conversation needs
+         * its width. What is left is what a reader actually reaches for: who
+         * it is with, the work it delegated, and how many turns remain.
+         */}
+        <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+          <span>
+            with{" "}
+            <span className="text-foreground font-medium">
+              {nameOf(view.participant)}
+            </span>
+          </span>
+          {view.taskId ? (
+            <Link
+              href={routes.task(view.taskId)}
+              className="hover:text-foreground underline underline-offset-2 transition-colors"
+            >
+              the work it delegated
+            </Link>
+          ) : (
+            <span>a question — nothing was delegated</span>
+          )}
+          <span className="measure">
+            {view.turnsLeft} of {view.turnBudget} turns left
+          </span>
+          <Id value={view.threadId} />
+        </div>
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
-        <div>
-          <Section title="Turns" count={view.turns.length}>
-            <Card className="gap-0 p-5 shadow-none">
-              <ol className="space-y-5">
-                {view.turns.map((turn, index) => {
-                  const mine = turn.actor.id === userId;
-                  return (
-                    <li key={index} className="flex gap-3">
-                      <span
-                        className={`mt-1 h-full w-[2px] shrink-0 rounded-full ${
-                          mine ? "bg-border" : "bg-[var(--live)]"
-                        }`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-muted-foreground mb-1 text-xs">
-                          <span className="text-foreground font-medium">
-                            {mine ? "you" : nameOf(turn.actor)}
-                          </span>
-                          <span className="ml-2" title={stamp(turn.at)}>
-                            {since(turn.at)}
-                          </span>
-                        </p>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {turn.message}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </Card>
-          </Section>
-
-          {/* The answer to a delegation is not a detail to unfold — it is the
-              reason the thread existed. Open. */}
-          {view.outcome ? (
-            <Section title="What came of it">
-              <Card className="gap-0 p-4 shadow-none">
-                <Payload value={view.outcome} open />
-              </Card>
-            </Section>
+      <Card className="min-h-0 flex-1 gap-0 overflow-hidden p-0 shadow-none">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          {entries.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Nothing said yet. {view.taskId ? "The work has been handed over — what it does will appear here." : ""}
+            </p>
           ) : null}
 
-          {live ? (
-            <Section title={`Reply — ${view.turnsLeft} turn${view.turnsLeft === 1 ? "" : "s"} left`}>
-              <Card className="gap-3 p-4 shadow-none">
-                <Area
-                  label="Your turn"
-                  value={message}
-                  onChange={setMessage}
-                  placeholder="What you want them to know, or to do next."
+          {entries.map((entry) =>
+            entry.kind === "turn" ? (
+              <div key={entry.key} className="flex gap-3">
+                <span
+                  className={`mt-1 w-[2px] shrink-0 self-stretch rounded-full ${
+                    entry.actor?.id === userId ? "bg-border" : "bg-[var(--live)]"
+                  }`}
                 />
-                {error ? <Note>{error}</Note> : null}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    disabled={pending || message.trim().length === 0 || view.turnsLeft === 0}
-                    onClick={() => speak(message.trim())}
-                  >
-                    <Send />
-                    Send
-                  </Button>
-                  {/* §10.18b — the polite stop. Without it, a finished thread
-                      and a truncated one are the same event. */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => speak(undefined)}
-                  >
-                    I have nothing to add
-                  </Button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-muted-foreground mb-1 text-xs">
+                    <span className="text-foreground font-medium">
+                      {entry.actor?.id === userId ? "you" : nameOf(entry.actor!)}
+                    </span>
+                    <span className="ml-2" title={stamp(entry.at)}>
+                      {since(entry.at)}
+                    </span>
+                  </p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {entry.text}
+                  </p>
                 </div>
-              </Card>
-            </Section>
+              </div>
+            ) : (
+              /**
+               * What it was doing, in a quieter register than what it said.
+               * A tool call is not a turn: it is evidence that the silence is
+               * work rather than a hang.
+               */
+              <div key={entry.key} className="flex items-baseline gap-3 pl-5">
+                <span className="label text-muted-foreground/70 w-10 shrink-0">
+                  {entry.kind === "used" ? "tool" : entry.kind === "result" ? "end" : "…"}
+                </span>
+                <span
+                  className={
+                    entry.kind === "used"
+                      ? "measure text-muted-foreground min-w-0 flex-1 truncate text-xs"
+                      : "text-muted-foreground min-w-0 flex-1 text-xs leading-relaxed"
+                  }
+                  title={entry.text}
+                >
+                  {entry.text}
+                </span>
+                <span className="measure text-muted-foreground/50 shrink-0 text-[0.625rem]">
+                  {entry.at.slice(11, 19)}
+                </span>
+              </div>
+            ),
+          )}
+
+          {view.outcome ? (
+            <div className="border-border rounded-lg border p-3">
+              <p className="label mb-2">What came of it</p>
+              <Payload value={view.outcome} open />
+            </div>
+          ) : null}
+
+          <div ref={bottom} />
+        </div>
+
+        {/* Fixed at the foot of the frame: a composer that scrolls away is a
+            composer somebody has to hunt for. */}
+        <div className="border-border bg-muted/30 shrink-0 border-t p-4">
+          {live ? (
+            <>
+              <Area
+                label={`Your turn — ${view.turnsLeft} of ${view.turnBudget} left`}
+                value={message}
+                onChange={setMessage}
+                rows={3}
+                placeholder="What you want them to know, or to do next."
+              />
+              {error ? (
+                <div className="mt-2">
+                  <Note>{error}</Note>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={pending || message.trim().length === 0 || view.turnsLeft === 0}
+                  onClick={() => speak(message.trim())}
+                >
+                  <Send />
+                  Send
+                </Button>
+                {/* §10.18b — the polite stop. Without it, a finished thread
+                    and a truncated one are the same event. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => speak(undefined)}
+                >
+                  I have nothing to add
+                </Button>
+                <span className="text-muted-foreground ml-auto text-xs">
+                  {view.awaiting ? "waiting on them" : "your move"}
+                </span>
+              </div>
+            </>
           ) : (
             <Note tone={view.status === "EXHAUSTED" ? "signal" : "quiet"}>
               {view.status === "EXHAUSTED"
@@ -280,33 +401,53 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
             </Note>
           )}
         </div>
+      </Card>
+    </div>
+  );
+}
 
-        <Card className="h-fit gap-0 p-4 shadow-none">
-          <Facts
-            items={[
-              ["thread", <Id key="id" value={view.threadId} />],
-              ["asked by", nameOf(view.initiator)],
-              ["asked of", nameOf(view.participant)],
-              [
-                "delegated",
-                view.taskId ? (
-                  <Link
-                    href={routes.task(view.taskId)}
-                    className="underline underline-offset-2"
-                  >
-                    {view.taskId.slice(0, 8)}
-                  </Link>
-                ) : (
-                  "nothing — this is a question"
-                ),
-              ],
-              ["turns", `${view.turnsLeft} of ${view.turnBudget} left`],
-              ["awaiting", view.awaiting ? "them" : "nobody"],
-            ]}
-          />
-        </Card>
-      </div>
-    </>
+interface Entry {
+  key: string;
+  kind: "turn" | "said" | "used" | "result";
+  at: string;
+  text: string;
+  actor?: { type: string; id: string };
+}
+
+/**
+ * §10.18a, §17 — the turns and the work, in the order they happened.
+ *
+ * Merged on time rather than shown in two columns: a manager's tool call
+ * belongs between the question that caused it and the answer it led to, and
+ * splitting them makes a reader reconstruct the order in their head.
+ */
+function timeline(
+  thread: ThreadView | null | undefined,
+  runs: RunView[],
+): Entry[] {
+  if (!thread) return [];
+
+  const turns: Entry[] = thread.turns.map((turn, at) => ({
+    key: `turn-${at}`,
+    kind: "turn",
+    at: turn.at,
+    text: turn.message,
+    actor: turn.actor,
+  }));
+
+  const activity: Entry[] = runs.flatMap((run) =>
+    (run.attempts ?? []).flatMap((attempt) =>
+      (attempt.trace ?? []).map((entry, at) => ({
+        key: `${run.runId}-${attempt.number}-${at}`,
+        kind: entry.kind === "used" || entry.kind === "result" ? entry.kind : "said",
+        at: entry.at,
+        text: entry.text,
+      })),
+    ),
+  ) as Entry[];
+
+  return [...turns, ...activity].sort(
+    (left, right) => new Date(left.at).getTime() - new Date(right.at).getTime(),
   );
 }
 
@@ -331,7 +472,20 @@ function OpenThread({
   const [subject, setSubject] = useState("");
   const [participant, setParticipant] = useState("");
   const [handOver, setHandOver] = useState(false);
+  const [repositoryId, setRepositoryId] = useState("");
   const { run, pending, error } = useAction();
+
+  /**
+   * §8.3 — the projects this workspace has, if any.
+   *
+   * Asked for only here in this screen: a need handed over without a project
+   * produces a manager with nothing to pass down, and none of the tasks it
+   * cuts touches any code. That failure is silent and expensive.
+   */
+  const repositories = useResource(
+    () => api.repositories.list(workspaceId),
+    [workspaceId],
+  );
 
   const others = members.filter((member) => member.actorId !== userId);
   const chosen = others.find(
@@ -370,6 +524,9 @@ function OpenThread({
                   participantId: chosen!.actorId,
                   subject: subject.trim(),
                   ...(canOrganise && handOver ? { handOver: true } : {}),
+                  ...(canOrganise && handOver && repositoryId
+                    ? { repositoryId }
+                    : {}),
                 }),
               () => {
                 setOpen(false);
@@ -442,6 +599,39 @@ function OpenThread({
                   ? "They work out what it means, state the goal with what would prove it reached, and cut it into tasks for whoever should do them. You are told here when it is done."
                   : "They read it and answer you. Nothing is created and nobody is put to work."}
               </p>
+
+              {/**
+               * §8.3 — the project, chosen where the need is stated.
+               *
+               * The manager passes it to every task it cuts, so leaving it
+               * out here means none of the work touches any code — a failure
+               * that shows up as five tasks quietly editing nothing.
+               */}
+              {handOver && (repositories.data ?? []).length > 0 ? (
+                <div className="mt-3">
+                  <p className="label mb-1.5">Which project</p>
+                  <Picker
+                    value={repositoryId}
+                    onChange={setRepositoryId}
+                    placeholder="No project — nothing they make will touch code"
+                    options={[
+                      {
+                        value: "",
+                        label: "No project",
+                        hint: "for work that is not about code",
+                      },
+                      ...(repositories.data ?? []).map((repository) => ({
+                        value: repository.id,
+                        label: repository.name,
+                        hint:
+                          repository.localPath ??
+                          repository.origin ??
+                          repository.defaultBranch,
+                      })),
+                    ]}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
           {chosen ? (

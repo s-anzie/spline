@@ -48,6 +48,8 @@ import { ReleaseTaskOnSessionCrashedListener } from "./application/release-task-
     // For `WorkIntakeAdapter` (§4.5): a need handed to a manager becomes a
     // task, and only this module knows how to make one correctly.
     CreateTaskUseCase,
+    // …and READY, or nothing could ever dispatch it.
+    ChangeTaskStatusUseCase,
   ],
 })
 export class TaskModule {}

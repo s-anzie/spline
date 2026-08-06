@@ -3,7 +3,6 @@ import { CommandReport } from "../execution/executor";
 import { ensureWorkspaceDirectory } from "../execution/workspace-directory";
 import { ClaimedCommand } from "../hub/hub-client";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
-import { SpawnPlan } from "../supervision/spawn-plan";
 import {
   ExecutionLimits,
   ExecutionOutcome,
@@ -11,6 +10,7 @@ import {
 } from "../supervision/supervisor";
 import { writeMcpBridge } from "../mcp/mcp-config";
 import { Checkout, CheckoutResult } from "../git/checkout";
+import { TraceEntry, TraceReader } from "./trace";
 import { CLOSED_SURFACE, providerSpec } from "./provider-spec";
 
 /** What `publishWork` answers, kept here so this file owns no git. */
@@ -39,10 +39,13 @@ export interface AgentRunDeps {
   workspaceRoot: string;
   /** §18.4 — only what this task was granted. */
   secretsFor: (command: ClaimedCommand) => Record<string, string>;
-  supervise?: (
-    plan: SpawnPlan,
-    limits: ExecutionLimits,
-  ) => Promise<ExecutionOutcome>;
+  /**
+   * Typed as the real `superviseProcess` is, including the watcher: a
+   * narrower type here would have let a caller pass a supervisor that
+   * silently ignores the stream, and the trace would be empty with nothing
+   * saying why.
+   */
+  supervise?: typeof superviseProcess;
   realpath?: (path: string) => string;
   /** Injected so a test can say which id was assigned. */
   newSessionId?: () => string;
@@ -54,6 +57,11 @@ export interface AgentRunDeps {
   grantFor?: (command: ClaimedCommand) => Promise<AgentGrant | null>;
   /** Injected so a test needs no filesystem to prove what is passed. */
   openBridge?: typeof writeMcpBridge;
+  /**
+   * §17 — called as the agent speaks and reaches for tools, so a caller can
+   * report progress while there is still something to report on.
+   */
+  onProgress?: (entry: TraceEntry) => void;
   /**
    * §8.3 — prepares the repository checkout this order names, if it names
    * one. Absent, or answering null, means the agent works in the workspace
@@ -198,9 +206,27 @@ export async function runAgent(
     return failed(plan.error);
   }
 
+  /**
+   * §17 — what the agent was doing, while it was doing it.
+   *
+   * Read from the stream rather than reconstructed afterwards: the CLI prints
+   * one JSON object per line as it goes, and the alternative is a run that
+   * says a number when it ends and nothing at all before.
+   */
+  const reader = new TraceReader();
+
   let outcome: ExecutionOutcome;
   try {
-    outcome = await (deps.supervise ?? superviseProcess)(plan.value, deps.limits);
+    outcome = await (deps.supervise ?? superviseProcess)(
+      plan.value,
+      deps.limits,
+      undefined,
+      (chunk) => {
+        for (const entry of reader.read(chunk)) {
+          deps.onProgress?.(entry);
+        }
+      },
+    );
   } catch (error) {
     return failed(`could not run the agent: ${String(error)}`);
   }
@@ -254,6 +280,10 @@ export async function runAgent(
        */
       providerSessionId: assignedSessionId ?? said.value.sessionId,
       provider: providerName,
+      // §17 — the short readable version of what happened, not the raw
+      // stream. Token deltas are noise nobody reads and megabytes nobody
+      // wants in a journal.
+      trace: reader.trace,
       tokenUsage: said.value.tokenUsage,
       cost: said.value.cost,
       stderr: outcome.stderr,

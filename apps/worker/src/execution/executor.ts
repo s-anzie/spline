@@ -3,7 +3,6 @@ import { ensureWorkspaceDirectory } from "./workspace-directory";
 import { AgentRunDeps, runAgent } from "../providers/agent-run";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
 import { ExecutionLimits, ExecutionOutcome, superviseProcess } from "../supervision/supervisor";
-import { SpawnPlan } from "../supervision/spawn-plan";
 
 export interface ExecutorDeps {
   settings: ExecutionSettings;
@@ -15,10 +14,13 @@ export interface ExecutorDeps {
   workspaceRoot: string;
   /** §18.4 — only what this task was granted, resolved by the caller. */
   secretsFor: (command: ClaimedCommand) => Record<string, string>;
-  supervise?: (
-    plan: SpawnPlan,
-    limits: ExecutionLimits,
-  ) => Promise<ExecutionOutcome>;
+  /**
+   * Typed as the real `superviseProcess` is, including the watcher: a
+   * narrower type here would have let a caller pass a supervisor that
+   * silently ignores the stream, and the trace would be empty with nothing
+   * saying why.
+   */
+  supervise?: typeof superviseProcess;
   realpath?: (path: string) => string;
   /**
    * §7.9 — makes the workspace's directory. Injected for the same reason

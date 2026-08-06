@@ -57,6 +57,12 @@ export class OpenThreadDto {
   @IsBoolean()
   handOver?: boolean;
 
+  /** §8.3 — the project the need is about, when it is about one. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  repositoryId?: string;
+
   @IsString()
   @IsNotEmpty()
   participantId!: string;

@@ -22,6 +22,15 @@ export interface WorkIntake {
     /** Who will organise it. Checked to be able to, before anything is made. */
     manager: ActorRef;
     /**
+     * §8.3 — the project the need is about, when it is about one.
+     *
+     * Carried from the moment the need is stated, because the manager passes
+     * it down to every task it cuts. Without it here, a person names a
+     * project nowhere, the manager has nothing to pass, and none of the work
+     * it creates touches any code.
+     */
+    repositoryId?: string;
+    /**
      * Who asked.
      *
      * A task carries no requester field today, so this owns the standing goal

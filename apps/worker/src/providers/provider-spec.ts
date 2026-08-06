@@ -35,6 +35,8 @@ export type ParseResult =
  * inherits nothing from the machine it happens to run on. Opening a door is
  * an act, never a leftover.
  */
+import { lastEnvelope } from "./trace";
+
 export interface ToolSurface {
   /**
    * PATH to an MCP config file, never the JSON itself.
@@ -120,8 +122,16 @@ const CLAUDE: ProviderSpec = {
     return [
       "-p",
       prompt,
+      /**
+       * §17 — one JSON object per line, as it happens, rather than one at the
+       * end. A run used to be four minutes of nothing to look at followed by
+       * a number; this is what makes "what is it doing" answerable while it
+       * is still doing it. `--verbose` is what makes the intermediate
+       * messages appear at all in this mode.
+       */
       "--output-format",
-      "json",
+      "stream-json",
+      "--verbose",
       // Ours, not theirs: see the note at the top of this file.
       "--session-id",
       sessionId,
@@ -134,7 +144,8 @@ const CLAUDE: ProviderSpec = {
       "-p",
       prompt,
       "--output-format",
-      "json",
+      "stream-json",
+      "--verbose",
       "--resume",
       sessionId,
       ...isolation(surface),
@@ -144,7 +155,13 @@ const CLAUDE: ProviderSpec = {
   parse(stdout) {
     let envelope: Record<string, unknown>;
     try {
-      envelope = JSON.parse(stdout.trim()) as Record<string, unknown>;
+      /**
+       * The LAST envelope, not the whole output. `stream-json` prints many
+       * objects, so parsing all of it throws — and the one that matters is
+       * the closing `result`.
+       */
+      const closing = lastEnvelope(stdout);
+      envelope = JSON.parse(closing ?? stdout.trim()) as Record<string, unknown>;
     } catch {
       return failed(
         "the CLI did not answer with a JSON envelope — its output cannot be read as a result",

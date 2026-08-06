@@ -54,6 +54,15 @@ export interface Attempt {
   cost: number | null;
   durationMs: number | null;
   outcome: AttemptOutcome | null;
+  /**
+   * §17 — what the agent was doing, in its own words and tool calls.
+   *
+   * A short readable trace, never the raw stream: token deltas are noise
+   * nobody reads and megabytes nobody wants in a journal. Kept on the ATTEMPT
+   * rather than the run because a second attempt did different things, and a
+   * trace that overwrote the first would hide why the first failed.
+   */
+  trace: { kind: string; text: string; at: string }[] | null;
   startedAt: Date;
   finishedAt: Date | null;
 }
@@ -69,6 +78,8 @@ export interface FinishAttemptInput {
   outcome: AttemptOutcome;
   tokenUsage?: Record<string, number>;
   cost?: number;
+  /** §17 — the short readable trace the machine collected while running. */
+  trace?: { kind: string; text: string; at: string }[];
   /** §4.8 — reported by the worker, from what the CLI said or was told. */
   providerSessionId?: string;
 }
@@ -251,6 +262,7 @@ export class Run extends AggregateRoot<RunProps> {
       cost: null,
       durationMs: null,
       outcome: null,
+      trace: null,
       startedAt: now,
       finishedAt: null,
     };
@@ -276,6 +288,7 @@ export class Run extends AggregateRoot<RunProps> {
     attempt.cost = input.cost ?? null;
     attempt.finishedAt = now;
     attempt.durationMs = now.getTime() - attempt.startedAt.getTime();
+    attempt.trace = input.trace ?? attempt.trace ?? null;
     return Result.ok(undefined);
   }
 

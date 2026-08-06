@@ -57,6 +57,16 @@ export async function superviseProcess(
   plan: SpawnPlan,
   limits: ExecutionLimits,
   spawner: Spawner = defaultSpawner,
+  /**
+   * Called with each chunk of stdout as it arrives, when a caller wants to
+   * watch rather than wait.
+   *
+   * The whole point of `--output-format stream-json`: without a hook here the
+   * output is only readable once the process has exited, so an agent that
+   * runs for four minutes is four minutes of nothing to look at. Optional, so
+   * every existing caller is unchanged.
+   */
+  onOutput?: (chunk: string) => void,
 ): Promise<ExecutionOutcome> {
   const child = spawner(plan);
 
@@ -80,6 +90,15 @@ export async function superviseProcess(
     stream?.setEncoding("utf8");
     stream?.on("data", (chunk: string) => {
       append(chunk);
+      if (stream === child.stdout) {
+        // Never allowed to break the run: a watcher that throws must not kill
+        // work that is going fine.
+        try {
+          onOutput?.(chunk);
+        } catch {
+          // Ignored on purpose. See above.
+        }
+      }
       if (stdout.length + stderr.length >= limits.maxOutputBytes) {
         stop("output");
       }

@@ -39,6 +39,8 @@ export interface OpenThreadInput {
    * asker told when it ends — the same machinery a delegation already uses.
    */
   handOver?: boolean;
+  /** §8.3 — the project the need is about, carried into the work it becomes. */
+  repositoryId?: string;
   turnBudget?: number;
 }
 
@@ -90,6 +92,7 @@ export class OpenThreadUseCase
         need: input.subject,
         manager: participant.value,
         asker: input.initiator,
+        ...(input.repositoryId ? { repositoryId: input.repositoryId } : {}),
       });
       if (opened.isFailure) {
         return Result.fail(opened.error as GuardViolation);

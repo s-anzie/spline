@@ -171,6 +171,36 @@ describe("Handing a need to the team (e2e)", () => {
   });
 
   /**
+   * §6.8 — the bug this test exists for.
+   *
+   * A task is born PLANNED, and only READY/ASSIGNED/RUNNING may be
+   * dispatched. Handing a need over therefore produced work neither a person
+   * nor the automatic dispatcher could start: it sat there looking created,
+   * with nothing anywhere saying why nothing happened. Found on a real
+   * workspace, not here.
+   */
+  it("leaves the work ready to run, not merely created", async () => {
+    const ctx = await workspace("AGENT_MANAGER");
+
+    const opened = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/threads`))
+      .send({
+        participantType: "AGENT",
+        participantId: "manager-1",
+        subject: NEED,
+        handOver: true,
+      })
+      .expect(201);
+
+    const task = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/tasks/${opened.body.taskId}`))
+      .expect(200);
+
+    // Anything a machine may be given work in. PLANNED is not one of them.
+    expect(["READY", "ASSIGNED"]).toContain(task.body.status);
+  });
+
+  /**
    * §4.6 — you cannot hand organising to somebody who may not organise. The
    * refusal says so rather than creating work nobody can act on.
    */

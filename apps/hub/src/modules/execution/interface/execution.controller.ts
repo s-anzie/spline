@@ -132,6 +132,8 @@ function toRunView(run: Run) {
       cost: attempt.cost,
       durationMs: attempt.durationMs,
       outcome: attempt.outcome,
+      // §17 — what the agent said and which tools it reached for.
+      trace: attempt.trace ?? [],
     })),
     // §20.6 — the affordances, so a client offers what will work.
     allowedStatusTargets: run.allowedStatusTargets(),

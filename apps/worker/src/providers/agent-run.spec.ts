@@ -396,3 +396,79 @@ describe("working in a repository", () => {
     expect(report.result).not.toHaveProperty("conflict");
   });
 });
+
+/**
+ * §17 — a run that can be watched rather than only counted.
+ */
+describe("what the agent was doing", () => {
+  const streamed = (...lines: string[]) => ({
+    exitCode: 0,
+    stdout: lines.join("\n"),
+    stderr: "",
+    stoppedBy: null,
+  });
+
+  const said = (text: string) =>
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  const used = (name: string, input: Record<string, unknown>) =>
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name, input }] },
+    });
+  const finished = JSON.stringify({
+    type: "result",
+    result: "done",
+    session_id: "assigned-1",
+    total_cost_usd: 0.03,
+  });
+
+  it("reports the trace with the result", async () => {
+    const report = await runAgent(
+      order(),
+      deps({
+        supervise: async (_plan, _limits, _spawner, onOutput) => {
+          onOutput?.(`${said("Reading the form first.")}\n`);
+          onOutput?.(`${used("Read", { file_path: "/app/form.tsx" })}\n`);
+          onOutput?.(`${finished}\n`);
+          return streamed(said("Reading the form first."), used("Read", { file_path: "/app/form.tsx" }), finished);
+        },
+      }),
+    );
+
+    expect(report.outcome).toBe("COMPLETED");
+    const trace = report.result?.trace as { kind: string; text: string }[];
+    expect(trace.map((entry) => entry.kind)).toEqual(["said", "used", "result"]);
+    expect(trace[1]?.text).toContain("form.tsx");
+  });
+
+  it("calls back as it goes, not only at the end", async () => {
+    const seen: string[] = [];
+
+    await runAgent(
+      order(),
+      deps({
+        onProgress: (entry) => seen.push(entry.kind),
+        supervise: async (_plan, _limits, _spawner, onOutput) => {
+          onOutput?.(`${said("Thinking")}\n`);
+          expect(seen).toEqual(["said"]);
+          onOutput?.(`${finished}\n`);
+          return streamed(said("Thinking"), finished);
+        },
+      }),
+    );
+
+    expect(seen).toEqual(["said", "result"]);
+  });
+
+  /** The closing envelope is still read, even buried in a stream. */
+  it("still reads the cost and the session out of the stream", async () => {
+    const report = await runAgent(
+      order(),
+      deps({
+        supervise: async () => streamed(said("hello"), finished),
+      }),
+    );
+
+    expect(report.result).toMatchObject({ cost: 0.03, finalText: "done" });
+  });
+});

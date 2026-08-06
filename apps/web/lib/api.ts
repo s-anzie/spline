@@ -81,6 +81,8 @@ export interface AttemptView {
   cost: number | null;
   durationMs: number | null;
   outcome: string | null;
+  /** §17 — what the agent said, and which tools it reached for. */
+  trace: { kind: string; text: string; at: string }[];
 }
 
 export interface RunView extends Affordable {
@@ -660,6 +662,8 @@ export const api = {
         taskId?: string;
         /** §4.5 — hand it over as work rather than asking a question about it. */
         handOver?: boolean;
+        /** §8.3 — the project the need is about, carried into the work. */
+        repositoryId?: string;
       },
     ) => hub.post<{ threadId: string; taskId?: string }>(
       `/workspaces/${workspace}/threads`,

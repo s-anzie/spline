@@ -18,7 +18,17 @@ describe("provider specs", () => {
       expect(claude.command).toBe("claude");
       expect(args).toContain("-p");
       expect(args).toContain("Review the migration");
-      expect(args.join(" ")).toContain("--output-format json");
+      /**
+       * §17 — streaming, not a single answer at the end.
+       *
+       * This asserted `--output-format json` and was right until a run
+       * became something an operator watches: `json` prints one object when
+       * the process exits, so four minutes of work is four minutes of
+       * nothing to look at. `stream-json` prints one per line as it happens,
+       * and `--verbose` is what makes the intermediate ones appear at all.
+       */
+      expect(args.join(" ")).toContain("--output-format stream-json");
+      expect(args).toContain("--verbose");
     });
 
     /**

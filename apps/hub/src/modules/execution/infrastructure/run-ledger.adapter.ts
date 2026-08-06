@@ -102,6 +102,9 @@ export class RunLedgerAdapter implements RunLedger {
         providerSessionId: asString(input.result.providerSessionId),
         tokenUsage: asNumbers(input.result.tokenUsage),
         cost: typeof input.result.cost === "number" ? input.result.cost : undefined,
+        // §17 — what the agent said and reached for, as the machine watched
+        // it. Without this a finished run is a number and one sentence.
+        trace: asTrace(input.result.trace),
       },
       now,
     );
@@ -183,4 +186,35 @@ function asNumbers(value: unknown): Record<string, number> | undefined {
     ([, item]) => typeof item === "number",
   ) as [string, number][];
   return numbers.length > 0 ? Object.fromEntries(numbers) : undefined;
+}
+
+/**
+ * §17, §18.12 — the machine's trace, taken only in the shape expected.
+ *
+ * A worker is authenticated but its payload is still data from another
+ * process, and this lands in a JSON column every screen renders. Rebuilt
+ * field by field rather than trusted: an array of arbitrary objects would put
+ * whatever a compromised or buggy machine sent straight onto an operator's
+ * screen.
+ */
+function asTrace(
+  value: unknown,
+): { kind: string; text: string; at: string }[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = value
+    .filter((entry): entry is Record<string, unknown> =>
+      typeof entry === "object" && entry !== null,
+    )
+    .map((entry) => ({
+      kind: typeof entry.kind === "string" ? entry.kind.slice(0, 16) : "said",
+      text: typeof entry.text === "string" ? entry.text.slice(0, 500) : "",
+      at: typeof entry.at === "string" ? entry.at.slice(0, 40) : "",
+    }))
+    .filter((entry) => entry.text !== "")
+    // The worker already caps this; capping again here is what makes the cap
+    // a property of the hub rather than a promise the machine keeps.
+    .slice(0, 200);
+  return entries.length > 0 ? entries : undefined;
 }

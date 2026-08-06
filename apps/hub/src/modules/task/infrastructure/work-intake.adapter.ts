@@ -11,6 +11,7 @@ import { EnsureRequestsGoalUseCase } from "../../goal/application/ensure-request
 import { ActorRef } from "../../identity/domain/actor";
 import { IdentityModule } from "../../identity/identity.module";
 import { PermissionsService } from "../../identity/application/permissions.service";
+import { ChangeTaskStatusUseCase } from "../application/change-task-status.use-case";
 import { CreateTaskUseCase } from "../application/create-task.use-case";
 import { TaskModule } from "../task.module";
 
@@ -47,6 +48,7 @@ export class WorkIntakeAdapter implements WorkIntake {
   constructor(
     private readonly requestsGoal: EnsureRequestsGoalUseCase,
     private readonly createTask: CreateTaskUseCase,
+    private readonly changeStatus: ChangeTaskStatusUseCase,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -55,6 +57,7 @@ export class WorkIntakeAdapter implements WorkIntake {
     need: string;
     manager: ActorRef;
     asker: ActorRef;
+    repositoryId?: string;
   }): Promise<Result<{ taskId: string }, DomainError>> {
     const canOrganise = await this.permissions.can(
       { actorType: input.manager.type, actorId: input.manager.actorId },
@@ -83,10 +86,38 @@ export class WorkIntakeAdapter implements WorkIntake {
       ],
       assigneeType: input.manager.type,
       assigneeId: input.manager.actorId,
+      // §8.3 — the manager reads it off its own task and passes it to every
+      // task it cuts. Absent here, absent everywhere below.
+      ...(input.repositoryId ? { repositoryId: input.repositoryId } : {}),
     });
     if (created.isFailure) {
       return Result.fail(created.error as DomainError);
     }
+
+    /**
+     * §6.8 — and READY, or nothing could ever run it.
+     *
+     * A task is born PLANNED, and only READY/ASSIGNED/RUNNING may be
+     * dispatched. Handing a need over therefore produced work that neither a
+     * person nor the automatic dispatcher could start: it simply sat there,
+     * looking created. Found on a real workspace, where a need was handed
+     * over and nothing happened, with nothing anywhere saying why.
+     *
+     * READY is the honest state: the person has stated the need, the manager
+     * holds it, nothing is missing. Leaving it PLANNED would mean "somebody
+     * still has to decide something", and nobody does.
+     */
+    const ready = await this.changeStatus.execute({
+      workspaceId: input.workspaceId,
+      taskId: created.value.taskId,
+      status: "READY",
+    });
+    if (ready.isFailure) {
+      // The work exists and is findable; a status that would not move is
+      // worth saying rather than losing the task over.
+      return Result.fail(ready.error as DomainError);
+    }
+
     return Result.ok({ taskId: created.value.taskId });
   }
 }
