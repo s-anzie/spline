@@ -66,25 +66,29 @@ export class AutoDispatchListener {
       return;
     }
 
-    const limits = await this.policy.limitsFor(workspaceId);
-    if (!limits.automatic) {
-      return;
-    }
-
     /**
-     * The dead are buried before the living are counted.
+     * The dead are buried first — BEFORE asking whether automation is on.
      *
-     * A run whose machine died stays RUNNING forever and holds a ceiling
-     * slot. Under a ceiling of three, three such deaths stop the workspace
-     * with no error anywhere — every screen looks fine and nothing moves.
-     * Sweeping here rather than on a timer means the slot is free at the
-     * exact moment somebody asks whether there is room.
+     * That ordering is a correction. Sweeping after the automation check meant
+     * a workspace that dispatches by hand never swept at all: seven runs sat
+     * RUNNING forever in the development database, and would have sat there
+     * however long nobody turned automation on. A run whose machine died is
+     * wrong in every workspace, not only in the automatic ones.
+     *
+     * Here rather than on a timer because this is the moment the answer is
+     * used: a sweep every ten minutes leaves a workspace stalled for ten
+     * minutes.
      */
     const buried = await this.runs.abandonSilent(workspaceId);
     if (buried > 0) {
       this.logger.warn(
         `${buried} silent run(s) ended in workspace ${workspaceId}; their slots are free.`,
       );
+    }
+
+    const limits = await this.policy.limitsFor(workspaceId);
+    if (!limits.automatic) {
+      return;
     }
 
     const live = await this.runs.countLive(workspaceId);

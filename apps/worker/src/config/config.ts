@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { ExecutionBackend } from "../supervision/execution";
 
@@ -26,6 +26,8 @@ export interface WorkerConfig {
    * naming another's.
    */
   workspaceRoot: string;
+  /** §8.3 — where this machine keeps the projects agents work in. */
+  projectRoot: string;
   hostname: string;
   /**
    * §18 — the organization this machine belongs to, and knocks for.
@@ -193,6 +195,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     mcpServerPath:
       env.MCP_SERVER_PATH?.trim() || resolve(__dirname, "..", "mcp", "server.js"),
     workspaceRoot: env.WORKSPACE_ROOT?.trim() || defaultWorkspaceRoot(env),
+    /**
+     * §8.3 — where this machine's projects are, so an agent works in the copy
+     * that is already set up rather than in a fresh clone with no
+     * dependencies installed.
+     *
+     * A repository is found by NAME under this root. The hub says which
+     * repository; this says where. That is what keeps a path out of the hub,
+     * where it would be one path for every machine.
+     *
+     * Defaults under the workspace root, so a machine that names nothing
+     * still works — it simply clones what it needs the first time.
+     */
+    projectRoot: env.PROJECT_ROOT?.trim() || join(defaultWorkspaceRoot(env), "projects"),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),
     organizationId: env.WORKER_ORGANIZATION_ID?.trim() || null,
     heartbeatIntervalMs: interval,

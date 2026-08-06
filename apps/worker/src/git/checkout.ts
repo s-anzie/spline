@@ -35,11 +35,21 @@ const realFs: CheckoutFs = {
 };
 
 export interface CheckoutRequest {
-  /** Where this machine keeps its checkouts. */
+  /** Where this machine keeps its checkouts, when it has to make one. */
   root: string;
   workspaceId: string;
   taskId: string;
-  /** Where the repository comes from. */
+  /**
+   * Where the repository already IS on this machine, when it is.
+   *
+   * This is the ordinary case and the one that matters: an operator's project
+   * is already cloned, already has its dependencies installed, its `.env`, its
+   * build cache. A fresh clone of a real project is a directory where nothing
+   * runs — an agent in it spends its turn discovering that `node_modules` is
+   * missing rather than doing the work.
+   */
+  workdir?: string;
+  /** Where the repository comes from, when this machine has to fetch it. */
   origin: string;
   /** The branch this task works on — never one of the protected ones. */
   branch: string;
@@ -80,28 +90,31 @@ function safeBranch(name: string): boolean {
 }
 
 /**
- * §8.3, §8.11 — puts a task's work where nothing else is working.
+ * §8.3, §8.11 — puts a task's work in the repository this machine has.
  *
- * Three decisions carry this:
+ * **One directory per repository, reused.** Not one worktree per task, which
+ * is what the first version of this did. That version was better isolated and
+ * worse in the way that decides whether any of this is usable: a fresh
+ * checkout of a real project has no `node_modules`, no `.env`, no build
+ * cache. An agent dropped into one spends its run discovering that nothing
+ * runs. The operator's own working copy is the environment the work needs, so
+ * that is where the work happens.
  *
- * **One worktree per task.** Not per workspace, which is what the daemon did
- * before and which meant two agents on two tasks wrote over each other in the
- * same directory with no branch and no history. The hub already models a
- * worktree per task and refuses to open a second on the same one; this is the
- * machine keeping that promise.
+ * The cost is stated rather than hidden: **two tasks cannot work in one
+ * repository at the same time.** One directory holds one checked-out branch.
+ * The caller serialises them (see `withRepository`); a run that cannot get in
+ * is refused with a reason and can be dispatched again, which is the same
+ * shape as every other resource this system contends for.
  *
- * **One mirror per repository, cloned once.** Cloning per task would copy the
- * whole history for every piece of work — minutes, and gigabytes, for a
- * five-minute task. Worktrees share one object store by design, which is the
- * entire reason git has them.
+ * **A branch per task, still.** That part did not change and should not: work
+ * that lands on `main` directly is work nobody reviewed, and §8.11 refuses it
+ * outright.
  *
- * **Branched off the ORIGIN's base branch**, never off whatever the mirror
- * happens to have checked out. A mirror that has drifted would otherwise
- * start the work from a stale commit nobody chose, and the agent would spend
- * its run rediscovering that.
+ * **Branched off the ORIGIN's base branch** after fetching, never off whatever
+ * happened to be checked out. A working copy left on a feature branch from
+ * yesterday would otherwise start today's work from it.
  *
- * Always returns; never throws. A daemon that dies half-way through a
- * checkout leaves a directory nobody can explain.
+ * Always returns; never throws.
  */
 export async function prepareCheckout(
   request: CheckoutRequest,
@@ -128,48 +141,44 @@ export async function prepareCheckout(
   }
 
   const workspaceRoot = join(request.root, request.workspaceId);
-  const mirror = join(workspaceRoot, ".mirror");
-  const worktree = join(workspaceRoot, "tasks", request.taskId);
+  // The operator's own copy when they named one; otherwise a directory of
+  // this machine's own, per repository and not per task.
+  const workdir = request.workdir ?? join(workspaceRoot, "repositories", request.taskId);
 
   try {
-    fs.makeDirectory(workspaceRoot);
-
-    if (fs.exists(join(mirror, ".git"))) {
-      // Already have it: catch up rather than start over. `--prune` so a
-      // branch deleted upstream stops being offered here.
-      await git.run(["fetch", "--prune", "origin"], mirror);
+    if (fs.exists(join(workdir, ".git"))) {
+      // It is already here. Catch up rather than start over — `--prune` so a
+      // branch deleted upstream stops being offered.
+      await git.run(["fetch", "--prune", "origin"], workdir);
+    } else if (request.origin) {
+      fs.makeDirectory(workspaceRoot);
+      await git.run(["clone", request.origin, workdir], workspaceRoot);
     } else {
-      fs.makeDirectory(mirror);
-      await git.run(["clone", request.origin, mirror], workspaceRoot);
+      /**
+       * No origin and nothing there: a repository that starts here. Refused
+       * rather than invented — `git init` on a path somebody expected to hold
+       * their project would silently produce an empty one, and the agent
+       * would report an empty project as the truth.
+       */
+      return {
+        isFailure: true,
+        error:
+          `there is no repository at ${workdir} and no origin to fetch one ` +
+          "from — register the repository with its address, or point it at a " +
+          "clone this machine already has",
+      };
     }
 
-    try {
-      await git.run(
-        [
-          "worktree",
-          "add",
-          "-B",
-          request.branch,
-          worktree,
-          `origin/${request.baseBranch}`,
-        ],
-        mirror,
-      );
-    } catch (error) {
-      /**
-       * A retry of the same task finds its own worktree already there. That
-       * is the ordinary case after a machine restart, not a failure — so it
-       * is brought up to date instead of being refused. Any other error is
-       * still an error.
-       */
-      if (!/already exists|already used/i.test(String(error))) {
-        throw error;
-      }
-      await git.run(["checkout", request.branch], worktree);
-    }
+    /**
+     * `-B` resets the branch to the base each time. A retry of the same task
+     * therefore starts from the base rather than from what the previous
+     * attempt left half-done — which is what makes a second attempt a second
+     * attempt rather than a continuation of a failure.
+     */
+    await git.run(["checkout", "-B", request.branch, `origin/${request.baseBranch}`], workdir);
   } catch (error) {
     return { isFailure: true, error: `could not prepare the checkout: ${String(error)}` };
   }
 
-  return { isFailure: false, value: { path: worktree, branch: request.branch } };
+  return { isFailure: false, value: { path: workdir, branch: request.branch } };
 }

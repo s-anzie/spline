@@ -410,6 +410,17 @@ const q = (params: Record<string, string | number | undefined>): string => {
  * value the hub did not give us, and nothing takes a base URL — both are how
  * a console ends up talking to somebody else's hub.
  */
+export interface RepositoryView {
+  id: string;
+  workspaceId: string;
+  name: string;
+  origin: string;
+  defaultBranch: string;
+  protectedBranches: string[];
+  status: string;
+  createdAt: string;
+}
+
 export interface WorkspaceDetail {
   id: string;
   name: string;
@@ -688,6 +699,28 @@ export const api = {
     get: (workspace: string) => hub.get<ScheduleView>(`/workspaces/${workspace}/schedule`),
     checkIns: (workspace: string) =>
       hub.get<CheckInView[]>(`/workspaces/${workspace}/schedule/check-ins`),
+  },
+
+  /**
+   * §8.3 — the repositories a workspace's tasks may work in.
+   *
+   * Registering one is what turns the whole git side on: until a task names a
+   * repository, an agent gets a bare directory and no branch, which is what
+   * every task got before repositories were carried through at all.
+   */
+  repositories: {
+    list: (workspace: string) =>
+      hub.get<RepositoryView[]>(`/workspaces/${workspace}/repositories`),
+    register: (
+      workspace: string,
+      body: {
+        name: string;
+        origin: string;
+        defaultBranch?: string;
+        protectedBranches?: string[];
+      },
+    ) =>
+      hub.post<{ repositoryId: string }>(`/workspaces/${workspace}/repositories`, body),
   },
 
   locks: (workspace: string) => hub.get<LockView[]>(`/workspaces/${workspace}/locks`),

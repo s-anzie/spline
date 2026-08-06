@@ -28,6 +28,15 @@ export type TaskBriefing =
        */
       repository: {
         id: string;
+        /**
+         * §8.3 — how a machine finds it locally.
+         *
+         * The hub says WHICH repository; the machine says where its projects
+         * live. A path stored here would be one path for every machine, and
+         * the same repository sits at `/home/ada/projects/app` on one and
+         * `/srv/app` on another. The name is the only part both agree on.
+         */
+        name: string;
         origin: string;
         baseBranch: string;
         protectedBranches: readonly string[];

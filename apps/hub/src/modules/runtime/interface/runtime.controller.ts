@@ -45,6 +45,7 @@ import {
 } from "../application/command.use-cases";
 import { DispatchTaskUseCase } from "../application/dispatch-task.use-case";
 import { RecoverCrashedSessionsUseCase } from "../application/recover-crashed-sessions.use-case";
+import { RUN_LEDGER, RunLedger } from "../domain/ports/dispatch.port";
 import {
   AdvanceSessionUseCase,
   AttachWorkerUseCase,
@@ -582,6 +583,7 @@ export class WorkspaceRuntimeController {
     private readonly startSession: StartSessionUseCase,
     private readonly advance: AdvanceSessionUseCase,
     private readonly recover: RecoverCrashedSessionsUseCase,
+    @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     private readonly enqueueCommand: EnqueueCommandUseCase,
     private readonly dispatchTask: DispatchTaskUseCase,
     @Inject(COMMAND_STORE) private readonly commands: CommandStore,
@@ -772,7 +774,16 @@ export class WorkspaceRuntimeController {
     if (result.isFailure) {
       throw toHttpException(result.error);
     }
-    return result.value;
+    /**
+     * §9.13 — and the runs, not only the sessions.
+     *
+     * An operator asking to recover a workspace means "make the truth true
+     * again". A session whose machine is gone and a run whose machine is gone
+     * are the same event seen from two modules, and answering only the first
+     * left the second holding a ceiling slot with nothing to release it.
+     */
+    const abandoned = await this.runs.abandonSilent(workspaceId);
+    return { ...result.value, abandonedRuns: abandoned };
   }
 
   @Post("sessions/:sessionId")

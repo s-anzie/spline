@@ -53,48 +53,62 @@ describe("prepareCheckout", () => {
     makeDirectory: () => undefined,
   });
 
-  it("gives each task its own worktree, so two agents cannot collide", async () => {
+  /**
+   * The case that decides whether any of this is usable: the operator's own
+   * project, already cloned, already installed. A fresh clone of a real
+   * project has no dependencies and no `.env` — an agent in one spends its
+   * run discovering that nothing runs.
+   */
+  it("works in the copy the machine already has, and does not clone over it", async () => {
+    const git = runner();
+
+    const ready = await prepareCheckout(
+      { ...request, workdir: "/home/ada/projects/app" },
+      git,
+      fs(["/home/ada/projects/app/.git"]),
+    );
+
+    expect(ready.isFailure).toBe(false);
+    expect(ready.value!.path).toBe("/home/ada/projects/app");
+    const commands = git.calls.map((call) => call.args.join(" "));
+    expect(commands.some((line) => line.startsWith("clone"))).toBe(false);
+    expect(commands.some((line) => line.startsWith("fetch"))).toBe(true);
+  });
+
+  it("clones when the machine has nothing yet", async () => {
     const git = runner();
 
     const ready = await prepareCheckout(request, git, fs());
 
     expect(ready.isFailure).toBe(false);
-    // The path names the task, not the workspace: that IS the isolation.
-    expect(ready.value!.path).toContain("t-1");
-    expect(ready.value!.path).not.toBe("/srv/spline/w-1");
+    expect(git.calls.map((call) => call.args.join(" "))[0]).toMatch(/^clone/);
   });
 
-  it("clones once and fetches afterwards, rather than cloning every task", async () => {
+  /**
+   * A path somebody expected to hold their project, holding nothing, with no
+   * address to fetch from. `git init` there would produce an empty repository
+   * and the agent would report the emptiness as the truth.
+   */
+  it("refuses to invent a repository out of nothing", async () => {
+    const git = runner();
+
+    const refused = await prepareCheckout({ ...request, origin: "" }, git, fs());
+
+    expect(refused.isFailure).toBe(true);
+    expect(refused.error).toMatch(/no repository|no origin/i);
+  });
+
+  it("puts the task on a branch of its own, off the base branch", async () => {
     const git = runner();
     await prepareCheckout(request, git, fs());
 
-    const commands = git.calls.map((call) => call.args.join(" "));
-    expect(commands.some((line) => line.startsWith("clone"))).toBe(true);
-
-    // Second task, same repository: the mirror is already there.
-    const second = runner();
-    await prepareCheckout(
-      { ...request, taskId: "t-2", branch: "spline/task/t-2" },
-      second,
-      // The mirror is there from the first task.
-      fs(["/srv/spline/w-1/.mirror/.git"]),
-    );
-    const again = second.calls.map((call) => call.args.join(" "));
-    expect(again.some((line) => line.startsWith("clone"))).toBe(false);
-    expect(again.some((line) => line.startsWith("fetch"))).toBe(true);
-  });
-
-  it("branches off the base branch, never off whatever was checked out", async () => {
-    const git = runner();
-    await prepareCheckout(request, git, fs());
-
-    const worktree = git.calls
+    const checkout = git.calls
       .map((call) => call.args.join(" "))
-      .find((line) => line.startsWith("worktree add"));
-    expect(worktree).toContain("spline/task/t-1");
-    // Off the ORIGIN's base branch: a mirror that had drifted would otherwise
-    // start the work from a stale commit nobody chose.
-    expect(worktree).toContain("origin/main");
+      .find((line) => line.startsWith("checkout"));
+    expect(checkout).toContain("spline/task/t-1");
+    // Off the ORIGIN's base branch: a working copy left on yesterday's
+    // feature branch would otherwise start today's work from it.
+    expect(checkout).toContain("origin/main");
   });
 
   /**
@@ -130,17 +144,18 @@ describe("prepareCheckout", () => {
     expect(refused.error).toContain("publickey");
   });
 
-  it("reuses a worktree that already exists instead of failing on it", async () => {
-    // A retry of the same task: the worktree is there from the first attempt.
-    const git = runner({
-      "worktree add": new Error("fatal: '/srv/spline/w-1/t-1' already exists"),
-    });
+  /**
+   * A retry starts from the base rather than from what the previous attempt
+   * left half-done — which is what makes a second attempt a second attempt
+   * and not a continuation of a failure.
+   */
+  it("resets the branch on a retry instead of continuing a failed one", async () => {
+    const git = runner();
+    await prepareCheckout(request, git, fs(["/home/x/.git"]));
 
-    const ready = await prepareCheckout(request, git, fs());
-
-    expect(ready.isFailure).toBe(false);
-    const commands = git.calls.map((call) => call.args.join(" "));
-    // It brings the existing one up to date rather than starting again.
-    expect(commands.some((line) => line.startsWith("checkout"))).toBe(true);
+    const checkout = git.calls
+      .map((call) => call.args.join(" "))
+      .find((line) => line.startsWith("checkout"));
+    expect(checkout).toContain("-B");
   });
 });

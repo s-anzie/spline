@@ -1,6 +1,6 @@
 import { arch, platform } from "node:os";
 import { statSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import { config as loadDotenv } from "dotenv";
 
@@ -8,6 +8,7 @@ import { loadConfig, WorkerConfig } from "./config/config";
 import { IdentityStore } from "./enrolment/identity-store";
 import { executeCommand, ExecutorDeps } from "./execution/executor";
 import { Checkout, prepareCheckout } from "./git/checkout";
+import { withRepository } from "./git/one-at-a-time";
 import { publishWork } from "./git/publish";
 import { gitRunner } from "./git/runner";
 import { pairMachine } from "./enrolment/pairing";
@@ -215,7 +216,16 @@ async function main(): Promise<void> {
           }
 
           const git = gitRunner(config.taskTimeoutMs);
-          const report = await executeCommand(command, {
+          /**
+           * §8.4 — where this order's repository lives on THIS machine.
+           *
+           * Resolved before the run so the whole of it — checkout, agent,
+           * commit, push — happens while nothing else is in that directory.
+           * Per machine: two machines each have their own copy and run in
+           * parallel; two tasks here take turns.
+           */
+          const repositoryPath = repositoryPathOf(command, config);
+          const runOrder = () => executeCommand(command, {
             ...executor,
             secretsFor: () => secrets,
             /**
@@ -242,6 +252,9 @@ async function main(): Promise<void> {
                   root: config.workspaceRoot,
                   workspaceId: order.workspaceId,
                   taskId,
+                  // The same path the repository was reserved on, so the lock
+                  // and the checkout cannot be about two different places.
+                  ...(repositoryPath ? { workdir: repositoryPath } : {}),
                   origin: repository.origin,
                   branch: repository.branch,
                   baseBranch: repository.baseBranch,
@@ -308,6 +321,16 @@ async function main(): Promise<void> {
               }
             },
           });
+
+          /**
+           * §8.4 — the whole order holds the repository: checkout, agent,
+           * commit and push, with nothing else in that directory meanwhile.
+           * Per machine — two machines each have their own copy.
+           */
+          const report = repositoryPath
+            ? await withRepository(repositoryPath, runOrder)
+            : await runOrder();
+
           await hub.reportCommand(
             command.id,
             report.outcome === "COMPLETED"
@@ -353,3 +376,28 @@ main().catch((error: unknown) => {
   console.error(String(error));
   process.exit(1);
 });
+
+/**
+ * §8.3 — where this order's repository sits on THIS machine.
+ *
+ * `workdir` when the hub was told the operator already has a copy — the
+ * ordinary case, and the one that makes the work usable at all: a fresh clone
+ * of a real project has no dependencies installed. Otherwise a directory of
+ * this machine's own, per repository, so a second task on the same repository
+ * finds what the first left rather than starting from nothing.
+ *
+ * Null when the order names no repository. Plenty of work touches no code.
+ */
+function repositoryPathOf(command: ClaimedCommand, config: WorkerConfig): string | null {
+  const repository = command.payload.repository as { name?: string } | undefined;
+  const name = typeof repository?.name === "string" ? repository.name.trim() : "";
+  if (name === "") {
+    return null;
+  }
+  /**
+   * The name, and only the name: a repository called `../../etc` would
+   * otherwise choose where this machine writes. `basename` is what makes the
+   * project root actually a root.
+   */
+  return resolve(config.projectRoot, basename(name));
+}

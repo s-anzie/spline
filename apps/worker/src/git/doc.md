@@ -16,9 +16,21 @@ Deux conséquences que personne ne voyait :
 
 ## Les décisions
 
-**Un worktree par tâche, un miroir par dépôt.** Cloner par tâche copierait tout l'historique pour
-cinq minutes de travail ; les worktrees partagent un magasin d'objets, c'est leur raison d'être. Le
-chemin nomme la tâche — c'est *ça*, l'isolation.
+**Un répertoire par dépôt, par machine, réutilisé.** La première version faisait un worktree par
+tâche : mieux isolée, et pire sur le seul point qui décide si tout ceci sert à quelque chose. Un
+checkout neuf d'un vrai projet n'a pas de `node_modules`, pas de `.env`, pas de cache de build — un
+agent qu'on y dépose passe son run à découvrir que rien ne tourne. **La copie de l'opérateur est
+l'environnement dont le travail a besoin**, donc c'est là que le travail se fait.
+
+Le coût est énoncé, pas caché : **deux tâches ne peuvent pas travailler dans un dépôt en même temps**,
+un répertoire ne tenant qu'une branche. `withRepository` les met en file — par machine, ce qui est
+exactement la portée nécessaire : deux machines ont chacune leur copie et tournent en parallèle.
+
+**Le hub dit QUEL dépôt, la machine dit OÙ.** Un chemin stocké côté hub serait un seul chemin pour
+toutes les machines, alors que le même dépôt est en `/home/ada/projects/app` sur l'une et `/srv/app`
+sur l'autre. La machine le cherche par **nom** sous son `PROJECT_ROOT` ; s'il n'y est pas, elle l'y
+clone. Le nom passe par `basename` — un dépôt nommé `../../etc` choisirait sinon où cette machine
+écrit.
 
 **Branché sur la base de l'ORIGINE**, jamais sur ce que le miroir a sous la main. Un miroir qui a
 dérivé ferait partir le travail d'un commit que personne n'a choisi.

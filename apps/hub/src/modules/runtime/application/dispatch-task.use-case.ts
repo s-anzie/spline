@@ -184,6 +184,7 @@ export class DispatchTaskUseCase
           ? {
               repository: {
                 id: briefing.repository.id,
+                name: briefing.repository.name,
                 origin: briefing.repository.origin,
                 branch: branchNameFor({ kind: "TASK", id: input.taskId }),
                 baseBranch: briefing.repository.baseBranch,

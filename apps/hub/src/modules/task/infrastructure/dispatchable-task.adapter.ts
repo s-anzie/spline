@@ -90,6 +90,7 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
         repository && repository.workspaceId === workspaceId
           ? {
               id: repository.id.value,
+              name: repository.name,
               origin: repository.origin,
               baseBranch: repository.defaultBranch,
               // §8.11 — asked of the repository, which already unions the
