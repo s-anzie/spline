@@ -18,6 +18,20 @@ export type TaskBriefing =
       goalTitle: string | null;
       /** For scoping memory to the goal, not for the prompt. */
       goalId: string | null;
+      /**
+       * §8.3 — the repository this task works in, if it works in one.
+       *
+       * Null is the ordinary case and not a defect: plenty of work touches no
+       * code. When it is set, the machine checks the repository out on a
+       * branch of this task's own rather than dropping the agent into a bare
+       * directory — which is what it did for every task before this existed.
+       */
+      repository: {
+        id: string;
+        origin: string;
+        baseBranch: string;
+        protectedBranches: readonly string[];
+      } | null;
     }
   | { dispatchable: false; reason: string };
 

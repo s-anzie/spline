@@ -4,6 +4,7 @@ import { UseCase } from "../../../kernel/application/use-case";
 import { DomainError } from "../../../kernel/domain/domain-error";
 import { GuardViolation } from "../../../kernel/domain/guard";
 import { Result } from "../../../kernel/domain/result";
+import { branchNameFor } from "../../repository/domain/branch";
 import { buildAgentPrompt } from "../domain/agent-prompt";
 import {
   WORKER_STORE,
@@ -170,6 +171,26 @@ export class DispatchTaskUseCase
           // the prompt cannot name a tool the agent was never given.
           organising,
         }),
+        /**
+         * §8.3 — where the work happens, when it happens in code.
+         *
+         * The machine checks it out on a branch of this task's own. The
+         * branch is named here rather than on the machine so that the hub's
+         * record and the machine's checkout cannot disagree about what it is
+         * called — `branchNameFor` is the same function the repository module
+         * uses when it opens a branch.
+         */
+        ...(briefing.repository
+          ? {
+              repository: {
+                id: briefing.repository.id,
+                origin: briefing.repository.origin,
+                branch: branchNameFor({ kind: "TASK", id: input.taskId }),
+                baseBranch: briefing.repository.baseBranch,
+                protectedBranches: [...briefing.repository.protectedBranches],
+              },
+            }
+          : {}),
         // Names only. The values never travel in an order (§18.4).
         secretNames: [...(input.secretNames ?? [])],
         runId: run.runId,

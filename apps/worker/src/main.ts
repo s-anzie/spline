@@ -7,8 +7,11 @@ import { config as loadDotenv } from "dotenv";
 import { loadConfig, WorkerConfig } from "./config/config";
 import { IdentityStore } from "./enrolment/identity-store";
 import { executeCommand, ExecutorDeps } from "./execution/executor";
+import { Checkout, prepareCheckout } from "./git/checkout";
+import { publishWork } from "./git/publish";
+import { gitRunner } from "./git/runner";
 import { pairMachine } from "./enrolment/pairing";
-import { HubClient } from "./hub/hub-client";
+import { ClaimedCommand, HubClient } from "./hub/hub-client";
 import { preflightComplaints } from "./supervision/preflight";
 
 loadDotenv();
@@ -211,9 +214,77 @@ async function main(): Promise<void> {
             continue;
           }
 
+          const git = gitRunner(config.taskTimeoutMs);
           const report = await executeCommand(command, {
             ...executor,
             secretsFor: () => secrets,
+            /**
+             * §8.3 — the checkout this order works in, when it names a
+             * repository. The branch was named by the hub so that its record
+             * and this machine cannot disagree about what it is called.
+             */
+            checkoutFor: async (order: ClaimedCommand) => {
+              const repository = order.payload.repository as
+                | {
+                    origin: string;
+                    branch: string;
+                    baseBranch: string;
+                    protectedBranches: string[];
+                  }
+                | undefined;
+              if (!repository) {
+                return null;
+              }
+              const taskId =
+                typeof order.payload.taskId === "string" ? order.payload.taskId : order.id;
+              return prepareCheckout(
+                {
+                  root: config.workspaceRoot,
+                  workspaceId: order.workspaceId,
+                  taskId,
+                  origin: repository.origin,
+                  branch: repository.branch,
+                  baseBranch: repository.baseBranch,
+                  protectedBranches: repository.protectedBranches ?? [],
+                },
+                git,
+              );
+            },
+            /**
+             * §8.7 — records what the agent left behind and pushes it, then
+             * says whether catching up with the base branch hit a conflict.
+             * A conflict is reported, never resolved: §8.7 says a merge is
+             * never performed by an agent, and resolving one is that act.
+             */
+            publishFor: async (order: ClaimedCommand, checkout: Checkout) => {
+              const repository = order.payload.repository as
+                | { baseBranch: string }
+                | undefined;
+              const published = await publishWork(
+                {
+                  where: checkout,
+                  who: {
+                    name:
+                      typeof order.payload.agentName === "string"
+                        ? order.payload.agentName
+                        : "spline-agent",
+                    email: "agent@agents.spline.local",
+                  },
+                  message:
+                    typeof order.payload.taskTitle === "string"
+                      ? order.payload.taskTitle
+                      : `Spline task ${order.payload.taskId ?? order.id}`,
+                  ...(repository ? { catchUpWith: `origin/${repository.baseBranch}` } : {}),
+                },
+                git,
+              );
+              // A failure to publish does not fail the run: the work happened,
+              // and losing the report of a run that succeeded is worse than a
+              // branch somebody has to push by hand.
+              return published.isFailure
+                ? { changed: false, conflict: published.error }
+                : published.value;
+            },
             /**
              * §10 — the protocol bridge, opened only if the hub grants one.
              * An order that belongs to no task gets none, and the agent then

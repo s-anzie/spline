@@ -12,6 +12,11 @@ import { GOAL_REPOSITORY, GoalRepository } from "../../goal/domain/ports/goal.re
 import { TASK_REPOSITORY, TaskRepository } from "../domain/ports/task.repository.port";
 import { TaskModule } from "../task.module";
 import { GoalModule } from "../../goal/goal.module";
+import {
+  REPOSITORY_STORE,
+  RepositoryStore,
+} from "../../repository/domain/ports/repository.repository.port";
+import { RepositoryModule } from "../../repository/repository.module";
 
 /** The states from which handing a task to a machine makes sense. */
 const DISPATCHABLE = new Set(["READY", "ASSIGNED", "RUNNING"]);
@@ -37,6 +42,7 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
   constructor(
     @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepository,
     @Inject(GOAL_REPOSITORY) private readonly goals: GoalRepository,
+    @Inject(REPOSITORY_STORE) private readonly repositories: RepositoryStore,
   ) {}
 
   async briefingFor(workspaceId: string, taskId: string): Promise<TaskBriefing> {
@@ -60,6 +66,19 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
      * plan, which needs the objective.
      */
     const goal = await this.goals.findById(task.goalId);
+
+    /**
+     * §8.3 — where the work happens, when it happens in code.
+     *
+     * Read here rather than at dispatch because this is the one place that
+     * already has the task in hand. Absent is normal: a task that names no
+     * repository gets a working directory and no branch, which is what every
+     * task got before repositories were carried through at all.
+     */
+    const repository = task.repositoryId
+      ? await this.repositories.findById(task.repositoryId)
+      : null;
+
     return {
       dispatchable: true,
       title: task.title,
@@ -67,6 +86,19 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
       acceptanceCriteria: task.acceptanceCriteria,
       goalTitle: goal?.title ?? null,
       goalId: goal?.id.value ?? null,
+      repository:
+        repository && repository.workspaceId === workspaceId
+          ? {
+              id: repository.id.value,
+              origin: repository.origin,
+              baseBranch: repository.defaultBranch,
+              // §8.11 — asked of the repository, which already unions the
+              // three §8.3 names with its default branch and whatever the
+              // workspace added. Rebuilding that list here would be a second
+              // answer to the same question, drifting from the first.
+              protectedBranches: repository.protectedBranches,
+            }
+          : null,
     };
   }
 }
@@ -74,7 +106,7 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
 /** Global, and importing TaskModule: see the note in task-retry.adapter.ts. */
 @Global()
 @Module({
-  imports: [TaskModule, GoalModule],
+  imports: [TaskModule, GoalModule, RepositoryModule],
   providers: [
     DispatchableTaskAdapter,
     { provide: DISPATCHABLE_TASK, useExisting: DispatchableTaskAdapter },

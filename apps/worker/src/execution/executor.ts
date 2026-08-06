@@ -1,6 +1,6 @@
 import { ClaimedCommand } from "../hub/hub-client";
 import { ensureWorkspaceDirectory } from "./workspace-directory";
-import { runAgent } from "../providers/agent-run";
+import { AgentRunDeps, runAgent } from "../providers/agent-run";
 import { ExecutionSettings, planExecution } from "../supervision/execution";
 import { ExecutionLimits, ExecutionOutcome, superviseProcess } from "../supervision/supervisor";
 import { SpawnPlan } from "../supervision/spawn-plan";
@@ -28,6 +28,10 @@ export interface ExecutorDeps {
   ensureDirectory?: (root: string, workspaceId: string) => string;
   /** §10 — passed through to an agent run; ignored by a plain program. */
   grantFor?: AgentGrantResolver;
+  /** §8.3 — passed through to an agent run; a plain program has no branch. */
+  checkoutFor?: AgentRunDeps["checkoutFor"];
+  /** §8.7 — likewise: what becomes of what the agent wrote. */
+  publishFor?: AgentRunDeps["publishFor"];
 }
 
 /** §10 — obtains the credential an agent acts with, for one order. */
@@ -97,6 +101,8 @@ export async function executeCommand(
       realpath: deps.realpath,
       ensureDirectory: deps.ensureDirectory,
       grantFor: deps.grantFor,
+      checkoutFor: deps.checkoutFor,
+      publishFor: deps.publishFor,
     });
   }
   const program = typeof payload.command === "string" ? payload.command : "";

@@ -10,7 +10,14 @@ import {
   superviseProcess,
 } from "../supervision/supervisor";
 import { writeMcpBridge } from "../mcp/mcp-config";
+import { Checkout, CheckoutResult } from "../git/checkout";
 import { CLOSED_SURFACE, providerSpec } from "./provider-spec";
+
+/** What `publishWork` answers, kept here so this file owns no git. */
+export interface PublishedSummary {
+  changed: boolean;
+  conflict: string | null;
+}
 
 /** §10 — what a run needs to open the protocol bridge. */
 export interface AgentGrant {
@@ -47,6 +54,20 @@ export interface AgentRunDeps {
   grantFor?: (command: ClaimedCommand) => Promise<AgentGrant | null>;
   /** Injected so a test needs no filesystem to prove what is passed. */
   openBridge?: typeof writeMcpBridge;
+  /**
+   * §8.3 — prepares the repository checkout this order names, if it names
+   * one. Absent, or answering null, means the agent works in the workspace
+   * directory with no branch — which is what every task did before this.
+   */
+  checkoutFor?: (command: ClaimedCommand) => Promise<CheckoutResult | null>;
+  /**
+   * §8.7 — records and pushes what the agent left behind, and says whether
+   * catching up hit a conflict. Only called when there was a checkout.
+   */
+  publishFor?: (
+    command: ClaimedCommand,
+    checkout: Checkout,
+  ) => Promise<PublishedSummary | null>;
   /**
    * §7.9 — makes the workspace's directory. Injected for the same reason
    * `realpath` is: a test about planning should not have to create
@@ -109,10 +130,25 @@ export async function runAgent(
     ? (deps.newSessionId ?? randomUUID)()
     : null;
 
-  const root = (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
-    deps.workspaceRoot,
-    command.workspaceId,
-  );
+  /**
+   * §8.3 — where the agent's hands go.
+   *
+   * With a repository, a worktree of this task's own, on a branch of this
+   * task's own: two agents on two tasks cannot see each other's edits, and
+   * what they produce is reviewable. Without one, the workspace directory
+   * this daemon has always used — plenty of work touches no code, and
+   * demanding a repository for it would be inventing a requirement.
+   */
+  const checkout = deps.checkoutFor ? await deps.checkoutFor(command) : null;
+  if (checkout?.isFailure) {
+    return failed(checkout.error);
+  }
+  const root =
+    checkout?.value?.path ??
+    (deps.ensureDirectory ?? ensureWorkspaceDirectory)(
+      deps.workspaceRoot,
+      command.workspaceId,
+    );
 
   /**
    * §10, §18.12 — the protocol bridge, opened only when the hub gave this run
@@ -182,11 +218,35 @@ export async function runAgent(
     return failed(`${said.error} (exit ${outcome.exitCode}): ${outcome.stderr.slice(0, 400)}`);
   }
 
+  /**
+   * §8.7, §8.8 — what the agent left behind becomes a branch, or is reported
+   * as having changed nothing.
+   *
+   * After the agent has finished, never during: committing mid-run would
+   * record a tree the agent was still editing. And a failure to publish does
+   * NOT fail the run — the work happened, the branch may simply not have
+   * reached the remote, and losing the report of a run that succeeded is a
+   * worse outcome than a branch somebody has to push by hand.
+   */
+  const published =
+    checkout?.value && deps.publishFor
+      ? await deps.publishFor(command, checkout.value)
+      : null;
+
   return {
     outcome: "COMPLETED",
     result: {
       exitCode: outcome.exitCode,
       finalText: said.value.finalText,
+      ...(checkout?.value
+        ? {
+            branch: checkout.value.branch,
+            changed: published?.changed ?? false,
+            // §8.8 — the hub's `openConflicts` was empty because nothing ever
+            // reported into it. This is what reports into it.
+            conflict: published?.conflict ?? null,
+          }
+        : {}),
       /**
        * The assigned id wins over the reported one: we told the CLI what to
        * call this session, and a CLI that echoed something else has not

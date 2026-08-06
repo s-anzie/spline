@@ -313,3 +313,86 @@ describe("runAgent", () => {
     expect(report.result).toMatchObject({ exitCode: 1, finalText: "I could not do it" });
   });
 });
+
+/**
+ * §8.3, §8.7 — the run happens in a checkout when the order names one.
+ */
+describe("working in a repository", () => {
+  const repository = {
+    id: "r-1",
+    origin: "git@example.com:acme/app.git",
+    branch: "spline/task/t-1",
+    baseBranch: "main",
+    protectedBranches: ["main"],
+  };
+  const checkedOut = { path: "/checkouts/t-1", branch: "spline/task/t-1" };
+
+  it("runs where the checkout is, not in the shared workspace directory", async () => {
+    const supervise = jest.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({ result: "done" }),
+      stderr: "",
+      stoppedBy: null,
+    });
+    const ensureDirectory = jest.fn().mockReturnValue("/shared/w-1");
+
+    await runAgent(
+      order({ repository }),
+      deps({
+        supervise,
+        ensureDirectory,
+        checkoutFor: async () => ({ isFailure: false as const, value: checkedOut }),
+      }),
+    );
+
+    const plan = supervise.mock.calls[0]?.[0] as { options: { cwd: string } };
+    expect(plan.options.cwd).toContain("/checkouts/t-1");
+    // The shared directory is not even created: it is not where this runs.
+    expect(ensureDirectory).not.toHaveBeenCalled();
+  });
+
+  it("refuses the run when the checkout could not be prepared", async () => {
+    const supervise = jest.fn();
+
+    const report = await runAgent(
+      order({ repository }),
+      deps({
+        supervise,
+        checkoutFor: async () => ({
+          isFailure: true as const,
+          error: '"main" is protected',
+        }),
+      }),
+    );
+
+    expect(report.outcome).toBe("FAILED");
+    expect(report.failureReason).toContain("protected");
+    // Nothing ran: an agent in the wrong place is worse than no agent.
+    expect(supervise).not.toHaveBeenCalled();
+  });
+
+  it("reports the branch, and the conflict when there is one", async () => {
+    const report = await runAgent(
+      order({ repository }),
+      deps({
+        checkoutFor: async () => ({ isFailure: false as const, value: checkedOut }),
+        publishFor: async () => ({
+          changed: true,
+          conflict: "CONFLICT (content): Merge conflict in src/app.ts",
+        }),
+      }),
+    );
+
+    expect(report.outcome).toBe("COMPLETED");
+    expect(report.result?.branch).toBe("spline/task/t-1");
+    expect(report.result?.changed).toBe(true);
+    expect(report.result?.conflict).toContain("src/app.ts");
+  });
+
+  it("says nothing about branches when the order names no repository", async () => {
+    const report = await runAgent(order(), deps());
+
+    expect(report.result).not.toHaveProperty("branch");
+    expect(report.result).not.toHaveProperty("conflict");
+  });
+});
