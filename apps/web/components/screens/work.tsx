@@ -9,7 +9,7 @@ import { since } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
-import { useResource } from "@/lib/use-hub";
+import { useAction, useResource } from "@/lib/use-hub";
 import {
   Empty,
   Loading,
@@ -23,6 +23,7 @@ import {
   Status,
   Stripe,
 } from "@/components/kit";
+import { Button } from "@/components/ui/button";
 import { AddButton, NewGoal } from "@/components/forms";
 
 /**
@@ -102,6 +103,18 @@ export function Work() {
   const loading = goals.loading || tasks.loading;
   const error = goals.error ?? tasks.error;
 
+  /**
+   * Whether anything will start on its own — the single switch between "I
+   * asked and the team worked" and "I asked and nothing happened".
+   *
+   * It is set on Workspace → Governance, three levels down, which is the
+   * right home for a rule the hub enforces and the wrong place to DISCOVER
+   * it. Somebody reads this screen precisely when they are wondering why
+   * nothing moved, so the answer belongs here, next to the emptiness it
+   * explains.
+   */
+  const waiting = allTasks.filter((task) => task.status === "READY").length;
+
   return (
     <>
       <PageHeader
@@ -115,6 +128,8 @@ export function Work() {
         <Stat label="Blocked" value={blocked} tone={blocked > 0 ? "signal" : "quiet"} />
         <Stat label="Goals" value={allGoals.length} />
       </StatRow>
+
+      <Automation workspaceId={workspaceId} waiting={waiting} />
 
       {loading ? <Loading rows={4} /> : null}
       {error ? <Note>{error}</Note> : null}
@@ -265,5 +280,64 @@ function TaskRow({ task, run }: { task: TaskView; run: RunView | undefined }) {
         <span className="text-muted-foreground shrink-0 text-xs">never run</span>
       )}
     </Row>
+  );
+}
+
+/**
+ * §9 — said here because here is where its absence is felt.
+ *
+ * Nothing is duplicated: the ceiling and its numbers stay on Governance,
+ * where a rule the hub enforces belongs. What lives here is the one sentence
+ * that closes the gap between a queue full of READY tasks and a workspace
+ * where nothing runs — and the button that fixes it without a hunt.
+ */
+function Automation({
+  workspaceId,
+  waiting,
+}: {
+  workspaceId: string;
+  waiting: number;
+}) {
+  const workspace = useResource(() => api.workspaces.get(workspaceId), [workspaceId]);
+  const { run, pending } = useAction();
+
+  const bag = (workspace.data?.settings ?? {}) as Record<string, unknown>;
+  const current = (
+    typeof bag.automation === "object" && bag.automation !== null ? bag.automation : {}
+  ) as Record<string, unknown>;
+  const on = current.automatic === true;
+
+  // Nothing to say when it is on, or before we know: a banner that is always
+  // there is a banner nobody reads.
+  if (!workspace.data || on) {
+    return null;
+  }
+
+  return (
+    <Note tone="waiting">
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span>
+          {waiting > 0
+            ? `${waiting} ${waiting === 1 ? "task is" : "tasks are"} ready and nothing will pick ${waiting === 1 ? "it" : "them"} up — this workspace does not start work on its own.`
+            : "This workspace does not start work on its own. Tasks will sit ready until somebody dispatches each one."}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            void run(
+              () =>
+                api.workspaces.update(workspaceId, {
+                  settings: { ...bag, automation: { ...current, automatic: true } },
+                }),
+              workspace.reload,
+            )
+          }
+        >
+          {pending ? "Turning on…" : "Let it start work"}
+        </Button>
+      </span>
+    </Note>
   );
 }
