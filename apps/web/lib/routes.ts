@@ -3,6 +3,7 @@ import {
   Cpu,
   Inbox as InboxIcon,
   ListChecks,
+  MessagesSquare,
   Play,
   Settings2,
   Target,
@@ -28,6 +29,8 @@ export const routes = {
   machines: "/machines",
   activity: "/activity",
   inbox: "/inbox",
+  threads: "/threads",
+  thread: (threadId: string) => `/threads/${threadId}`,
   workspace: "/workspace",
 } as const;
 
@@ -37,7 +40,7 @@ export interface NavItem {
   icon: LucideIcon;
   /** One line, for the palette. Says what the screen is FOR, not what it is. */
   hint: string;
-  badge?: "needsYou" | "unread" | "machines";
+  badge?: "needsYou" | "unread" | "machines" | "awaiting";
 }
 
 /**
@@ -64,6 +67,13 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
         icon: InboxIcon,
         hint: "addressed to you by name",
         badge: "unread",
+      },
+      {
+        href: routes.threads,
+        label: "Conversations",
+        icon: MessagesSquare,
+        hint: "ask somebody, and be told what came of it",
+        badge: "awaiting",
       },
     ],
   },

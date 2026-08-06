@@ -304,6 +304,29 @@ export interface ScheduleView {
   };
 }
 
+/**
+ * §10.18a — a bounded exchange between two actors.
+ *
+ * OpenClaw's `sessions_spawn` in this system's own vocabulary: ask somebody
+ * to do something and be told what came of it, with a ceiling on the turns
+ * so two parties that are not converging stop rather than loop.
+ */
+export interface ThreadView extends Affordable {
+  threadId: string;
+  subject: string;
+  initiator: Actor;
+  participant: Actor;
+  /** Set when this thread delegated a task and is waiting on its answer. */
+  taskId: string | null;
+  status: string;
+  turnBudget: number;
+  /** Shown before spending one: a budget you learn about after is a trap. */
+  turnsLeft: number;
+  awaiting: boolean;
+  outcome: Record<string, unknown> | null;
+  turns: { actor: Actor; message: string; at: string }[];
+}
+
 export interface CheckInView {
   actor: Actor;
   silentForMs: number | null;
@@ -487,6 +510,28 @@ export const api = {
         code,
         approve,
       }),
+  },
+
+  threads: {
+    mine: (workspace: string, limit = 50) =>
+      hub.get<ThreadView[]>(`/workspaces/${workspace}/threads/mine${q({ limit })}`),
+    get: (workspace: string, threadId: string) =>
+      hub.get<ThreadView>(`/workspaces/${workspace}/threads/${threadId}`),
+    open: (
+      workspace: string,
+      body: {
+        participantType: string;
+        participantId: string;
+        subject: string;
+        taskId?: string;
+      },
+    ) => hub.post<{ threadId: string }>(`/workspaces/${workspace}/threads`, body),
+    /** A message is a turn; no message is "I have nothing to add", which ends it. */
+    speak: (workspace: string, threadId: string, message?: string) =>
+      hub.post(
+        `/workspaces/${workspace}/threads/${threadId}/turns`,
+        message ? { message } : {},
+      ),
   },
 
   events: {

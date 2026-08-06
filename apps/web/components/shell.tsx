@@ -59,6 +59,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const badgeFor = (badge: NavItem["badge"]): string | null => {
     if (badge === "needsYou") return pulse.needsYou ? String(pulse.needsYou) : null;
     if (badge === "unread") return pulse.unread ? String(pulse.unread) : null;
+    if (badge === "awaiting") return pulse.awaiting ? String(pulse.awaiting) : null;
     if (badge === "machines" && pulse.machinesTotal !== null) {
       return `${pulse.machinesReporting}/${pulse.machinesTotal}`;
     }

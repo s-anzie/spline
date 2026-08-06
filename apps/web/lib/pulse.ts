@@ -8,6 +8,7 @@ export interface Pulse {
   /** How many things are waiting on a person right now. */
   needsYou: number | null;
   unread: number | null;
+  awaiting: number | null;
   machinesReporting: number | null;
   machinesTotal: number | null;
   health: string | null;
@@ -44,6 +45,11 @@ export function usePulse(
     enabled,
   });
 
+  const threads = useResource(() => api.threads.mine(workspaceId!), [workspaceId], {
+    pollMs: 30_000,
+    enabled,
+  });
+
   const workers = useResource(() => api.runtime.workers(workspaceId!), [workspaceId], {
     pollMs: 20_000,
     enabled,
@@ -59,6 +65,8 @@ export function usePulse(
   return {
     needsYou: queue.data,
     unread: unread.data?.length ?? null,
+    // Threads where the other side owes an answer: what you are waiting on.
+    awaiting: threads.data?.filter((thread) => thread.awaiting).length ?? null,
     machinesReporting: workers.data?.filter((worker) => !worker.stale).length ?? null,
     machinesTotal: workers.data?.length ?? null,
     health: level,
