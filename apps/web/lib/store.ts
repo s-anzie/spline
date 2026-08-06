@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import { hub, setAccessToken } from "./hub";
 
@@ -142,14 +144,55 @@ interface PreferenceState {
  * Choices about the console itself, kept apart from the session.
  *
  * Separate store because these outlive a sign-out: changing workspace or user
- * should not silently reset how dense somebody likes their lists.
+ * should not silently reset how dense somebody likes their lists. They now
+ * outlive the TAB as well — a setting that had to be re-applied after every
+ * reload was, in practice, a setting nobody kept.
+ *
+ * In `localStorage`, deliberately, and note the contrast with the access
+ * token two files over: that one is kept in memory precisely so no script on
+ * this origin can read it. Nothing here is a secret — a page size and whether
+ * a column shows five more links. Storing preferences where a token must
+ * never go is the whole reason these are two stores and not one.
  */
-export const usePreferences = create<PreferenceState>((set) => ({
-  pageSize: 25,
-  setPageSize: (pageSize) => set({ pageSize }),
-  organizationInRail: false,
-  setOrganizationInRail: (organizationInRail) => set({ organizationInRail }),
-}));
+export const usePreferences = create<PreferenceState>()(
+  persist(
+    (set) => ({
+      pageSize: 25,
+      setPageSize: (pageSize) => set({ pageSize }),
+      organizationInRail: false,
+      setOrganizationInRail: (organizationInRail) => set({ organizationInRail }),
+    }),
+    {
+      name: "spline.preferences",
+      storage: createJSONStorage(() => localStorage),
+      // Only the values. Rehydrating the setters would replace the live
+      // functions with whatever JSON round-tripped to — which is nothing.
+      partialize: (state) => ({
+        pageSize: state.pageSize,
+        organizationInRail: state.organizationInRail,
+      }),
+      // Hydration is deferred to `useRestorePreferences` below; see there.
+      skipHydration: true,
+    },
+  ),
+);
+
+/**
+ * Read the stored preferences back, once, after the first paint.
+ *
+ * Not at store creation, which is what `persist` does by default. This page
+ * is server-rendered before it is hydrated, and the server has no
+ * `localStorage`: a store that came up already holding "show the organization
+ * in the rail" would render a rail the server's HTML does not contain, and
+ * React would throw the whole tree away and re-render it client-side to
+ * recover. So the first client render matches the server exactly, and the
+ * stored values land one frame later.
+ */
+export function useRestorePreferences(): void {
+  useEffect(() => {
+    void usePreferences.persist.rehydrate();
+  }, []);
+}
 
 /** The organization the console acts on behalf of. One, in practice. */
 export function useOrganizationId(): string | null {

@@ -271,7 +271,7 @@ function Console() {
       <Panel>
         <Setting
           label="Organization in the sidebar"
-          hint="The organization has its own space, reached from your account menu. Turn this on to keep its machines and agents in the sidebar as well, above the workspace — for whoever runs the fleet and wants both levels at a glance. Workspaces and settings are not repeated there: the switcher and this menu already stand for them."
+          hint="The organization has its own space, reached from your account menu. Turn this on to keep its machines and agents in the sidebar as well, above the workspace — for whoever runs the fleet and wants both levels at a glance. Workspaces and settings are not repeated there: the switcher and this menu already stand for them. Remembered on this device."
         >
           <div className="flex items-center gap-3 py-1">
             <Button
@@ -293,7 +293,7 @@ function Console() {
 
         <Setting
           label="Rows per page"
-          hint="Every list uses this. Lists shorter than the smallest page show no pager at all."
+          hint="Every list uses this, and it is remembered on this device. Lists shorter than the smallest page show no pager at all."
         >
           <div className="flex flex-wrap gap-2 py-1">
             {[10, 25, 50, 100, 250].map((size) => (
@@ -322,7 +322,7 @@ function SessionNote() {
       <Panel>
         <Setting
           label="How this session works"
-          hint="The token lives in this tab's memory and never touches local storage — a token any script on this origin could read turns one XSS into a full takeover. Closing the tab signs you out; so does reloading."
+          hint="The token lives in this tab's memory and never touches local storage — a token any script on this origin could read turns one XSS into a full takeover. Closing the tab signs you out; so does reloading. The console settings above are kept, because none of them is a secret."
         >
           <div className="py-1">
             <Button variant="outline" size="sm" onClick={logOut}>

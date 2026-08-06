@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 
 import { isOrganizationLevel } from "@/lib/routes";
-import { useSession } from "@/lib/store";
+import { useRestorePreferences, useSession } from "@/lib/store";
 import { Shell } from "@/components/shell";
 import { SignIn } from "@/components/sign-in";
 import { WorkspacePicker } from "@/components/workspace-picker";
@@ -29,6 +29,10 @@ export default function ConsoleLayout({
 }) {
   const { email, workspaceId } = useSession();
   const pathname = usePathname();
+  // Before the gates, not after: a hook cannot sit behind an early return, and
+  // the console's own settings are not something you should have to sign in
+  // twice to get back.
+  useRestorePreferences();
 
   if (!email) {
     return <SignIn />;
