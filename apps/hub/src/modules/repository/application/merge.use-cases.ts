@@ -164,10 +164,17 @@ export class DecideMergeUseCase
         // working copy to run against. Named in the module doc rather than
         // silently reported as satisfied.
         violatedPolicies: [],
-        // §8.8-8.9: a conflict is discovered by attempting a merge, which the
-        // hub cannot do. The list is empty because none has been reported,
-        // not because none exists.
-        openConflicts: [],
+        /**
+         * §8.8-8.9 — no longer empty by construction.
+         *
+         * A conflict is discovered by attempting to catch up with the base
+         * branch, which needs a working copy, which only a machine has. The
+         * machine reports it, the task is blocked by it, and this reads it
+         * back. Until that chain existed this list was empty because nothing
+         * reported into it — which is a different thing from there being no
+         * conflict, and the comment here said so.
+         */
+        openConflicts: await this.proof.openConflicts(request.taskId),
         approved: true,
       });
       if (unmet.length > 0) {

@@ -98,17 +98,44 @@ describe("prepareCheckout", () => {
     expect(refused.error).toMatch(/no repository|no origin/i);
   });
 
-  it("puts the task on a branch of its own, off the base branch", async () => {
-    const git = runner();
+  it("works on the branch it was given, creating it off the base if it is new", async () => {
+    // The branch does not exist yet: the plain checkout fails, and the
+    // fallback creates it from the base.
+    const git = runner({ "checkout spline": new Error("pathspec did not match") });
     await prepareCheckout(request, git, fs());
 
-    const checkout = git.calls
-      .map((call) => call.args.join(" "))
-      .find((line) => line.startsWith("checkout"));
-    expect(checkout).toContain("spline/task/t-1");
-    // Off the ORIGIN's base branch: a working copy left on yesterday's
-    // feature branch would otherwise start today's work from it.
-    expect(checkout).toContain("origin/main");
+    const commands = git.calls.map((call) => call.args.join(" "));
+    expect(commands.some((line) => line === "checkout spline/task/t-1")).toBe(true);
+    expect(
+      commands.some((line) => line === "checkout -b spline/task/t-1 origin/main"),
+    ).toBe(true);
+  });
+
+  /**
+   * Several agents share this copy. Resetting the branch would throw away
+   * work a colleague had committed and not yet pushed — which is the one
+   * failure nobody would attribute to the right cause.
+   */
+  it("never resets the branch, because somebody else may be on it", async () => {
+    const git = runner();
+    await prepareCheckout(request, git, fs(["/home/x/.git"]));
+
+    const commands = git.calls.map((call) => call.args.join(" "));
+    expect(commands.some((line) => line.includes("checkout -B"))).toBe(false);
+  });
+
+  /**
+   * Level before a single edit. A run that skipped this would build on a past
+   * nobody else has, and find out at push time — when the work is done.
+   */
+  it("takes what is behind and sends what is ahead before working", async () => {
+    const git = runner();
+    await prepareCheckout({ ...request, workdir: "/home/ada/app" }, git, fs(["/home/ada/app/.git"]));
+
+    const commands = git.calls.map((call) => call.args.join(" "));
+    expect(commands.some((line) => line.startsWith("fetch"))).toBe(true);
+    expect(commands.some((line) => line.startsWith("pull --rebase"))).toBe(true);
+    expect(commands.some((line) => line.startsWith("push"))).toBe(true);
   });
 
   /**
@@ -144,18 +171,4 @@ describe("prepareCheckout", () => {
     expect(refused.error).toContain("publickey");
   });
 
-  /**
-   * A retry starts from the base rather than from what the previous attempt
-   * left half-done — which is what makes a second attempt a second attempt
-   * and not a continuation of a failure.
-   */
-  it("resets the branch on a retry instead of continuing a failed one", async () => {
-    const git = runner();
-    await prepareCheckout(request, git, fs(["/home/x/.git"]));
-
-    const checkout = git.calls
-      .map((call) => call.args.join(" "))
-      .find((line) => line.startsWith("checkout"));
-    expect(checkout).toContain("-B");
-  });
 });

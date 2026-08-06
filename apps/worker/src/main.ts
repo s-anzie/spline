@@ -8,7 +8,6 @@ import { loadConfig, WorkerConfig } from "./config/config";
 import { IdentityStore } from "./enrolment/identity-store";
 import { executeCommand, ExecutorDeps } from "./execution/executor";
 import { Checkout, prepareCheckout } from "./git/checkout";
-import { withRepository } from "./git/one-at-a-time";
 import { publishWork } from "./git/publish";
 import { gitRunner } from "./git/runner";
 import { pairMachine } from "./enrolment/pairing";
@@ -323,13 +322,12 @@ async function main(): Promise<void> {
           });
 
           /**
-           * §8.4 — the whole order holds the repository: checkout, agent,
-           * commit and push, with nothing else in that directory meanwhile.
-           * Per machine — two machines each have their own copy.
+           * No repository-wide lock: agents share the project and coordinate
+           * through locks and claims (§5, §11), which contend at the level of
+           * what is actually shared. Only git's index is serialised, and only
+           * for the length of a commit — see `withGitIndex`.
            */
-          const report = repositoryPath
-            ? await withRepository(repositoryPath, runOrder)
-            : await runOrder();
+          const report = await runOrder();
 
           await hub.reportCommand(
             command.id,

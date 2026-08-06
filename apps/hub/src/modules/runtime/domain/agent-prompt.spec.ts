@@ -267,3 +267,63 @@ describe("the manager's briefing", () => {
     expect(ordinary).toContain("Begin with Synchronize.");
   });
 });
+
+/**
+ * §5, §8.3, §11 — the section that decides whether concurrent agents
+ * collaborate or corrupt each other's work.
+ *
+ * They share one working copy on purpose: it is the one with the
+ * dependencies installed. So the coordination has to be theirs, through the
+ * locks the protocol already gives them — and an agent that does not KNOW it
+ * shares the copy behaves as though it were alone.
+ */
+describe("working in a shared project", () => {
+  const inRepository = {
+    workspaceId: "w-1",
+    taskId: "t-1",
+    title: "Rework the intake form",
+    description: null,
+    acceptanceCriteria: ["one screen"],
+    goalTitle: null,
+    memory: [],
+    hubUrl: "http://localhost:8765",
+    repository: { name: "spline", branch: "spline/goal/g-1" },
+  };
+
+  it("says which project and which branch, rather than leaving it to be found", () => {
+    const prompt = buildAgentPrompt(inRepository);
+
+    expect(prompt).toContain("spline");
+    expect(prompt).toContain("spline/goal/g-1");
+  });
+
+  it("says plainly that others are in it at the same time", () => {
+    expect(buildAgentPrompt(inRepository)).toMatch(/other agents are in it/i);
+  });
+
+  it("tells it to lock narrowly, push early, and release before thinking", () => {
+    const prompt = buildAgentPrompt(inRepository);
+
+    expect(prompt).toContain("acquire_lock");
+    expect(prompt).toContain("release_lock");
+    // The instruction that matters most: a model left to its own judgement
+    // holds a lock for the length of its reasoning.
+    expect(prompt).toMatch(/before you spend time thinking/i);
+    expect(prompt).toMatch(/as soon as a piece of work stands on its own/i);
+  });
+
+  it("forbids the three commands that would destroy a colleague's work", () => {
+    const prompt = buildAgentPrompt(inRepository);
+
+    expect(prompt).toMatch(/never `git checkout` another branch/i);
+    expect(prompt).toMatch(/never reset/i);
+    expect(prompt).toMatch(/never force-push/i);
+  });
+
+  it("says none of it when the task works in no repository", () => {
+    const prompt = buildAgentPrompt({ ...inRepository, repository: null });
+
+    expect(prompt).not.toMatch(/acquire_lock/);
+    expect(prompt).not.toMatch(/other agents are in it/i);
+  });
+});

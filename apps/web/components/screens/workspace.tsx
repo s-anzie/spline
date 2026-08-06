@@ -42,6 +42,7 @@ import {
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Governance } from "@/components/screens/governance";
+import { Repositories } from "@/components/screens/repositories";
 import { InviteMember, NewAgent } from "@/components/forms";
 import {
   DropdownMenu,
@@ -52,12 +53,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Tab = "health" | "schedule" | "people" | "locks" | "decisions" | "governance";
+type Tab =
+  | "health"
+  | "schedule"
+  | "people"
+  | "projects"
+  | "locks"
+  | "decisions"
+  | "governance";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "health", label: "Health" },
   { value: "schedule", label: "Schedule" },
   { value: "people", label: "People & agents" },
+  // §8.3 — a repository belongs to a workspace, beside the people who work
+  // in it and the rules they work under.
+  { value: "projects", label: "Projects" },
   { value: "locks", label: "Locks" },
   { value: "decisions", label: "Decisions" },
   { value: "governance", label: "Governance" },
@@ -84,6 +95,7 @@ export function WorkspaceScreen() {
       {tab === "health" ? <Health workspaceId={workspaceId} /> : null}
       {tab === "schedule" ? <Schedule workspaceId={workspaceId} /> : null}
       {tab === "people" ? <People workspaceId={workspaceId} /> : null}
+      {tab === "projects" ? <Repositories workspaceId={workspaceId} /> : null}
       {tab === "locks" ? <Locks workspaceId={workspaceId} /> : null}
       {tab === "decisions" ? <Decisions workspaceId={workspaceId} /> : null}
       {tab === "governance" ? <Governance workspaceId={workspaceId} /> : null}

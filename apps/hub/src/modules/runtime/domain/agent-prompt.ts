@@ -29,6 +29,15 @@ export interface AgentBriefing {
   memory: readonly MemoryNote[];
   hubUrl: string;
   /**
+   * §8.3 — the project this task works in, when it works in one.
+   *
+   * Named in the briefing rather than left to be discovered: an agent that
+   * has to work out whether it is in a repository spends a turn on it, and
+   * one that does not know it SHARES the repository behaves as though it were
+   * alone — which is the failure this section exists to prevent.
+   */
+  repository?: { name: string; branch: string } | null;
+  /**
    * §4.5, §4.6 — this agent organises rather than executes.
    *
    * True when the assignee holds `manage_tasks`, which only a manager does.
@@ -121,6 +130,7 @@ export function buildAgentPrompt(briefing: AgentBriefing): string {
     "    and request validation; something else decides whether it passed.",
     "  - Release what you acquired, including on failure.",
     "",
+    ...sharedProject(briefing),
     "## Where to report",
     "",
     `  Hub:       ${briefing.hubUrl}`,
@@ -208,7 +218,10 @@ function organisingPrompt(briefing: AgentBriefing, criteria: string): string {
     "  4. `cut_task` — one call per piece of work, each naming the goal and",
     "     the agent who will do it. Cut them small enough that each is one",
     "     sitting's work, and write in each description everything its agent",
-    "     will need: it cannot ask you anything.",
+    "     will need: it cannot ask you anything. If the work touches code,",
+    "     pass `repositoryId` — the same project your own task names, which",
+    "     `synchronize` shows you. Leave it out and they get no checkout and",
+    "     no branch.",
     "  5. `hand_over` — later, if one of them is blocked and somebody else is",
     "     better placed.",
     "",
@@ -248,4 +261,51 @@ function organisingPrompt(briefing: AgentBriefing, criteria: string): string {
     "",
     "Begin with list_goals, then list_team.",
   ].join("\n");
+}
+
+/**
+ * §5, §8.3, §11 — how to behave in a project other agents are also in.
+ *
+ * Printed only when there is a repository, and it is the part that decides
+ * whether concurrent agents collaborate or corrupt each other's work. The
+ * machine gives them a shared working copy on purpose — it is the one that
+ * actually has the dependencies installed — so the coordination has to be
+ * theirs, through the locks the protocol already gives them.
+ *
+ * The instruction that matters most is the last one. An agent that holds a
+ * lock while it thinks is an agent nobody else can work around, and a model
+ * left to its own judgement will hold one for the length of its reasoning.
+ */
+function sharedProject(briefing: AgentBriefing): string[] {
+  if (!briefing.repository) {
+    return [];
+  }
+  return [
+    "## The project, which you share",
+    "",
+    `  Repository: ${defuse(briefing.repository.name)}`,
+    `  Branch:     ${defuse(briefing.repository.branch)}`,
+    "",
+    "  You are working in a real checkout on a real machine.",
+    "  Other agents are in it at the same time.",
+    "",
+    "  It is already level with the remote — that was done before you",
+    "  started. Behave accordingly:",
+    "",
+    "  - `acquire_lock` on each file or area BEFORE you edit it, and name it",
+    "    precisely. A lock on the whole project stops everybody; a lock on the",
+    "    file you are editing stops nobody who is not editing it.",
+    "  - Commit and push as soon as a piece of work stands on its own, not at",
+    "    the end. What is pushed is safe from everybody; what is only in the",
+    "    working tree is in everybody's way.",
+    "  - `release_lock` the moment you stop touching something — including",
+    "    when you fail, and BEFORE you spend time thinking or reading. Holding",
+    "    a lock while you reason is how one agent stalls a whole team.",
+    "  - If a file you need is locked, do something else and come back. Do not",
+    "    edit around a lock: it is held because somebody is mid-change, and",
+    "    what you would be editing is half of their work.",
+    "  - Never `git checkout` another branch, never reset, never force-push.",
+    "    Others are on this branch and their uncommitted work is in this tree.",
+    "",
+  ];
 }

@@ -92,6 +92,7 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
               id: repository.id.value,
               name: repository.name,
               origin: repository.origin,
+              localPath: repository.localPath,
               baseBranch: repository.defaultBranch,
               // §8.11 — asked of the repository, which already unions the
               // three §8.3 names with its default branch and whatever the

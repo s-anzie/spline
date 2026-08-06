@@ -33,6 +33,7 @@ export class PrismaRepositoryStore implements RepositoryStore {
       workspaceId: repository.workspaceId,
       name: repository.name,
       origin: repository.origin,
+      localPath: repository.localPath,
       defaultBranch: repository.defaultBranch,
       // Only what the workspace added: the §8.3 defaults are computed, so a
       // stored copy could never drift from them.
@@ -221,6 +222,7 @@ function toRepository(row: RepositoryRow): Repository {
       workspaceId: row.workspaceId,
       name: row.name,
       origin: row.origin,
+      localPath: row.localPath,
       defaultBranch: row.defaultBranch,
       extraProtectedBranches: (row.extraProtectedBranches ?? []) as string[],
       status: row.status as RepositoryStatus,

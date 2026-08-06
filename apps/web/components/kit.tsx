@@ -530,6 +530,7 @@ export function Field({
   type = "text",
   autoFocus,
   className,
+  hint,
 }: {
   label: string;
   value: string;
@@ -538,6 +539,14 @@ export function Field({
   type?: string;
   autoFocus?: boolean;
   className?: string;
+  /**
+   * One line under the box, for what a label cannot say.
+   *
+   * `Area` has had this since it was written; `Field` had not, so every form
+   * needing a word of explanation grew a paragraph of its own beside the
+   * input — the same thing, laid out differently each time.
+   */
+  hint?: string;
 }) {
   const [shown, setShown] = useState(false);
   const secret = type === "password";
@@ -567,6 +576,9 @@ export function Field({
           </button>
         ) : null}
       </div>
+      {hint ? (
+        <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>
+      ) : null}
     </div>
   );
 }

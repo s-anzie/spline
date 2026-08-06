@@ -15,7 +15,7 @@ import {
 import { humanise } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useOrganizationId, useSession } from "@/lib/store";
-import { useAction } from "@/lib/use-hub";
+import { useAction, useResource } from "@/lib/use-hub";
 import { Area, Criteria, Field, Note, Picker, Segmented } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import {
@@ -266,7 +266,20 @@ export function NewTask({
   const [criteria, setCriteria] = useState<string[]>([""]);
   const [assignee, setAssignee] = useState("");
   const [priority, setPriority] = useState("NORMAL");
+  const [repositoryId, setRepositoryId] = useState("");
   const { run, pending, error } = useAction();
+
+  /**
+   * §8.3 — the projects this workspace has, if it has any.
+   *
+   * Asked for here rather than passed in: this is the only form that needs
+   * them, and a workspace with none simply shows no chooser rather than an
+   * empty one.
+   */
+  const repositories = useResource(
+    () => api.repositories.list(workspaceId),
+    [workspaceId],
+  );
 
   const kept = criteria.map((line) => line.trim()).filter(Boolean);
   const chosen = members.find(
@@ -295,6 +308,10 @@ export function NewTask({
               assigneeType: chosen!.actorType,
               assigneeId: chosen!.actorId,
               priority,
+              // §8.3 — without this the machine gives the agent a bare
+              // directory and no branch, which is what every task got before
+              // repositories were carried through at all.
+              ...(repositoryId ? { repositoryId } : {}),
             }),
           () => {
             setOpen(false);
@@ -357,6 +374,35 @@ export function NewTask({
           options={PRIORITIES.map((value) => ({ value, label: humanise(value) }))}
         />
       </div>
+
+      {/**
+       * §8.3 — shown only when the workspace has projects. A chooser that is
+       * always there and always empty teaches people to ignore it, and a
+       * workspace whose work touches no code should not be asked about
+       * repositories at all.
+       */}
+      {(repositories.data ?? []).length > 0 ? (
+        <div>
+          <p className="label mb-1.5">In which project</p>
+          <Picker
+            value={repositoryId}
+            onChange={setRepositoryId}
+            placeholder="No project — no branch, no checkout"
+            options={[
+              {
+                value: "",
+                label: "No project",
+                hint: "the agent gets a working directory and nothing else",
+              },
+              ...(repositories.data ?? []).map((repository) => ({
+                value: repository.id,
+                label: repository.name,
+                hint: `${repository.defaultBranch} · ${repository.localPath ?? repository.origin}`,
+              })),
+            ]}
+          />
+        </div>
+      ) : null}
     </FormDialog>
   );
 }

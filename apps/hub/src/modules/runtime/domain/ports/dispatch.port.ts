@@ -38,6 +38,8 @@ export type TaskBriefing =
          */
         name: string;
         origin: string;
+        /** Where it lives on disk, when an operator said. */
+        localPath: string | null;
         baseBranch: string;
         protectedBranches: readonly string[];
       } | null;

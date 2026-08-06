@@ -23,6 +23,7 @@ import { RunLedgerModule } from "./modules/execution/infrastructure/run-ledger.a
 import { AgentMemoryModule } from "./modules/memory/infrastructure/agent-memory.adapter";
 import { OrganizationFleetModule } from "./modules/identity/infrastructure/organization-fleet.adapter";
 import { OrganizationSubjectsModule } from "./modules/runtime/infrastructure/organization-subjects.adapter";
+import { ConflictReportModule } from "./modules/task/infrastructure/conflict-report.adapter";
 import { WorkIntakeModule } from "./modules/task/infrastructure/work-intake.adapter";
 import { AutomationPolicyModule } from "./modules/workspace/infrastructure/automation-policy.adapter";
 import { DispatchableTaskModule } from "./modules/task/infrastructure/dispatchable-task.adapter";
@@ -73,6 +74,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     OrganizationFleetModule,
     OrganizationSubjectsModule,
     WorkIntakeModule,
+    ConflictReportModule,
     AutomationPolicyModule,
     DispatchableTaskModule,
     ReclaimableLeasesModule,

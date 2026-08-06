@@ -22,6 +22,7 @@ import {
   MissingSecretsError,
   ResolveSecretsUseCase,
 } from "../../secret/application/secret.use-cases";
+import { CONFLICT_REPORT, ConflictReport } from "../domain/ports/conflict-report.port";
 import { RUN_LEDGER, RunLedger, TASK_ASSIGNEE, TaskAssignee } from "../domain/ports/dispatch.port";
 import {
   IssueTaskGrantOutput,
@@ -211,6 +212,8 @@ export class ReportCommandUseCase
     @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(TASK_ASSIGNEE) private readonly tasks: TaskAssignee,
+    @Inject(CONFLICT_REPORT) private readonly conflicts: ConflictReport,
   ) {}
 
   async execute(input: ReportCommandInput): Promise<Result<void, ReportCommandError>> {
@@ -261,6 +264,30 @@ export class ReportCommandUseCase
      * bookkeeping failure must not un-finish it. The order carries the run,
      * so a run that cannot be closed here is still findable.
      */
+    /**
+     * §8.8, §8.9 — a conflict the machine found blocks the task it is on.
+     *
+     * Before the run is closed rather than after, so a task cannot be seen
+     * finished-and-unblocked for the length of a write. The machine is the
+     * only thing that can discover this — it needs a working copy — and until
+     * now its report went into the run's result and stopped there.
+     */
+    const conflict = input.result?.conflict;
+    const taskId = typeof command.payload.taskId === "string" ? command.payload.taskId : null;
+    if (typeof conflict === "string" && conflict.trim() !== "" && taskId) {
+      const assignee = await this.tasks.assigneeOf(command.workspaceId, taskId);
+      if (assignee) {
+        await this.conflicts.blockOnConflict({
+          workspaceId: command.workspaceId,
+          taskId,
+          detail: conflict,
+          // Reported as the AGENT whose work conflicts, not as the machine:
+          // the machine only carried the message.
+          reportedBy: assignee,
+        });
+      }
+    }
+
     await this.runs.recordOutcome({
       workspaceId: command.workspaceId,
       runId: typeof command.payload.runId === "string" ? command.payload.runId : null,

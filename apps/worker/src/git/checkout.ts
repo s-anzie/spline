@@ -90,29 +90,29 @@ function safeBranch(name: string): boolean {
 }
 
 /**
- * §8.3, §8.11 — puts a task's work in the repository this machine has.
+ * §8.3, §8.11 — brings the working copy level with the remote, on the branch
+ * the work happens on.
  *
- * **One directory per repository, reused.** Not one worktree per task, which
- * is what the first version of this did. That version was better isolated and
- * worse in the way that decides whether any of this is usable: a fresh
- * checkout of a real project has no `node_modules`, no `.env`, no build
- * cache. An agent dropped into one spends its run discovering that nothing
- * runs. The operator's own working copy is the environment the work needs, so
- * that is where the work happens.
+ * **The operator's own copy**, at the path they gave. A fresh checkout of a
+ * real project has no `node_modules`, no `.env`, no build cache; an agent
+ * dropped into one spends its run discovering that nothing runs. Empty or
+ * absent, it is cloned there — which is the same directory, just not yet
+ * filled.
  *
- * The cost is stated rather than hidden: **two tasks cannot work in one
- * repository at the same time.** One directory holds one checked-out branch.
- * The caller serialises them (see `withRepository`); a run that cannot get in
- * is refused with a reason and can be dispatched again, which is the same
- * shape as every other resource this system contends for.
+ * **Level before anything starts.** Fetch, then send ahead what is ahead and
+ * take what is behind. An agent that begins on a stale copy produces a diff
+ * against a past nobody else shares, and discovers it at push time — which is
+ * the worst moment, because the work is already done.
  *
- * **A branch per task, still.** That part did not change and should not: work
- * that lands on `main` directly is work nobody reviewed, and §8.11 refuses it
- * outright.
- *
- * **Branched off the ORIGIN's base branch** after fetching, never off whatever
- * happened to be checked out. A working copy left on a feature branch from
- * yesterday would otherwise start today's work from it.
+ * **Agents are not serialised here.** An earlier version took the whole
+ * repository for the duration of a run, which quietly replaced the system
+ * that exists for this: locks and claims (§5, §11) coordinate at the level of
+ * what is actually contended — the files, the resources — and let two agents
+ * work in one project at once, which is the point of having them. What is
+ * serialised is git's own index, and only for as long as a commit takes:
+ * `.git/index.lock` is held by git itself, and two commits landing together
+ * fail with a message about a lock file rather than about anything a person
+ * can act on.
  *
  * Always returns; never throws.
  */
@@ -141,8 +141,8 @@ export async function prepareCheckout(
   }
 
   const workspaceRoot = join(request.root, request.workspaceId);
-  // The operator's own copy when they named one; otherwise a directory of
-  // this machine's own, per repository and not per task.
+  // The operator's own copy when they named one; otherwise a place of this
+  // machine's own, per repository.
   const workdir = request.workdir ?? join(workspaceRoot, "repositories", request.taskId);
 
   try {
@@ -170,12 +170,38 @@ export async function prepareCheckout(
     }
 
     /**
-     * `-B` resets the branch to the base each time. A retry of the same task
-     * therefore starts from the base rather than from what the previous
-     * attempt left half-done — which is what makes a second attempt a second
-     * attempt rather than a continuation of a failure.
+     * On the working branch, without resetting it.
+     *
+     * `-B` was wrong here and the reason matters: several agents share this
+     * copy, so resetting the branch would throw away work a colleague had
+     * committed and not yet pushed. `checkout` alone when the branch exists,
+     * created from the base only when it does not.
      */
-    await git.run(["checkout", "-B", request.branch, `origin/${request.baseBranch}`], workdir);
+    try {
+      await git.run(["checkout", request.branch], workdir);
+    } catch {
+      await git.run(["checkout", "-b", request.branch, `origin/${request.baseBranch}`], workdir);
+    }
+
+    /**
+     * Level with the remote before a single edit.
+     *
+     * Behind: take what is there. Ahead: send it. Both, or neither, are
+     * ordinary — several machines and several agents share this branch. A run
+     * that skipped this would build on a past nobody else has and find out at
+     * push time, when the work is already done.
+     *
+     * `--rebase` rather than a merge: a merge commit per catch-up would bury
+     * the history under bookkeeping nobody reads.
+     */
+    await git.run(["pull", "--rebase", "origin", request.branch], workdir).catch(async () => {
+      // No upstream branch yet: nothing to take, and the push below creates
+      // it. Not an error, and refusing here would stop a first task dead.
+      await git.run(["rev-parse", "--abbrev-ref", "HEAD"], workdir);
+    });
+    await git
+      .run(["push", "--set-upstream", "origin", request.branch], workdir)
+      .catch(() => undefined);
   } catch (error) {
     return { isFailure: true, error: `could not prepare the checkout: ${String(error)}` };
   }

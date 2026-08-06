@@ -1,23 +1,25 @@
 /**
- * §8.4 — two tasks never work in one repository at the same time.
+ * Git's index, one caller at a time. NOT the work.
  *
- * The consequence of working in the operator's own copy rather than in a
- * throwaway worktree: one directory holds one checked-out branch. Two agents
- * starting at once would each `git checkout -B` over the other's work, and
- * the second would report a diff containing the first's edits as its own.
+ * An earlier version of this held the whole repository for the duration of a
+ * run, which quietly replaced the system that already exists for coordinating
+ * agents: locks and claims (§5, §11) contend at the level of what is actually
+ * shared — a file, a resource — and let two agents work in one project at
+ * once, which is the entire point of having them. Serialising whole runs made
+ * a workspace with three concurrent runs and one project effectively
+ * single-threaded.
  *
- * Per MACHINE, which is the whole scope this needs. Two machines each have
- * their own copy and run in parallel; nothing here coordinates between them
- * and nothing needs to. Inside one machine, the second task waits.
+ * What genuinely cannot overlap is git's own plumbing. `.git/index.lock` is
+ * held by git for the length of an `add`/`commit`, and two landing together
+ * fail with a message about a lock file — true, and useless to whoever reads
+ * it. So the narrow thing is serialised and the wide thing is not.
  *
- * Waiting rather than refusing, deliberately. A refusal would make a
- * workspace with three concurrent runs and one repository fail two of them
- * every time — the ceiling would be nominal and the failures constant. The
- * queue is bounded by the ceiling above it, so it cannot grow without limit.
+ * Per MACHINE, which is the whole scope this needs: two machines have two
+ * copies and two indexes.
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
-export async function withRepository<T>(path: string, work: () => Promise<T>): Promise<T> {
+export async function withGitIndex<T>(path: string, work: () => Promise<T>): Promise<T> {
   const before = inFlight.get(path) ?? Promise.resolve();
 
   /**

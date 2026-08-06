@@ -166,6 +166,14 @@ export class DispatchTaskUseCase
           goalTitle: briefing.goalTitle,
           memory,
           hubUrl: input.hubUrl,
+          // §8.3 — an agent that does not know it shares a checkout behaves
+          // as though it were alone in it.
+          repository: briefing.repository
+            ? {
+                name: briefing.repository.name,
+                branch: branchNameFor({ kind: "TASK", id: input.taskId }),
+              }
+            : null,
           // §4.6 — a manager is briefed to organise, not to execute. Asked
           // of the same permission the bridge uses to choose its tools, so
           // the prompt cannot name a tool the agent was never given.
@@ -186,6 +194,7 @@ export class DispatchTaskUseCase
                 id: briefing.repository.id,
                 name: briefing.repository.name,
                 origin: briefing.repository.origin,
+                localPath: briefing.repository.localPath,
                 branch: branchNameFor({ kind: "TASK", id: input.taskId }),
                 baseBranch: briefing.repository.baseBranch,
                 protectedBranches: [...briefing.repository.protectedBranches],

@@ -278,6 +278,35 @@ describe("the protocol tools", () => {
       });
     });
 
+    /**
+     * §8.3 — the link that would otherwise break at the manager.
+     *
+     * A person names a project on the need; the manager cuts five tasks; and
+     * if it cannot pass the project down, none of the five touches any code.
+     */
+    it("passes the project down to the tasks it cuts", () => {
+      const call = tool("cut_task").request(context, {
+        goalId: "g-9",
+        title: "Audit the form",
+        acceptanceCriteria: ["listed"],
+        assigneeId: "agent-7",
+        repositoryId: "r-1",
+      });
+
+      expect(call.body?.repositoryId).toBe("r-1");
+    });
+
+    it("leaves it out for work that touches no code", () => {
+      const call = tool("cut_task").request(context, {
+        goalId: "g-9",
+        title: "Ask the client what they meant",
+        acceptanceCriteria: ["answered"],
+        assigneeId: "agent-7",
+      });
+
+      expect(call.body).not.toHaveProperty("repositoryId");
+    });
+
     it("hands an existing task to somebody else", () => {
       const call = tool("hand_over").request(context, {
         taskId: "t-42",

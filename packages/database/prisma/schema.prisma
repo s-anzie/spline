@@ -749,6 +749,13 @@ model Repository {
   workspaceId            String
   name                   String
   origin                 String
+  /// §8.3 — where this project lives on the machines that work in it.
+  ///
+  /// Given rather than derived: an operator knows where their project is, and
+  /// a machine guessing from a name would guess wrong on the first one that
+  /// does not match. Empty means "clone it there"; occupied means "use it,
+  /// after making sure it is level with the remote".
+  localPath              String?
   defaultBranch          String           @default("main")
   extraProtectedBranches Json             @default("[]")
   status                 RepositoryStatus @default(ACTIVE)

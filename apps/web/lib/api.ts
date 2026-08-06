@@ -415,6 +415,7 @@ export interface RepositoryView {
   workspaceId: string;
   name: string;
   origin: string;
+  localPath: string | null;
   defaultBranch: string;
   protectedBranches: string[];
   status: string;
@@ -527,6 +528,8 @@ export const api = {
         assigneeType: string;
         assigneeId: string;
         priority?: string;
+        /** §8.3 — the project this is worked on in, when it is worked on in one. */
+        repositoryId?: string;
       },
     ) => hub.post<{ taskId: string }>(`/workspaces/${workspace}/tasks`, body),
     setStatus: (workspace: string, taskId: string, status: string) =>
@@ -716,6 +719,7 @@ export const api = {
       body: {
         name: string;
         origin: string;
+        localPath?: string;
         defaultBranch?: string;
         protectedBranches?: string[];
       },

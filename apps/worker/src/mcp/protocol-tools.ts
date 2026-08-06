@@ -308,6 +308,11 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
         type: "string",
         description: 'Usually "AGENT". "HUMAN" when it genuinely needs a person.',
       },
+      repositoryId: {
+        type: "string",
+        description:
+          "The project this piece is done inside, if it touches code. Use the same one your own task names — read it with synchronize. Without it the agent gets a bare directory and no branch.",
+      },
     },
     request: (context, args) => ({
       method: "POST",
@@ -319,6 +324,14 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
         acceptanceCriteria: list(args, "acceptanceCriteria"),
         assigneeType: text(args, "assigneeType") || "AGENT",
         assigneeId: text(args, "assigneeId"),
+        /**
+         * §8.3 — without this the tasks a manager cuts touch no repository,
+         * however carefully the person who stated the need named one. The
+         * manager reads it off its own task and passes it down.
+         */
+        ...(text(args, "repositoryId")
+          ? { repositoryId: text(args, "repositoryId") }
+          : {}),
       },
     }),
   },

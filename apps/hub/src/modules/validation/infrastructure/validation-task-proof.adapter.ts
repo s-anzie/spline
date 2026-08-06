@@ -35,6 +35,28 @@ export class ValidationTaskProofAdapter implements TaskProofPort {
       .map((validation) => ({ id: validation.id.value, type: validation.type }));
   }
 
+  /**
+   * §8.9 — the conflicts still open, read off the task's blockers.
+   *
+   * Recognised by the prefix the reporter writes, which is the one place that
+   * decides what a conflict blocker looks like. A `type` of its own on
+   * `Blocker` would have been cleaner and would have meant a migration and a
+   * new value in a vocabulary every screen already renders — for a
+   * distinction only this question asks about.
+   */
+  async openConflicts(taskId: string): Promise<{ id: string; type: string }[]> {
+    const task = await this.tasks.findById(taskId);
+    if (!task) {
+      return [];
+    }
+    return task.blockers
+      .filter(
+        (blocker) =>
+          blocker.resolvedAt === null && blocker.description.startsWith("Merge conflict:"),
+      )
+      .map((blocker) => ({ id: blocker.id, type: "MERGE_CONFLICT" }));
+  }
+
   async requestOnSubmit(input: {
     workspaceId: string;
     taskId: string;

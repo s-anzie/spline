@@ -1,4 +1,5 @@
 import { Checkout, GitRunner } from "./checkout";
+import { withGitIndex } from "./one-at-a-time";
 
 export type { GitRunner };
 
@@ -71,24 +72,31 @@ export async function publishWork(
       return { isFailure: false, value: { changed: false, conflict: null } };
     }
 
-    // `-A` so a file the agent deleted is recorded as deleted. Anything less
-    // makes a commit that does not describe the tree it came from.
-    await git.run(["add", "-A"], cwd);
-    await git.run(
-      [
-        // Identity per invocation rather than configured on the repository:
-        // the next task on this machine is a different agent, and a config
-        // written once would sign its commits with the wrong name.
-        "-c",
-        `user.name=${request.who.name}`,
-        "-c",
-        `user.email=${request.who.email}`,
-        "commit",
-        "-m",
-        request.message,
-      ],
-      cwd,
-    );
+    /**
+     * The index, and only the index. Two agents committing together fail on
+     * `.git/index.lock` with a message about a lock file — true, and useless
+     * to whoever reads it. Held for the length of a commit, not of a run.
+     */
+    await withGitIndex(cwd, async () => {
+      // `-A` so a file the agent deleted is recorded as deleted. Anything
+      // less makes a commit that does not describe the tree it came from.
+      await git.run(["add", "-A"], cwd);
+      await git.run(
+          [
+          // Identity per invocation rather than configured on the repository:
+          // the next task on this machine is a different agent, and a config
+          // written once would sign its commits with the wrong name.
+          "-c",
+          `user.name=${request.who.name}`,
+          "-c",
+          `user.email=${request.who.email}`,
+          "commit",
+          "-m",
+          request.message,
+        ],
+        cwd,
+      );
+    });
 
     let conflict: string | null = null;
     if (request.catchUpWith) {

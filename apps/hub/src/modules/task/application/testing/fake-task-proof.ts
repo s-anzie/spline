@@ -10,6 +10,13 @@ export class FakeTaskProof implements TaskProofPort {
 
   readonly requested: { taskId: string; types: readonly string[] }[] = [];
 
+  /** §8.9 — set by a test that wants a merge refused for a conflict. */
+  conflicts: { id: string; type: string }[] = [];
+
+  async openConflicts(): Promise<{ id: string; type: string }[]> {
+    return this.conflicts;
+  }
+
   async unsatisfiedMandatory(taskId: string): Promise<{ id: string; type: string }[]> {
     return this.missing.get(taskId) ?? [];
   }

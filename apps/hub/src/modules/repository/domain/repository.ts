@@ -26,6 +26,15 @@ interface RepositoryProps {
   workspaceId: string;
   name: string;
   origin: string;
+  /**
+   * §8.3 — where this project lives on the machines that work in it.
+   *
+   * Given by an operator, never derived from the name: they know where their
+   * project is, and a machine guessing would guess wrong on the first one
+   * whose directory does not match. Null means the machine picks a place of
+   * its own and clones there.
+   */
+  localPath: string | null;
   defaultBranch: string;
   extraProtectedBranches: string[];
   status: RepositoryStatus;
@@ -38,6 +47,8 @@ export interface RegisterRepositoryProps {
   name: string;
   /** Where it comes from — a URL, a path, whatever the Worker can reach. */
   origin: string;
+  /** Where it lives on disk. Empty means the machine chooses and clones. */
+  localPath?: string;
   defaultBranch?: string;
   /** A workspace may protect more branches; it never protects fewer (§8.11). */
   extraProtectedBranches?: readonly string[];
@@ -80,6 +91,7 @@ export class Repository extends AggregateRoot<RepositoryProps> {
         origin: origin.value,
         defaultBranch: defaultBranch.value,
         extraProtectedBranches: [...(input.extraProtectedBranches ?? [])],
+        localPath: input.localPath?.trim() || null,
         status: "ACTIVE",
         createdAt: input.now,
         updatedAt: input.now,
@@ -112,6 +124,10 @@ export class Repository extends AggregateRoot<RepositoryProps> {
 
   get origin(): string {
     return this.props.origin;
+  }
+
+  get localPath(): string | null {
+    return this.props.localPath;
   }
 
   get defaultBranch(): string {

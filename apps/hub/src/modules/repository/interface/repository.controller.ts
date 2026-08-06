@@ -53,6 +53,19 @@ export class RegisterRepositoryDto {
   @IsNotEmpty()
   origin!: string;
 
+  /**
+   * §8.3 — where the project lives on the machines that work in it.
+   *
+   * Optional: a machine with nowhere named picks a place of its own and
+   * clones there. Given, it is used as it stands — an operator knows where
+   * their project is, dependencies installed and all, and that copy is the
+   * environment the work actually needs.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  localPath?: string;
+
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -138,6 +151,7 @@ function toRepositoryView(repository: Repository) {
     workspaceId: repository.workspaceId,
     name: repository.name,
     origin: repository.origin,
+    localPath: repository.localPath,
     defaultBranch: repository.defaultBranch,
     /** Computed, so configuration can never shrink it below §8.3. */
     protectedBranches: repository.protectedBranches,

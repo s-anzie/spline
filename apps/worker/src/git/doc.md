@@ -68,3 +68,33 @@ est pire qu'une branche à pousser à la main.
   hub, ni ne le porte au manager pour qu'il réassigne.
 - **Les contrôles de politique git (§12.3)** ont maintenant une copie de travail pour tourner. Ils ne
   tournent pas encore.
+
+## La fusion, et le conflit qui remonte
+
+**La fusion était marquée faite sans que personne ne la fasse.** Le hub approuvait et passait à MERGED
+dans le même geste, avec un commentaire disant que prétendre le contraire laisserait des demandes
+coincées en APPROVED sans personne pour les bouger. Fusionner demande une copie de travail, et le hub
+n'a pas de système de fichiers. `mergeBranch` est ce quelqu'un.
+
+**`--no-ff`, toujours.** Une avance rapide rendrait la fusion invisible : les commits de la branche
+apparaîtraient sur la cible sans que rien n'enregistre qu'une personne les a approuvés, quand, ni pour
+quelle demande. Le commit de fusion **est** la trace — et l'approbateur est dans son message, pour que
+quelqu'un lisant `git log` dans un an n'ait pas à ouvrir ce système pour savoir qui a laissé entrer.
+
+**`pull --ff-only` avant.** Une branche cible qui a divergé est une question pour une personne, pas
+quelque chose à réconcilier à trois heures du matin.
+
+**Un conflit est rapporté et l'arbre remis en état**, jamais résolu. §8.7 dit qu'une fusion n'est
+jamais faite par un agent ; une machine qui résout le conflit de quelqu'un, c'est cet acte avec plus
+d'étapes et moins de réflexion.
+
+**Toute la fusion tient l'index**, contrairement au travail ordinaire où les agents partagent la copie
+et se coordonnent par les locks. Une fusion déplace la copie sur une autre branche, et ce qui
+committerait pendant ce temps committerait sur la mauvaise.
+
+**Et le conflit remonte enfin.** `openConflicts` était vide *par construction* côté hub. Maintenant :
+la machine le découvre en rattrapant la branche de base, le rapporte dans le résultat du run, le hub en
+fait un **blocage de tâche** — ce que §8.9 dit littéralement qu'un conflit est — et les conditions de
+fusion le relisent. Un blocage plutôt qu'une entité neuve : les tâches ont des blocages depuis §4.22,
+ils passent déjà la tâche en BLOCKED, apparaissent déjà dans la file de ce qui réclame une personne, et
+le manager les voit déjà.

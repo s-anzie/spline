@@ -39,6 +39,8 @@ export interface RegisterRepositoryInput {
   workspaceId: string;
   name: string;
   origin: string;
+  /** §8.3 — where it lives on the machines that work in it. */
+  localPath?: string;
   defaultBranch?: string;
   protectedBranches?: readonly string[];
 }
@@ -72,6 +74,7 @@ export class RegisterRepositoryUseCase
       workspaceId: input.workspaceId,
       name: input.name,
       origin: input.origin,
+      localPath: input.localPath,
       defaultBranch: input.defaultBranch,
       extraProtectedBranches: input.protectedBranches,
       now,
