@@ -26,6 +26,17 @@ Le coût est énoncé, pas caché : **deux tâches ne peuvent pas travailler dan
 un répertoire ne tenant qu'une branche. `withRepository` les met en file — par machine, ce qui est
 exactement la portée nécessaire : deux machines ont chacune leur copie et tournent en parallèle.
 
+**Trois façons d'avoir le projet, et une seule qui n'existe pas.** Il est là → on le remet à niveau.
+Il n'est pas là et il y a une adresse → on le clone. Il n'est pas là, pas d'adresse, mais **un chemin
+qu'un opérateur a nommé** → `git init` dedans, et ce qui s'y trouve déjà devient le premier commit :
+un projet qu'on écrit depuis une semaine ne perd pas sa semaine à être mis sous git. Ni l'un ni
+l'autre → refusé, parce qu'un dépôt dont la machine aurait choisi l'emplacement est un dépôt que
+personne ne retrouvera.
+
+Le `--allow-empty` de cette initialisation est juste ici et faux partout ailleurs : un dépôt sans
+commit n'a pas de branche, donc `checkout -b travail main` échouerait sur un `main` inexistant. Ce
+commit donne son existence à la branche de base ; il n'enregistre le travail de personne.
+
 **Le hub dit QUEL dépôt, la machine dit OÙ.** Un chemin stocké côté hub serait un seul chemin pour
 toutes les machines, alors que le même dépôt est en `/home/ada/projects/app` sur l'une et `/srv/app`
 sur l'autre. La machine le cherche par **nom** sous son `PROJECT_ROOT` ; s'il n'y est pas, elle l'y

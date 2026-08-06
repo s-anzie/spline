@@ -45,8 +45,15 @@ interface RepositoryProps {
 export interface RegisterRepositoryProps {
   workspaceId: string;
   name: string;
-  /** Where it comes from — a URL, a path, whatever the Worker can reach. */
-  origin: string;
+  /**
+   * Where it comes from — a URL, a path, whatever the Worker can reach.
+   *
+   * Empty when the project exists only on disk somewhere. That is a real
+   * situation, not a defect: a project nobody has pushed yet. Its consequence
+   * is stated where it bites — every agent working on it has to be on the
+   * machine that holds it.
+   */
+  origin?: string;
   /** Where it lives on disk. Empty means the machine chooses and clones. */
   localPath?: string;
   defaultBranch?: string;
@@ -72,9 +79,26 @@ export class Repository extends AggregateRoot<RepositoryProps> {
     if (name.isFailure) {
       return Result.fail(name.error);
     }
-    const origin = Guard.againstEmpty(input.origin, "origin");
-    if (origin.isFailure) {
-      return Result.fail(origin.error);
+    /**
+     * §8.3 — a project needs somewhere to come FROM or somewhere to BE, and
+     * one of the two is enough.
+     *
+     * An address alone: every machine clones it, and they work in parallel.
+     * A path alone: the project lives on one machine and nowhere else, so
+     * every agent working on it has to be on that machine — which is a real
+     * situation (a project not pushed anywhere yet) and not a defect. Neither
+     * is nothing, and refusing that is the whole guard.
+     */
+    const origin = (input.origin ?? "").trim();
+    const localPath = (input.localPath ?? "").trim();
+    if (origin === "" && localPath === "") {
+      return Result.fail(
+        new GuardViolation(
+          "origin",
+          "is required unless the project already exists somewhere on disk — " +
+            "give an address to clone from, a path it lives at, or both",
+        ),
+      );
     }
     const defaultBranch = Guard.againstEmpty(
       input.defaultBranch ?? "main",
@@ -88,10 +112,10 @@ export class Repository extends AggregateRoot<RepositoryProps> {
       {
         workspaceId: workspaceId.value,
         name: name.value,
-        origin: origin.value,
+        origin,
         defaultBranch: defaultBranch.value,
         extraProtectedBranches: [...(input.extraProtectedBranches ?? [])],
-        localPath: input.localPath?.trim() || null,
+        localPath: localPath || null,
         status: "ACTIVE",
         createdAt: input.now,
         updatedAt: input.now,
@@ -104,7 +128,7 @@ export class Repository extends AggregateRoot<RepositoryProps> {
         input.now,
         workspaceId.value,
         name.value,
-        origin.value,
+        origin,
       ),
     );
     return Result.ok(repository);

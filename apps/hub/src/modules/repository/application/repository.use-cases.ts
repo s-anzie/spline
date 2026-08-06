@@ -38,7 +38,8 @@ import { Worktree } from "../domain/worktree";
 export interface RegisterRepositoryInput {
   workspaceId: string;
   name: string;
-  origin: string;
+  /** Empty when the project exists only on disk. */
+  origin?: string;
   /** §8.3 — where it lives on the machines that work in it. */
   localPath?: string;
   defaultBranch?: string;

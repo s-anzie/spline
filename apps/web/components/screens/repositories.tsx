@@ -85,7 +85,7 @@ export function Repositories({ workspaceId }: { workspaceId: string }) {
                 <div className="flex items-baseline gap-2.5">
                   <span className="text-sm font-medium">{repository.name}</span>
                   <span className="measure text-muted-foreground truncate text-xs">
-                    {repository.origin}
+                    {repository.origin || "on this machine only"}
                   </span>
                 </div>
                 <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -96,7 +96,7 @@ export function Repositories({ workspaceId }: { workspaceId: string }) {
                   {repository.localPath ? (
                     <span className="measure truncate">{repository.localPath}</span>
                   ) : (
-                    <span>cloned wherever the machine keeps its projects</span>
+                    <span>each machine clones its own copy</span>
                   )}
                   <span
                     className="inline-flex items-center gap-1.5"
@@ -141,7 +141,7 @@ function AddRepository({
             () =>
               api.repositories.register(workspaceId, {
                 name: name.trim(),
-                origin: origin.trim(),
+                ...(origin.trim() ? { origin: origin.trim() } : {}),
                 ...(localPath.trim() ? { localPath: localPath.trim() } : {}),
                 ...(defaultBranch.trim() ? { defaultBranch: defaultBranch.trim() } : {}),
               }),
@@ -170,15 +170,35 @@ function AddRepository({
           value={origin}
           onChange={setOrigin}
           placeholder="git@github.com:you/spline.git"
-          hint="Used by a machine that does not have the project yet. Its own credentials do the talking — nothing is stored here."
+          hint="How a machine that does not have the project gets it. Its own credentials do the talking — nothing is stored here."
         />
         <Field
           label="Where it lives on your machines"
           value={localPath}
           onChange={setLocalPath}
           placeholder="/home/you/projects/spline"
-          hint="The copy that already has its dependencies installed. Leave it empty and each machine clones its own — which works, and is slower to become useful."
+          hint="The copy that already has its dependencies installed, its .env, its build cache. That copy is the environment the work needs."
         />
+
+        {/**
+         * §8.3 — one of the two, and the consequence of each. Said here
+         * rather than left to be discovered at the first run, which is a
+         * lesson that costs an evening.
+         */}
+        {!origin.trim() && localPath.trim() ? (
+          <Note tone="waiting">
+            With no address, this project exists on that one machine and
+            nowhere else. Every agent working on it has to be on that machine,
+            and their work stays in its history until you push it yourself.
+          </Note>
+        ) : null}
+        {origin.trim() && !localPath.trim() ? (
+          <Note tone="quiet">
+            With no path, each machine clones its own copy — which works, and
+            starts with nothing installed. A first run in it spends its time
+            discovering that.
+          </Note>
+        ) : null}
 
         {error ? <Note>{error}</Note> : null}
 
@@ -186,7 +206,8 @@ function AddRepository({
           <Button
             type="submit"
             size="sm"
-            disabled={pending || !name.trim() || !origin.trim()}
+            // One of the two is enough; neither is nothing.
+            disabled={pending || !name.trim() || (!origin.trim() && !localPath.trim())}
           >
             {pending ? "Adding…" : "Add the project"}
           </Button>

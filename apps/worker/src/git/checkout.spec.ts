@@ -85,17 +85,46 @@ describe("prepareCheckout", () => {
   });
 
   /**
-   * A path somebody expected to hold their project, holding nothing, with no
-   * address to fetch from. `git init` there would produce an empty repository
-   * and the agent would report the emptiness as the truth.
+   * §8.3 — a project that starts here.
+   *
+   * A path an operator named, holding a project nobody has put under version
+   * control yet. They are asking for a repository to exist there, and
+   * whatever is already in the directory becomes its first commit: a project
+   * somebody has been writing for a week does not lose its week to being
+   * tracked.
    */
-  it("refuses to invent a repository out of nothing", async () => {
+  it("starts a repository at a path somebody named", async () => {
+    const git = runner();
+
+    const ready = await prepareCheckout(
+      { ...request, origin: "", workdir: "/home/ada/new-thing" },
+      git,
+      fs(),
+    );
+
+    expect(ready.isFailure).toBe(false);
+    const commands = git.calls.map((call) => call.args.join(" "));
+    expect(commands.some((line) => line === "init")).toBe(true);
+    // What is already there is what it starts from.
+    expect(commands.some((line) => line === "add -A")).toBe(true);
+    expect(commands.some((line) => line.includes("commit --allow-empty"))).toBe(true);
+    // And the base branch exists afterwards, or nothing could branch off it.
+    expect(commands.some((line) => line === "branch -M main")).toBe(true);
+    expect(commands.some((line) => line.startsWith("clone"))).toBe(false);
+  });
+
+  /**
+   * No address, nothing on disk, and no path anybody named — nowhere to put
+   * anything. A repository this machine chose the location of is one nobody
+   * will find again.
+   */
+  it("refuses when there is nowhere to put it", async () => {
     const git = runner();
 
     const refused = await prepareCheckout({ ...request, origin: "" }, git, fs());
 
     expect(refused.isFailure).toBe(true);
-    expect(refused.error).toMatch(/no repository|no origin/i);
+    expect(refused.error).toMatch(/no address|no path/i);
   });
 
   it("works on the branch it was given, creating it off the base if it is new", async () => {
@@ -136,6 +165,50 @@ describe("prepareCheckout", () => {
     expect(commands.some((line) => line.startsWith("fetch"))).toBe(true);
     expect(commands.some((line) => line.startsWith("pull --rebase"))).toBe(true);
     expect(commands.some((line) => line.startsWith("push"))).toBe(true);
+  });
+
+  /**
+   * §8.3 — a project that lives on one machine and nowhere else.
+   *
+   * Real, not a defect: something nobody has pushed yet. Every agent working
+   * on it is on that machine, sharing that checkout, and there is nothing to
+   * be level with — so the machine must not try to talk to a remote that does
+   * not exist.
+   */
+  describe("a project with no address", () => {
+    const local = { ...request, origin: "", workdir: "/home/ada/app" };
+
+    it("touches no remote at all", async () => {
+      const git = runner();
+
+      const ready = await prepareCheckout(local, git, fs(["/home/ada/app/.git"]));
+
+      expect(ready.isFailure).toBe(false);
+      const commands = git.calls.map((call) => call.args.join(" "));
+      for (const remote of ["fetch", "pull", "push", "clone"]) {
+        expect(commands.some((line) => line.startsWith(remote))).toBe(false);
+      }
+    });
+
+    it("branches off the local base, since there is no origin/main", async () => {
+      const git = runner({ "checkout spline": new Error("pathspec did not match") });
+      await prepareCheckout(local, git, fs(["/home/ada/app/.git"]));
+
+      const commands = git.calls.map((call) => call.args.join(" "));
+      expect(commands.some((line) => line === "checkout -b spline/task/t-1 main")).toBe(
+        true,
+      );
+      expect(commands.some((line) => line.includes("origin/main"))).toBe(false);
+    });
+
+    it("starts one at the named path when there is nothing there yet", async () => {
+      const git = runner();
+
+      const ready = await prepareCheckout(local, git, fs());
+
+      expect(ready.isFailure).toBe(false);
+      expect(git.calls.map((call) => call.args.join(" "))).toContain("init");
+    });
   });
 
   /**

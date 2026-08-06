@@ -49,9 +49,17 @@ export class RegisterRepositoryDto {
   @IsNotEmpty()
   name!: string;
 
+  /**
+   * §8.3 — where to clone it from, when a machine does not have it.
+   *
+   * Optional: a project that lives only on disk is a real one. What is
+   * refused is having neither an address nor a path — the domain says so,
+   * because it is a rule about the repository and not about this request.
+   */
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  origin!: string;
+  origin?: string;
 
   /**
    * §8.3 — where the project lives on the machines that work in it.

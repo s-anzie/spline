@@ -23,6 +23,8 @@ export interface PublishRequest {
    * somebody is going to be told.
    */
   catchUpWith?: string;
+  /** False for a project with no address: there is nowhere to push. */
+  hasRemote?: boolean;
 }
 
 export interface PublishedWork {
@@ -116,7 +118,15 @@ export async function publishWork(
       }
     }
 
-    await git.run(["push", "--set-upstream", "origin", request.where.branch], cwd);
+    /**
+     * Pushed when there is somewhere to push to. A project that exists only
+     * on one machine keeps its work in its own history — which is the whole
+     * bargain of registering one without an address, and stating it here
+     * beats failing on `origin` not existing.
+     */
+    if (request.hasRemote !== false) {
+      await git.run(["push", "--set-upstream", "origin", request.where.branch], cwd);
+    }
     return { isFailure: false, value: { changed: true, conflict } };
   } catch (error) {
     return { isFailure: true, error: `could not publish the work: ${String(error)}` };

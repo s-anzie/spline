@@ -718,7 +718,8 @@ export const api = {
       workspace: string,
       body: {
         name: string;
-        origin: string;
+        /** Optional: a project that lives only on disk has no address. */
+        origin?: string;
         localPath?: string;
         defaultBranch?: string;
         protectedBranches?: string[];

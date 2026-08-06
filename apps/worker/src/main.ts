@@ -270,11 +270,14 @@ async function main(): Promise<void> {
              */
             publishFor: async (order: ClaimedCommand, checkout: Checkout) => {
               const repository = order.payload.repository as
-                | { baseBranch: string }
+                | { baseBranch: string; origin?: string }
                 | undefined;
               const published = await publishWork(
                 {
                   where: checkout,
+                  // Nowhere to push when the project has no address: its work
+                  // stays in its own history, on the one machine that has it.
+                  hasRemote: typeof repository?.origin === "string" && repository.origin !== "",
                   who: {
                     name:
                       typeof order.payload.agentName === "string"
@@ -286,7 +289,11 @@ async function main(): Promise<void> {
                     typeof order.payload.taskTitle === "string"
                       ? order.payload.taskTitle
                       : `Spline task ${order.payload.taskId ?? order.id}`,
-                  ...(repository ? { catchUpWith: `origin/${repository.baseBranch}` } : {}),
+                  // Catching up is how a conflict is discovered, and there is
+                  // nothing to catch up with when there is no remote.
+                  ...(repository?.origin
+                    ? { catchUpWith: `origin/${repository.baseBranch}` }
+                    : {}),
                 },
                 git,
               );

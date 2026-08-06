@@ -146,26 +146,66 @@ export async function prepareCheckout(
   const workdir = request.workdir ?? join(workspaceRoot, "repositories", request.taskId);
 
   try {
+    const hasRemote = request.origin.trim() !== "";
+
     if (fs.exists(join(workdir, ".git"))) {
       // It is already here. Catch up rather than start over — `--prune` so a
       // branch deleted upstream stops being offered.
-      await git.run(["fetch", "--prune", "origin"], workdir);
-    } else if (request.origin) {
+      if (hasRemote) {
+        await git.run(["fetch", "--prune", "origin"], workdir);
+      }
+    } else if (hasRemote) {
       fs.makeDirectory(workspaceRoot);
       await git.run(["clone", request.origin, workdir], workspaceRoot);
+    } else if (request.workdir) {
+      /**
+       * §8.3 — a project that starts here.
+       *
+       * No address, and nothing under version control at the path an operator
+       * named: they are asking for a repository to exist there. Whatever is
+       * already in that directory becomes its first commit, which is what
+       * makes this useful rather than merely tidy — a project somebody has
+       * been writing for a week does not lose its week to being tracked.
+       *
+       * Only at a path SOMEBODY NAMED. Initialising at a place this machine
+       * picked would create an empty repository nobody asked for, and the
+       * first agent in it would report the emptiness as the truth.
+       */
+      fs.makeDirectory(workdir);
+      await git.run(["init"], workdir);
+      await git.run(["add", "-A"], workdir);
+      /**
+       * `--allow-empty` is right here and wrong everywhere else. A repository
+       * with no commit has no branch, so `checkout -b work main` then fails
+       * on a `main` that does not exist. This commit is what gives the base
+       * branch existence — it records nobody's work.
+       */
+      await git.run(
+        [
+          "-c",
+          "user.name=Spline",
+          "-c",
+          "user.email=spline@localhost",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "Start tracking this project",
+        ],
+        workdir,
+      );
+      // `-M` after the fact rather than `init -b`: that flag needs git 2.28.
+      await git.run(["branch", "-M", request.baseBranch], workdir);
     } else {
       /**
-       * No origin and nothing there: a repository that starts here. Refused
-       * rather than invented — `git init` on a path somebody expected to hold
-       * their project would silently produce an empty one, and the agent
-       * would report an empty project as the truth.
+       * Nothing on disk, no address, and no path an operator named — nowhere
+       * to put anything. Refused rather than invented: a repository this
+       * machine chose the location of is one nobody will find again.
        */
       return {
         isFailure: true,
         error:
-          `there is no repository at ${workdir} and no origin to fetch one ` +
-          "from — register the repository with its address, or point it at a " +
-          "clone this machine already has",
+          "this project has no address to clone from and no path to live at " +
+          "— give it one of the two",
       };
     }
 
@@ -180,7 +220,21 @@ export async function prepareCheckout(
     try {
       await git.run(["checkout", request.branch], workdir);
     } catch {
-      await git.run(["checkout", "-b", request.branch, `origin/${request.baseBranch}`], workdir);
+      /**
+       * Off the remote's base branch when there is a remote, off the local
+       * one when there is not. A project nobody has pushed has no
+       * `origin/main` to branch from, and asking for one would fail on the
+       * first task of exactly the case this supports.
+       */
+      await git.run(
+        [
+          "checkout",
+          "-b",
+          request.branch,
+          hasRemote ? `origin/${request.baseBranch}` : request.baseBranch,
+        ],
+        workdir,
+      );
     }
 
     /**
@@ -194,14 +248,21 @@ export async function prepareCheckout(
      * `--rebase` rather than a merge: a merge commit per catch-up would bury
      * the history under bookkeeping nobody reads.
      */
-    await git.run(["pull", "--rebase", "origin", request.branch], workdir).catch(async () => {
-      // No upstream branch yet: nothing to take, and the push below creates
-      // it. Not an error, and refusing here would stop a first task dead.
-      await git.run(["rev-parse", "--abbrev-ref", "HEAD"], workdir);
-    });
-    await git
-      .run(["push", "--set-upstream", "origin", request.branch], workdir)
-      .catch(() => undefined);
+    /**
+     * Only when there is a remote. A project that lives on one machine and
+     * nowhere else has nothing to be level with — every agent working on it
+     * is on that machine, sharing that checkout, and the coordination is the
+     * locks' job rather than git's.
+     */
+    if (hasRemote) {
+      await git.run(["pull", "--rebase", "origin", request.branch], workdir).catch(() => {
+        // No upstream branch yet: nothing to take, and the push below creates
+        // it. Not an error, and refusing here would stop a first task dead.
+      });
+      await git
+        .run(["push", "--set-upstream", "origin", request.branch], workdir)
+        .catch(() => undefined);
+    }
   } catch (error) {
     return { isFailure: true, error: `could not prepare the checkout: ${String(error)}` };
   }
