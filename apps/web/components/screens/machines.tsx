@@ -13,6 +13,7 @@ import {
 
 import { api } from "@/lib/api";
 import { collapse, type WaitingMachine } from "@/lib/enrolments";
+import { type FleetView } from "@/lib/api";
 import { humanise, since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { useOrganizationId, useSession } from "@/lib/store";
@@ -56,6 +57,12 @@ export function Machines() {
     [organizationId],
     { pollMs: 10_000, enabled: Boolean(organizationId) },
   );
+  // §6.3 — everything this organization owns, so a workspace with none has
+  // somewhere to go other than "pair it again".
+  const fleet = useResource(() => api.fleet(organizationId!), [organizationId], {
+    pollMs: 20_000,
+    enabled: Boolean(organizationId),
+  });
   const { run: act, pending, error } = useAction();
 
   const reloadAll = () => {
@@ -63,6 +70,7 @@ export function Machines() {
     sessions.reload();
     commands.reload();
     enrolments.reload();
+    fleet.reload();
   };
 
   const all = workers.data ?? [];
@@ -71,7 +79,15 @@ export function Machines() {
   const queued = (commands.data ?? []).filter(
     (command) => command.status === "PENDING" || command.status === "CLAIMED",
   ).length;
-  const waiting = collapse(enrolments.data ?? []);
+  // An expired request is not something anybody can act on: the code it is
+  // waiting for stopped working, and counting it as "at the door" sends an
+  // operator hunting for a code that can never be accepted.
+  const asking = collapse(enrolments.data ?? []);
+  const waiting = asking.filter((machine) => !machine.expired);
+  const stale = asking.filter((machine) => machine.expired);
+  const elsewhere = (fleet.data ?? []).filter(
+    (machine) => !machine.serves.includes(workspaceId),
+  );
   const pagedWorkers = usePaged(all);
   const pagedSessions = usePaged(sessions.data ?? []);
   const pagedCommands = usePaged(commands.data ?? []);
@@ -132,11 +148,25 @@ export function Machines() {
           value={waiting.length}
           icon={KeyRound}
           tone={waiting.length ? "waiting" : "quiet"}
-          hint={waiting.length ? "needs your code" : "nobody waiting"}
+          hint={
+            waiting.length
+              ? "needs your code"
+              : stale.length
+                ? `${stale.length} asked too long ago to still count`
+                : "nobody waiting"
+          }
         />
       </StatRow>
 
-      <Pairing waiting={waiting} organizationId={organizationId} onDone={reloadAll} />
+      <Pairing waiting={waiting} stale={stale} organizationId={organizationId} onDone={reloadAll} />
+
+      <Attach
+        machines={elsewhere}
+        pending={pending}
+        onAttach={(workerId) =>
+          void act(() => api.runtime.attachWorker(workspaceId, workerId), reloadAll)
+        }
+      />
 
       <Section title="Paired machines" count={all.length}>
         {workers.loading ? <Loading rows={2} /> : null}
@@ -311,17 +341,33 @@ export function Machines() {
  */
 function Pairing({
   waiting,
+  stale,
   organizationId,
   onDone,
 }: {
   waiting: WaitingMachine[];
+  stale: WaitingMachine[];
   organizationId: string | null;
   onDone: () => void;
 }) {
   const [code, setCode] = useState("");
   const { run, pending, error } = useAction();
 
-  if (waiting.length === 0) return null;
+  if (waiting.length === 0) {
+    // Requests whose window closed are shown, and shown as dead — hiding them
+    // would leave an operator wondering where their machine went, and
+    // offering a code box for them would waste their time.
+    return stale.length === 0 ? null : (
+      <Section title="Asked too long ago" count={stale.length}>
+        <Note tone="quiet">
+          {stale.map((machine) => machine.hostname).join(", ")} asked to be
+          paired, but the code stopped being valid. Nothing here can be typed:
+          restart the worker on that machine for a fresh one — or, if it is
+          already paired, attach it below instead.
+        </Note>
+      </Section>
+    );
+  }
 
   return (
     <Section title="Waiting to be paired" count={waiting.length}>
@@ -394,6 +440,61 @@ function Pairing({
           <Note>{error}</Note>
         </div>
       ) : null}
+    </Section>
+  );
+}
+
+/**
+ * §6.10 — a machine you already own, brought to this workspace.
+ *
+ * Approving an enrolment binds a machine to the ORGANIZATION. Serving a
+ * workspace is a second act, and without this the second one had no button:
+ * a new workspace listed nothing, and the only thing on screen was a pairing
+ * form, which is why somebody would try to pair a machine twice.
+ */
+function Attach({
+  machines,
+  pending,
+  onAttach,
+}: {
+  machines: FleetView[];
+  pending: boolean;
+  onAttach: (workerId: string) => void;
+}) {
+  if (machines.length === 0) return null;
+
+  return (
+    <Section title="Your other machines" count={machines.length}>
+      <div className="mb-3">
+        <Note tone="quiet">
+          These are already paired with your organization. Pairing them again
+          is not possible and not needed — attaching is the second act, and
+          this is it.
+        </Note>
+      </div>
+      <Panel>
+        {machines.map((machine) => (
+          <Row key={machine.id}>
+            <Stripe tone={toneOf(machine.status)} />
+            <span className="flex-1 text-sm font-medium">{machine.hostname}</span>
+            <span className="measure text-muted-foreground text-xs">
+              {machine.operatingSystem}/{machine.architecture}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {machine.capabilities.join(", ") || "declares nothing"}
+            </span>
+            <span className="text-muted-foreground w-32 text-right text-xs">
+              {machine.serves.length === 0
+                ? "serves no workspace"
+                : `serves ${machine.serves.length} other${machine.serves.length === 1 ? "" : "s"}`}
+            </span>
+            <Button size="sm" disabled={pending} onClick={() => onAttach(machine.id)}>
+              <Plug />
+              Attach here
+            </Button>
+          </Row>
+        ))}
+      </Panel>
     </Section>
   );
 }

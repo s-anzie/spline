@@ -10,6 +10,12 @@ export interface WorkerStore {
   findByHostname(hostname: string): Promise<WorkerNode | null>;
   /** Machines serving one workspace — the only list a workspace may read. */
   listForWorkspace(workspaceId: string, limit?: number): Promise<WorkerNode[]>;
+  /**
+   * §6.3 — the machines an organization owns, whichever workspaces they serve
+   * (including none). Named by the actors that registered them, because that
+   * is what a credential binds.
+   */
+  listRegisteredBy(actorIds: readonly string[], limit?: number): Promise<WorkerNode[]>;
 }
 export const WORKER_STORE = "runtime/WorkerStore";
 
@@ -66,6 +72,6 @@ export interface EnrolmentStore {
    * an expired request is listed and shown as expired rather than hidden.
    * A request nobody can see is a request nobody can reject.
    */
-  listPending(limit?: number): Promise<WorkerEnrolment[]>;
+  listPending(organizationId: string, limit?: number): Promise<WorkerEnrolment[]>;
 }
 export const ENROLMENT_STORE = "runtime/EnrolmentStore";

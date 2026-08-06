@@ -62,12 +62,23 @@ describe("Worker enrolment (e2e)", () => {
     };
   }
 
-  /** What the daemon does at startup when it holds no token. */
-  async function knock(deviceId = "device-abc", capabilities = ["docker"]) {
+  /**
+   * What the daemon does at startup when it holds no token.
+   *
+   * §18 — it names the organization it was configured to join. Without that
+   * the request is listed to nobody and can be approved by nobody, which is
+   * the safe default and makes this the realistic call.
+   */
+  async function knock(
+    organizationId: string,
+    deviceId = "device-abc",
+    capabilities = ["docker"],
+  ) {
     const asked = await request(http)
       .post("/runtime/enrolments")
       .send({
         deviceId,
+        organizationId,
         hostname: "workshop-01",
         architecture: "x86_64",
         operatingSystem: "linux",
@@ -79,7 +90,7 @@ describe("Worker enrolment (e2e)", () => {
 
   it("pairs a machine: it asks, an owner approves, it collects its token", async () => {
     const o = await owner("owner@example.com");
-    const asked = await knock();
+    const asked = await knock(o.organizationId);
 
     // The code is what the machine printed on its own console.
     expect(asked.code).toHaveLength(8);
@@ -111,7 +122,7 @@ describe("Worker enrolment (e2e)", () => {
   /** The point of the whole flow: a token that actually works. */
   it("hands over a token the machine can immediately register with", async () => {
     const o = await owner("owner@example.com");
-    const asked = await knock();
+    const asked = await knock(o.organizationId);
     await o
       .auth(request(http).post(`/organizations/${o.organizationId}/enrolments/decide`))
       .send({ code: asked.code })
@@ -134,7 +145,8 @@ describe("Worker enrolment (e2e)", () => {
      * reads as a state to retry, not as a refusal to give up on.
      */
     it("refuses to hand a token to an unapproved request", async () => {
-      const asked = await knock();
+      const o = await owner("owner@example.com");
+      const asked = await knock(o.organizationId);
 
       await request(http)
         .post(`/runtime/enrolments/${asked.enrolmentId}/claim`)
@@ -144,7 +156,7 @@ describe("Worker enrolment (e2e)", () => {
 
     it("refuses a claim from a machine that did not make the request", async () => {
       const o = await owner("owner@example.com");
-      const asked = await knock();
+      const asked = await knock(o.organizationId);
       await o
         .auth(request(http).post(`/organizations/${o.organizationId}/enrolments/decide`))
         .send({ code: asked.code })
@@ -159,7 +171,7 @@ describe("Worker enrolment (e2e)", () => {
 
     it("hands a token over exactly once", async () => {
       const o = await owner("owner@example.com");
-      const asked = await knock();
+      const asked = await knock(o.organizationId);
       await o
         .auth(request(http).post(`/organizations/${o.organizationId}/enrolments/decide`))
         .send({ code: asked.code })
@@ -177,7 +189,7 @@ describe("Worker enrolment (e2e)", () => {
 
     it("can be rejected, and a rejected request never becomes a token", async () => {
       const o = await owner("owner@example.com");
-      const asked = await knock();
+      const asked = await knock(o.organizationId);
 
       await o
         .auth(request(http).post(`/organizations/${o.organizationId}/enrolments/decide`))
@@ -195,7 +207,7 @@ describe("Worker enrolment (e2e)", () => {
     it("refuses anyone who is not the organization's owner", async () => {
       const mine = await owner("mine@example.com");
       const theirs = await owner("theirs@example.com");
-      const asked = await knock();
+      const asked = await knock(mine.organizationId);
 
       await theirs
         .auth(request(http).post(`/organizations/${mine.organizationId}/enrolments/decide`))
@@ -209,7 +221,7 @@ describe("Worker enrolment (e2e)", () => {
 
     it("refuses an unauthenticated decision outright", async () => {
       const o = await owner("owner@example.com");
-      const asked = await knock();
+      const asked = await knock(o.organizationId);
 
       await request(http)
         .post(`/organizations/${o.organizationId}/enrolments/decide`)

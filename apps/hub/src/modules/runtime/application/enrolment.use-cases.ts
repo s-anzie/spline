@@ -20,6 +20,7 @@ import {
 import {
   EnrolmentNotClaimableError,
   EnrolmentNotFoundError,
+  EnrolmentNotYoursError,
 } from "../domain/runtime.errors";
 import { WorkerEnrolment } from "../domain/worker-enrolment";
 
@@ -41,6 +42,8 @@ function generateCode(): string {
 
 export interface RequestEnrolmentInput {
   deviceId: string;
+  /** §18 — the organization this machine was configured to knock for. */
+  organizationId?: string;
   hostname: string;
   architecture: string;
   operatingSystem: string;
@@ -75,7 +78,14 @@ export class RequestEnrolmentUseCase
     input: RequestEnrolmentInput,
   ): Promise<Result<RequestEnrolmentOutput, GuardViolation>> {
     const now = this.clock.now();
-    const enrolment = WorkerEnrolment.request({ ...input, code: generateCode(), now });
+    const enrolment = WorkerEnrolment.request({
+      ...input,
+      // The machine's declaration, kept apart from `organizationId`, which is
+      // what it ends up JOINING once somebody approves it.
+      requestedOrganizationId: input.organizationId ?? null,
+      code: generateCode(),
+      now,
+    });
     if (enrolment.isFailure) {
       return Result.fail(enrolment.error);
     }
@@ -102,6 +112,7 @@ export interface DecideEnrolmentInput {
 
 export type DecideEnrolmentError =
   | EnrolmentNotFoundError
+  | EnrolmentNotYoursError
   | EnrolmentNotClaimableError
   | InvalidStateTransitionError;
 
@@ -127,6 +138,15 @@ export class DecideEnrolmentUseCase
     const enrolment = await this.enrolments.findByCode(input.code.trim().toUpperCase());
     if (!enrolment) {
       return Result.fail(new EnrolmentNotFoundError(input.code));
+    }
+
+    /**
+     * §18 — a request that named an organization may only be decided by that
+     * one. Checked before the aggregate is touched, so a refusal leaves
+     * nothing half-changed.
+     */
+    if (!enrolment.wasKnockingFor(input.organizationId)) {
+      return Result.fail(new EnrolmentNotYoursError());
     }
 
     const now = this.clock.now();

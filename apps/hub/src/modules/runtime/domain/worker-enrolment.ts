@@ -71,6 +71,13 @@ interface EnrolmentProps {
    * be letting it choose. The owner who approves is the one who knows.
    */
   organizationId: string | null;
+  /**
+   * §18 — the organization this machine asked to join, declared by the
+   * machine when it knocked. Null means it named nobody, and a machine that
+   * names nobody is listed by nobody: the safe default is invisible, not
+   * visible to everyone.
+   */
+  requestedOrganizationId: string | null;
   hostname: string;
   architecture: string;
   operatingSystem: string;
@@ -95,6 +102,8 @@ interface EnrolmentProps {
 
 export interface RequestEnrolmentProps {
   deviceId: string;
+  /** §18 — the organization the machine was configured to join, if any. */
+  requestedOrganizationId?: string | null;
   hostname: string;
   architecture: string;
   operatingSystem: string;
@@ -141,6 +150,7 @@ export class WorkerEnrolment extends AggregateRoot<EnrolmentProps> {
       {
         deviceId: input.deviceId.trim(),
         organizationId: null,
+        requestedOrganizationId: input.requestedOrganizationId ?? null,
         hostname: input.hostname.trim(),
         architecture: input.architecture.trim(),
         operatingSystem: input.operatingSystem.trim(),
@@ -170,6 +180,22 @@ export class WorkerEnrolment extends AggregateRoot<EnrolmentProps> {
 
   get organizationId(): string | null {
     return this.props.organizationId;
+  }
+
+  get requestedOrganizationId(): string | null {
+    return this.props.requestedOrganizationId;
+  }
+
+  /**
+   * Whether this organization may decide on this request.
+   *
+   * The code proves the operator can SEE the machine; it does not make the
+   * machine theirs. A request that named an organization may only be decided
+   * by that one — otherwise holding a code that was read over a shoulder
+   * would be enough to adopt somebody else's computer.
+   */
+  wasKnockingFor(organizationId: string): boolean {
+    return this.props.requestedOrganizationId === organizationId;
   }
 
   get hostname(): string {

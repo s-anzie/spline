@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Building2,
   Check,
   ChevronsUpDown,
   LogOut,
@@ -11,6 +12,7 @@ import {
   Moon,
   Plus,
   Search,
+  SlidersHorizontal,
   Sun,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -36,7 +38,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { email, workspaceId, workspaces, chooseWorkspace, logOut } = useSession();
+  const { email, displayName, workspaceId, workspaces, chooseWorkspace, logOut } =
+    useSession();
   const pathname = usePathname();
   const router = useRouter();
   const organizationId = useOrganizationId();
@@ -96,7 +99,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   <ChevronsUpDown className="text-muted-foreground size-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent align="start" className="w-60">
                 <DropdownMenuLabel className="label">
                   Workspaces
                 </DropdownMenuLabel>
@@ -210,17 +213,43 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 type="button"
                 className="hover:bg-sidebar-accent flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors"
               >
-                <Initials name={email ?? "?"} />
-                <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                  {email}
+                <Initials name={displayName ?? email ?? "?"} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {displayName ?? email}
+                  </span>
+                  {displayName ? (
+                    <span className="text-muted-foreground block truncate text-xs">
+                      {email}
+                    </span>
+                  ) : null}
                 </span>
-                <ChevronsUpDown className="text-muted-foreground size-3.5" />
+                <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top" className="w-56">
-              <ThemeItems />
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={logOut} className="gap-2">
+            {/* The trigger already carries the name and the email; repeating
+                them at the top of the menu it opened is furniture. */}
+            <DropdownMenuContent align="start" side="top" className="w-64 p-1.5">
+              {/**
+               * §18 — the organization owns the machines, the agents and every
+               * workspace. Created silently at sign-up, it appeared nowhere,
+               * which made "your machines" a phrase with no referent. It
+               * belongs beside the account rather than beside a workspace: it
+               * is not something you switch between.
+               */}
+              <OrganizationLine />
+
+              <DropdownMenuSeparator className="mx-0 my-1.5" />
+              <ThemeChoice />
+
+              <DropdownMenuSeparator className="mx-0 my-1.5" />
+              <DropdownMenuItem asChild className="gap-2 px-2">
+                <Link href={routes.settings}>
+                  <SlidersHorizontal className="size-3.5" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={logOut} className="gap-2 px-2">
                 <LogOut className="size-3.5" />
                 Sign out
               </DropdownMenuItem>
@@ -327,28 +356,60 @@ function ThemeToggle() {
   );
 }
 
-function ThemeItems() {
+/**
+ * Three mutually exclusive options, shown as one control.
+ *
+ * As three menu rows they read like three separate commands and the current
+ * one is a tick you have to hunt for. As a segment, the choice and the state
+ * are the same object — and it does not dismiss the menu on every press,
+ * which is what made trying the other two tedious.
+ */
+function ThemeChoice() {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  // `theme` is undefined until the client resolves it; rendering a selection
+  // before then briefly marks the wrong one.
+  useEffect(() => setMounted(true), []);
+
   const options = [
     { value: "light", label: "Light", icon: Sun },
     { value: "dark", label: "Dark", icon: Moon },
     { value: "system", label: "System", icon: Monitor },
   ];
+
   return (
-    <>
-      <DropdownMenuLabel className="label">Appearance</DropdownMenuLabel>
-      {options.map((option) => (
-        <DropdownMenuItem
-          key={option.value}
-          onSelect={() => setTheme(option.value)}
-          className="gap-2"
-        >
-          <option.icon className="size-3.5" />
-          <span className="flex-1">{option.label}</span>
-          {theme === option.value ? <Check className="size-3.5" /> : null}
-        </DropdownMenuItem>
-      ))}
-    </>
+    <div className="px-2 py-1.5">
+      <p className="label mb-1.5">Appearance</p>
+      <div className="bg-muted flex gap-0.5 rounded-md p-0.5">
+        {options.map((option) => {
+          const active = mounted && theme === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={active}
+              title={option.label}
+              onClick={(event) => {
+                // Keep the menu open: a theme is something you compare, and a
+                // menu that dismisses makes you reopen it for every try.
+                event.preventDefault();
+                event.stopPropagation();
+                setTheme(option.value);
+              }}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-sm py-1 text-xs font-medium transition-colors",
+                active
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <option.icon className="size-3.5 shrink-0" strokeWidth={1.75} />
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -398,4 +459,38 @@ function Spool() {
 function detailOf(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
   return segments.length > 1 ? (segments[1]?.slice(0, 8) ?? null) : null;
+}
+
+/**
+ * The organization, named and renameable.
+ *
+ * Registering creates one from the person's own display name — a sensible
+ * default and a poor label the moment a second person joins. It owns the
+ * machines and the agents, so it has to be something an operator can see and
+ * say; otherwise "your machines" refers to nothing they recognise.
+ */
+/**
+ * The organization, stated. Not edited here.
+ *
+ * §18 — it owns the machines, the agents and every workspace, and it appeared
+ * nowhere, which made "your machines" a phrase with no referent on screen. A
+ * menu is for reading what is true and for going somewhere: a text field
+ * inside one has the lifetime of a hover, and buries a setting where nobody
+ * looks for it twice. Editing lives on the settings page.
+ */
+function OrganizationLine() {
+  const organization = useSession((state) => state.organizations[0]);
+  if (!organization) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5">
+      <Building2 className="text-muted-foreground size-4 shrink-0" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{organization.name}</span>
+        <span className="text-muted-foreground block text-xs">
+          owns your machines and agents
+        </span>
+      </span>
+    </div>
+  );
 }

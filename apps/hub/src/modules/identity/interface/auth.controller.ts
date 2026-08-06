@@ -3,9 +3,12 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   Inject,
   HttpCode,
+  NotFoundException,
+  Patch,
   Post,
   UnauthorizedException,
   UseGuards,
@@ -22,7 +25,7 @@ import {
 } from "../domain/ports/identity.repository.ports";
 import { ActorAuthGuard } from "./actor-auth.guard";
 import { CurrentActor } from "./current-actor.decorator";
-import { LoginDto, RegisterDto } from "./dto/auth.dtos";
+import { LoginDto, RegisterDto, UpdateProfileDto } from "./dto/auth.dtos";
 
 /**
  * The two routes a stranger may call without a token, which is exactly what
@@ -76,6 +79,38 @@ export class AuthController {
       throw new UnauthorizedException(result.error.message);
     }
     return result.value;
+  }
+
+  /**
+   * §4 — a person corrects their own name.
+   *
+   * Only their own, and only the name: the email is what they sign in with,
+   * and moving it needs proof of the new address before it starts working.
+   * A non-human actor has no profile to edit — it is named by whoever issued
+   * its credential, in the registry (§18.2).
+   */
+  @Patch("me")
+  @HttpCode(200)
+  @UseGuards(ActorAuthGuard)
+  async updateProfile(
+    @CurrentActor() actor: ActorIdentity,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<{ ok: true }> {
+    if (actor.actorType !== "HUMAN") {
+      throw new ForbiddenException(
+        "Only a person has a profile. Non-human actors are named by whoever issued them",
+      );
+    }
+    const user = await this.users.findById(actor.actorId);
+    if (!user) {
+      throw new NotFoundException("This account no longer exists");
+    }
+    const renamed = user.rename(dto.displayName);
+    if (renamed.isFailure) {
+      throw new BadRequestException(renamed.error.message);
+    }
+    await this.users.save(user);
+    return { ok: true };
   }
 
   /**

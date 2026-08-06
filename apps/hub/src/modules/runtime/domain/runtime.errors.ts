@@ -52,6 +52,24 @@ export class EnrolmentNotFoundError extends EntityNotFoundError {
  * holds: the code expired, the decision was already made, or the caller is
  * not the machine that asked.
  */
+/**
+ * §18 — the code proves you can SEE the machine; it does not make it yours.
+ *
+ * Without this, a code read over a shoulder — or shouted across an open-plan
+ * office — would be enough to adopt somebody else's computer into your own
+ * organization, credential and all.
+ */
+export class EnrolmentNotYoursError extends DomainError {
+  readonly name = "EnrolmentNotYoursError";
+
+  constructor() {
+    super(
+      "This machine asked to join a different organization. Reconfigure it " +
+        "with yours and restart it, and it will knock here instead (§18).",
+    );
+  }
+}
+
 export class EnrolmentNotClaimableError extends DomainError {
   constructor(reason: string) {
     super(`This enrolment cannot be used: ${reason}`);

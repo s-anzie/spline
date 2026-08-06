@@ -73,6 +73,21 @@ export class PrismaWorkerStore implements WorkerStore {
     });
     return rows.map(toWorker).filter((worker) => worker.serves(workspaceId));
   }
+
+  async listRegisteredBy(
+    actorIds: readonly string[],
+    limit?: number,
+  ): Promise<WorkerNode[]> {
+    if (actorIds.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.workerNode.findMany({
+      where: { registeredById: { in: [...actorIds] } },
+      orderBy: { hostname: "asc" },
+      take: pageSize(limit),
+    });
+    return rows.map(toWorker);
+  }
 }
 
 @Injectable()
@@ -310,6 +325,7 @@ export class PrismaEnrolmentStore implements EnrolmentStore {
     const data = {
       deviceId: enrolment.deviceId,
       organizationId: enrolment.organizationId,
+      requestedOrganizationId: enrolment.requestedOrganizationId,
       hostname: enrolment.hostname,
       architecture: enrolment.architecture,
       operatingSystem: enrolment.operatingSystem,
@@ -338,9 +354,20 @@ export class PrismaEnrolmentStore implements EnrolmentStore {
     return row ? toEnrolment(row) : null;
   }
 
-  async listPending(limit?: number): Promise<WorkerEnrolment[]> {
+  /**
+   * §18 — only the machines that knocked for THIS organization.
+   *
+   * This used to be `where: { status: "PENDING" }`, which handed every
+   * operator the hostnames, operating systems and declared capabilities of
+   * every other operator's machines. Approval always needed the code, so
+   * nothing could be taken; but the list itself was somebody else's business.
+   */
+  async listPending(
+    organizationId: string,
+    limit?: number,
+  ): Promise<WorkerEnrolment[]> {
     const rows = await this.prisma.workerEnrolment.findMany({
-      where: { status: "PENDING" },
+      where: { status: "PENDING", requestedOrganizationId: organizationId },
       orderBy: { requestedAt: "asc" },
       take: pageSize(limit),
     });
@@ -353,6 +380,7 @@ function toEnrolment(row: EnrolmentRow): WorkerEnrolment {
     {
       deviceId: row.deviceId,
       organizationId: row.organizationId,
+      requestedOrganizationId: row.requestedOrganizationId,
       hostname: row.hostname,
       architecture: row.architecture,
       operatingSystem: row.operatingSystem,

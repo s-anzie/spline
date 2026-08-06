@@ -34,6 +34,8 @@ export const routes = {
   threads: "/threads",
   thread: (threadId: string) => `/threads/${threadId}`,
   workspace: "/workspace",
+  /** Account-wide, not workspace-scoped: reached from the account menu. */
+  settings: "/settings",
 } as const;
 
 export interface NavItem {
@@ -121,11 +123,20 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
 
 const ALL = NAV.flatMap((group) => group.items);
 
+/**
+ * Pages that are reachable but not in the rail. Without them the top bar
+ * falls back to the product's name, which tells a reader nothing about where
+ * they are.
+ */
+const ASIDE: { href: string; label: string }[] = [
+  { href: routes.settings, label: "Settings" },
+];
+
 /** The heading shown in the top bar. Longest match wins, so `/runs/abc` is a run. */
 export function titleFor(pathname: string): string {
-  const match = ALL.filter((item) => pathname.startsWith(item.href)).sort(
-    (left, right) => right.href.length - left.href.length,
-  )[0];
+  const match = [...ALL, ...ASIDE]
+    .filter((item) => pathname.startsWith(item.href))
+    .sort((left, right) => right.href.length - left.href.length)[0];
   return match?.label ?? "Spline";
 }
 

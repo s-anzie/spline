@@ -131,10 +131,16 @@ export class EnrolmentDecisionController {
   ) {}
 
   /**
-   * Pending requests are global, not per organization: a machine has not been
-   * assigned to one yet, and cannot be until somebody approves it. What is
-   * scoped is the DECISION — and the code is what proves the operator is
-   * looking at the right machine, which is why the list never shows it.
+   * §18 — the machines that knocked for THIS organization, and no others.
+   *
+   * This list used to be global, on the reasoning that a machine belongs to
+   * nobody until it is approved. The reasoning held; the consequence did not.
+   * It handed every operator the hostnames, operating systems and declared
+   * capabilities of everybody else's machines. A machine now says who it is
+   * knocking for, and one that names nobody is listed by nobody.
+   *
+   * The code is still never shown: it is what proves the operator is looking
+   * at the machine they are about to let in.
    */
   @Get()
   async listPending(
@@ -144,7 +150,9 @@ export class EnrolmentDecisionController {
   ): Promise<EnrolmentView[]> {
     await this.requireOwner(actor, organizationId);
     const now = this.clock.now();
-    return (await this.enrolments.listPending(query.limit)).map((enrolment) => ({
+    return (
+      await this.enrolments.listPending(organizationId, query.limit)
+    ).map((enrolment) => ({
       enrolmentId: enrolment.id.value,
       hostname: enrolment.hostname,
       architecture: enrolment.architecture,
@@ -173,6 +181,7 @@ export class EnrolmentDecisionController {
     if (result.isFailure) {
       throw toHttpException(result.error, {
         conflicts: ["EnrolmentNotClaimableError"],
+        forbidden: ["EnrolmentNotYoursError"],
       });
     }
     return result.value;

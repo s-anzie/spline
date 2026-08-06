@@ -278,6 +278,20 @@ export class RequestEnrolmentDto {
   @MaxLength(200)
   deviceId!: string;
 
+  /**
+   * §18 — the organization this machine was configured to join.
+   *
+   * Optional at the type level and effectively required in practice: a
+   * machine that names nobody is listed by nobody, which is the safe default.
+   * Naming somebody else's organization gains nothing — approving still needs
+   * the code, which only this machine's own console shows.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  organizationId?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

@@ -990,8 +990,14 @@ model WorkerEnrolment {
   /// Generated and kept by the machine, never by the hub: knowing the
   /// enrolment id is not enough to claim it, you must be the machine.
   deviceId String
-  /// Assigned at approval — a machine cannot know which organization it joins.
+  /// Assigned at approval — the organization this machine ended up joining.
   organizationId  String?
+  /// §18 — who it knocked FOR, declared by the machine itself and set when it
+  /// asks. Without it the pending list had to be global, which showed every
+  /// operator's hostnames and capabilities to every other operator. Nullable
+  /// because a machine may name nobody — and is then listed by nobody, which
+  /// is the safe default rather than a fallback to "everyone".
+  requestedOrganizationId String?
   hostname        String
   architecture    String
   operatingSystem String
@@ -1008,6 +1014,7 @@ model WorkerEnrolment {
 
   @@unique([code])
   @@index([status])
+  @@index([requestedOrganizationId, status])
   @@index([organizationId])
   @@map("worker_enrolments")
 }

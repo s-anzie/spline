@@ -41,3 +41,10 @@ export class LoginDto {
   @MaxLength(MAX_PASSWORD_LENGTH)
   password!: string;
 }
+
+export class UpdateProfileDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  displayName!: string;
+}

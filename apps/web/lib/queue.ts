@@ -32,6 +32,13 @@ export interface Intervention {
   href: string | null;
   /** Sorts the queue: what has waited longest is most likely forgotten. */
   since: string | null;
+  /**
+   * False when the entry is worth SEEING but cannot be acted on — an
+   * enrolment whose code expired, for instance. Shown, never counted: §17.8
+   * forbids hiding it, and counting it sends somebody hunting for an action
+   * that does not exist.
+   */
+  actionable: boolean;
   /** Set on entries whose whole resolution fits on this screen. */
   inline?: "approve-machine";
 }
@@ -77,6 +84,7 @@ export async function loadQueue(
               : ""),
         href: routes.machines,
         since: machine.since,
+        actionable: !machine.expired,
         ...(machine.expired ? {} : { inline: "approve-machine" as const }),
       });
     }
@@ -93,6 +101,7 @@ export async function loadQueue(
         detail: `task ${run.taskId.slice(0, 8)} · ${run.attempts[0]?.provider ?? "?"} · $${cost.toFixed(4)} over ${run.attempts.length} attempt${run.attempts.length === 1 ? "" : "s"}`,
         href: routes.run(run.runId),
         since: run.startedAt,
+        actionable: true,
       });
     }
   }
@@ -108,6 +117,7 @@ export async function loadQueue(
         detail: open[0]?.description ?? "blocked, with no reason recorded",
         href: routes.task(task.id),
         since: open[0]?.reportedAt ?? null,
+        actionable: true,
       });
     }
   }
@@ -118,13 +128,21 @@ export async function loadQueue(
    */
   if (checkIns.ok) {
     for (const entry of checkIns.value) {
+      // Never assigned anything is not the same as fell silent. The hub
+      // reports both through one signal, correctly — §9.16 fires when nothing
+      // is wrong — but calling a colleague who joined this morning "quiet"
+      // is how a queue teaches people to stop reading it.
+      const neverGiven = entry.silentForMs === null;
       queue.push({
         key: `silent:${entry.actor.type}:${entry.actor.id}`,
         kind: "silent",
-        title: `${name(entry.actor)} has gone quiet`,
+        title: neverGiven
+          ? `${name(entry.actor)} has never been given anything`
+          : `${name(entry.actor)} has gone quiet`,
         detail: entry.reason,
         href: routes.activity,
         since: null,
+        actionable: !neverGiven,
       });
     }
   }
@@ -139,6 +157,7 @@ export async function loadQueue(
         detail: `held by ${command.claimedBy?.slice(0, 8) ?? "nobody"} on machine ${command.workerId.slice(0, 8)}`,
         href: routes.machines,
         since: null,
+        actionable: true,
       });
     }
   }

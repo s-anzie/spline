@@ -162,7 +162,11 @@ function QueueRow({ entry, onDone }: { entry: Intervention; onDone: () => void }
 
   return (
     <div className="hover:bg-accent/40 flex items-stretch gap-3 px-4 py-3.5 transition-colors">
-      <Stripe tone={kind.tone} live={entry.kind === "silent"} />
+      {/* An entry nobody can act on is shown, and shown as inert. */}
+      <Stripe
+        tone={entry.actionable ? kind.tone : "quiet"}
+        live={entry.actionable && entry.kind === "silent"}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2.5">
           <span className="label flex shrink-0 items-center gap-1.5">

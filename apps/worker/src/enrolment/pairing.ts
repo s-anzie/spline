@@ -1,5 +1,11 @@
 export interface EnrolmentRequest {
   deviceId: string;
+  /**
+   * §18 — the organization this machine was configured to join. Sent so the
+   * hub can list this request to its owner and to nobody else; a machine that
+   * names nobody appears in no list at all.
+   */
+  organizationId?: string;
   hostname: string;
   architecture: string;
   operatingSystem: string;
@@ -96,8 +102,19 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
     "",
     `    PAIRING CODE:  ${ticket.code}`,
     "",
-    "    Approve it from the hub, as the owner of the organization",
-    "    this machine should join:",
+    ...(deps.machine.organizationId
+      ? [
+          "    Approve it from the console, as the owner of the organization",
+          "    this machine asked to join. It is listed there, and nowhere else.",
+        ]
+      : [
+          // §18 — a machine that named nobody is listed by nobody. Saying so
+          // here is the difference between a setup step and a mystery.
+          "    WARNING: no organization is configured on this machine, so it",
+          "    appears in NOBODY's list of machines waiting to be paired.",
+          "    Set WORKER_ORGANIZATION_ID and restart, or approve it by code",
+          "    directly:",
+        ]),
     "",
     `      POST /organizations/<id>/enrolments/decide  { "code": "${ticket.code}" }`,
     "",

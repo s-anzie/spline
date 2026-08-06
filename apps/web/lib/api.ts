@@ -14,6 +14,7 @@
  */
 
 import { hub, type HubResult } from "./hub";
+import type { Organization } from "./store";
 
 export interface Actor {
   type: string;
@@ -138,6 +139,25 @@ export interface ProviderView {
   quotaUnavailableUntil: string | null;
   quotaReason: string | null;
   effectiveAvailable: boolean;
+}
+
+/**
+ * §6.3 — a machine this organization owns, and the workspaces it serves.
+ *
+ * Distinct from `WorkerView`, which is a machine seen FROM a workspace it
+ * already serves. This one exists to answer the question that list cannot:
+ * what else do I have?
+ */
+export interface FleetView {
+  id: string;
+  hostname: string;
+  architecture: string;
+  operatingSystem: string;
+  capabilities: string[];
+  labels: string[];
+  status: string;
+  lastHeartbeatAt: string | null;
+  serves: string[];
 }
 
 export interface EnrolmentView {
@@ -393,11 +413,21 @@ export const api = {
   auth: {
     register: (body: { email: string; password: string; displayName: string }) =>
       hub.post<{ userId: string; organizationId: string }>("/auth/register", body),
+    me: () =>
+      hub.get<{
+        actorType: string;
+        actorId: string;
+        displayName: string | null;
+        email: string | null;
+      }>("/auth/me"),
+    /** The name, and only the name: the email is what you sign in with. */
+    rename: (displayName: string) => hub.patch("/auth/me", { displayName }),
   },
 
   organizations: {
-    create: (body: { name: string }) =>
-      hub.post<{ organizationId: string }>("/organizations", body),
+    list: () => hub.get<Organization[]>("/organizations"),
+    rename: (organizationId: string, name: string) =>
+      hub.patch(`/organizations/${organizationId}`, { name }),
   },
 
   workspaces: {
@@ -546,6 +576,10 @@ export const api = {
     recover: (workspace: string) =>
       hub.post(`/workspaces/${workspace}/runtime/recover`, {}),
   },
+
+  /** The operator's own machines, whichever workspaces they serve. */
+  fleet: (organizationId: string) =>
+    hub.get<FleetView[]>(`/organizations/${organizationId}/workers`),
 
   enrolments: {
     pending: (organizationId: string) =>

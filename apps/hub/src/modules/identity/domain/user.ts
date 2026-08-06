@@ -58,6 +58,23 @@ export class User extends AggregateRoot<UserProps> {
     return this.props.displayName;
   }
 
+  /**
+   * The name every member list, thread and assignee shows. It could not be
+   * changed, so a typo at sign-up followed somebody around forever.
+   *
+   * The email is not here on purpose: it is the identity somebody signs in
+   * with, and moving it needs proof of the new address before it starts
+   * working — a different act, not a longer version of this one.
+   */
+  rename(displayName: string): Result<void, GuardViolation> {
+    const guarded = Guard.againstEmpty(displayName, "displayName");
+    if (guarded.isFailure) {
+      return Result.fail(guarded.error);
+    }
+    this.props.displayName = guarded.value.trim();
+    return Result.ok(undefined);
+  }
+
   get createdAt(): Date {
     return this.props.createdAt;
   }

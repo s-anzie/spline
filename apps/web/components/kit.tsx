@@ -778,7 +778,17 @@ export function Picker<T extends string>({
           {selected?.label ?? placeholder}
         </span>
       </SelectTrigger>
-      <SelectContent>
+      {/**
+       * `popper`, not the default `item-aligned`.
+       *
+       * item-aligned positions the list so the SELECTED item lands over the
+       * trigger, which means measuring that item through `SelectValue`. This
+       * trigger renders its own label instead — so that measurement finds
+       * nothing and the list is dropped at the viewport edge, present in the
+       * DOM, `aria-expanded` true, and invisible. Anchoring to the trigger
+       * needs no such measurement.
+       */}
+      <SelectContent position="popper" sideOffset={4} className="max-h-72">
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             <span className="flex flex-col items-start gap-0.5">

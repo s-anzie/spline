@@ -24,6 +24,8 @@ export interface Workspace {
 
 interface SessionState {
   email: string | null;
+  /** What this person is called. `/auth/me` knows it; the login reply does not. */
+  displayName: string | null;
   userId: string | null;
   organizations: Organization[];
   workspaces: Workspace[];
@@ -48,6 +50,7 @@ interface SessionState {
  */
 export const useSession = create<SessionState>((set, get) => ({
   email: null,
+  displayName: null,
   userId: null,
   organizations: [],
   workspaces: [],
@@ -68,6 +71,12 @@ export const useSession = create<SessionState>((set, get) => ({
 
     setAccessToken(logged.value.accessToken);
     set({ email, userId: logged.value.userId });
+    // Who this is, in their own words. Asked separately because signing in
+    // answers with an id and a token, which is all it should answer with.
+    const me = await hub.get<{ displayName: string | null }>("/auth/me");
+    if (me.ok) {
+      set({ displayName: me.value.displayName });
+    }
     await get().refreshWorkspaces();
     set({ loading: false });
     return true;
@@ -77,6 +86,7 @@ export const useSession = create<SessionState>((set, get) => ({
     setAccessToken(null);
     set({
       email: null,
+      displayName: null,
       userId: null,
       organizations: [],
       workspaces: [],

@@ -27,6 +27,15 @@ export interface WorkerConfig {
    */
   workspaceRoot: string;
   hostname: string;
+  /**
+   * §18 — the organization this machine belongs to, and knocks for.
+   *
+   * A pairing request that names nobody is listed by nobody: the hub scopes
+   * its pending list by this, so that one operator never sees another's
+   * hostnames and capabilities. Absent is legal and means "I will not appear
+   * in anybody's list" — which is the safe default, not a working setup.
+   */
+  organizationId: string | null;
   heartbeatIntervalMs: number;
   /**
    * Declared, never detected: §9.9 makes a task assignable only to a
@@ -185,6 +194,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
       env.MCP_SERVER_PATH?.trim() || resolve(__dirname, "..", "mcp", "server.js"),
     workspaceRoot: env.WORKSPACE_ROOT?.trim() || defaultWorkspaceRoot(env),
     hostname: env.WORKER_HOSTNAME?.trim() || hostname(),
+    organizationId: env.WORKER_ORGANIZATION_ID?.trim() || null,
     heartbeatIntervalMs: interval,
     capabilities: list(env.WORKER_CAPABILITIES),
     labels: list(env.WORKER_LABELS),

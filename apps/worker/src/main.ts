@@ -39,6 +39,7 @@ async function credentialFor(
     hub,
     machine: {
       deviceId: identities.ensureDeviceId(),
+      ...(config.organizationId ? { organizationId: config.organizationId } : {}),
       hostname: config.hostname,
       architecture: arch(),
       operatingSystem: platform(),

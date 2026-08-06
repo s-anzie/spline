@@ -97,6 +97,10 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
   ],
   exports: [
     WORKSPACE_AUDIENCE_PROVIDER,
+    // For `OrganizationFleetAdapter` (§6.3): the credential set is the
+    // registry of non-human actors, so it is also the answer to "which
+    // machines does this organization own?".
+    ACTOR_CREDENTIAL_REPOSITORY,
     PermissionsService,
     ActorAuthGuard,
     PermissionsGuard,

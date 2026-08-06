@@ -35,6 +35,7 @@ import {
   EnrolmentDecisionController,
   EnrolmentDoorController,
 } from "./interface/enrolment.controller";
+import { OrganizationFleetController } from "./interface/organization-fleet.controller";
 import { RecoverCrashedSessionsUseCase } from "./application/recover-crashed-sessions.use-case";
 import { SessionHealthProbe } from "./infrastructure/session-health.probe";
 import { WorkerHealthProbe } from "./infrastructure/worker-health.probe";
@@ -65,6 +66,7 @@ import {
     WorkspaceRuntimeController,
     EnrolmentDoorController,
     EnrolmentDecisionController,
+    OrganizationFleetController,
   ],
   providers: [
     { provide: WORKER_STORE, useClass: PrismaWorkerStore },
