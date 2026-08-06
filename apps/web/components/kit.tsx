@@ -8,6 +8,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Eye,
+  EyeOff,
   Plus,
   X,
   type LucideIcon,
@@ -457,7 +459,14 @@ export function Payload({ value, open = false }: { value: unknown; open?: boolea
 
 /* ── Controls ────────────────────────────────────────────────────────────── */
 
-/** A labelled input. The label is always present — placeholders are not labels. */
+/**
+ * A labelled input. The label is always present — placeholders are not labels.
+ *
+ * A password field can be shown. Masking protects against somebody reading
+ * over a shoulder, which is a real risk but not a constant one; typing a long
+ * secret with no way to check it is a constant one. Hidden by default, and
+ * the toggle says which state it is in rather than only which way it goes.
+ */
 export function Field({
   label,
   value,
@@ -475,16 +484,34 @@ export function Field({
   autoFocus?: boolean;
   className?: string;
 }) {
+  const [shown, setShown] = useState(false);
+  const secret = type === "password";
+
   return (
     <div className={cn("grid gap-1.5", className)}>
       <Label className="label">{label}</Label>
-      <Input
-        type={type}
-        value={value}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <div className="relative">
+        <Input
+          type={secret && shown ? "text" : type}
+          value={value}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          className={secret ? "pr-9" : undefined}
+        />
+        {secret ? (
+          <button
+            type="button"
+            onClick={() => setShown((open) => !open)}
+            aria-label={shown ? "Hide the password" : "Show the password"}
+            aria-pressed={shown}
+            title={shown ? "Hide" : "Show"}
+            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 -translate-y-1/2 rounded p-1.5 transition-colors"
+          >
+            {shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
