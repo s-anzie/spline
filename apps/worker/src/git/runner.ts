@@ -31,7 +31,24 @@ export function gitRunner(timeoutMs: number): GitRunner {
         maxBuffer: 8 * 1024 * 1024,
         env: {
           PATH: process.env.PATH ?? "",
+          // Where the machine's own credentials live: `~/.ssh`, and the
+          // credential helper a `~/.gitconfig` may name. Spline carries no
+          // credential of its own — if `git clone` works in the operator's
+          // shell, it works here, and if it does not, no amount of
+          // configuration in Spline would have helped.
           HOME: process.env.HOME ?? "",
+          /**
+           * The commonest GitHub setup there is: an SSH key with a
+           * passphrase, held by `ssh-agent`. Without this the key cannot be
+           * used and git answers "Permission denied (publickey)" — a message
+           * that sends an operator hunting through their key files for a
+           * problem that is not there.
+           *
+           * It is a socket path, not a secret, and it reaches only git.
+           */
+          ...(process.env.SSH_AUTH_SOCK
+            ? { SSH_AUTH_SOCK: process.env.SSH_AUTH_SOCK }
+            : {}),
           GIT_TERMINAL_PROMPT: "0",
           // Keeps `git commit` from failing on a machine with no global
           // identity — the real author is passed per commit anyway.

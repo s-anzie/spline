@@ -22,6 +22,7 @@
     "PORT",
     "PATH",
     "HOME",
+    "SSH_AUTH_SOCK",
     "HUB_URL",
     "MACHINE_TOKEN",
     "HEARTBEAT_INTERVAL_MS",
