@@ -29,10 +29,10 @@ import {
   PageHeader,
   Pager,
   Panel,
+  Picker,
   Payload,
   Row,
   Section,
-  Segmented,
   Stat,
   StatRow,
   Status,
@@ -383,15 +383,17 @@ function OpenThread({
                 agent in Workspace → People.
               </Note>
             ) : (
-              <Segmented
+              <Picker
                 value={participant}
                 onChange={setParticipant}
+                placeholder="Choose a person or an agent"
                 options={others.map((member) => ({
                   value: `${member.actorType}:${member.actorId}`,
                   label:
                     member.displayName ??
                     member.email ??
                     `${member.actorType.toLowerCase()} ${member.actorId.slice(0, 8)}`,
+                  hint: `${member.actorType.toLowerCase()} · ${humanise(member.role)}`,
                 }))}
               />
             )}

@@ -11,7 +11,6 @@ import {
   GitBranch,
   KeyRound,
   Lock,
-  Scale,
   ScrollText,
   Unlock,
   UserRound,
@@ -19,7 +18,7 @@ import {
 } from "lucide-react";
 
 import { api, ROLE_MEANS, WORKSPACE_ROLES } from "@/lib/api";
-import { duration, humanise, since, stamp } from "@/lib/format";
+import { duration, humanise, since } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
@@ -33,7 +32,6 @@ import {
   PageHeader,
   Pager,
   Panel,
-  Payload,
   Row,
   Section,
   Segmented,
@@ -43,6 +41,7 @@ import {
   Stripe,
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { Governance } from "@/components/screens/governance";
 import { InviteMember, NewAgent } from "@/components/forms";
 import {
   DropdownMenu,
@@ -577,85 +576,6 @@ function Decisions({ workspaceId }: { workspaceId: string }) {
       ))}
     </Panel>
     <Pager paged={paged} />
-    </>
-  );
-}
-
-/** The rules, and the named secrets agents may be run with. Never a value. */
-function Governance({ workspaceId }: { workspaceId: string }) {
-  const policies = useResource(() => api.policies(workspaceId), [workspaceId]);
-  const secrets = useResource(() => api.secrets(workspaceId), [workspaceId]);
-  const pagedPolicies = usePaged(policies.data ?? []);
-  const pagedSecrets = usePaged(secrets.data ?? []);
-
-  return (
-    <>
-      <Section title="Policies" count={policies.data?.length}>
-        {policies.loading ? <Loading rows={2} /> : null}
-        {policies.error ? <Note>{policies.error}</Note> : null}
-        {policies.data?.length ? (
-          <>
-          <Panel>
-            {pagedPolicies.items.map((policy) => (
-              <div key={policy.id} className="flex items-stretch gap-3 px-4 py-3">
-                <Stripe tone={policy.enabled ? "settled" : "quiet"} />
-                <Scale className="text-muted-foreground size-3.5 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="text-sm font-medium">{humanise(policy.type)}</span>
-                    <span className="measure text-muted-foreground text-xs">
-                      {policy.rule}
-                    </span>
-                    <span className="label flex-1 text-right">
-                      {humanise(policy.scope.type)}
-                    </span>
-                  </div>
-                  <Payload value={policy.value} />
-                </div>
-                <Status value={policy.enabled ? "ACTIVE" : "DISABLED"} />
-              </div>
-            ))}
-          </Panel>
-          <Pager paged={pagedPolicies} />
-          </>
-        ) : policies.data ? (
-          <Empty icon={Scale} title="No policy is set">
-            The workspace runs on the hub&apos;s defaults.
-          </Empty>
-        ) : null}
-      </Section>
-
-      <Section title="Secrets" count={secrets.data?.length}>
-        {secrets.error ? <Note>{secrets.error}</Note> : null}
-        {secrets.data?.length ? (
-          <>
-          <Panel>
-            {pagedSecrets.items.map((secret) => (
-              <Row key={secret.name}>
-                {/* A secret nothing has ever read is either new or dead. */}
-                <Stripe tone={secret.lastAccessedAt ? "settled" : "quiet"} />
-                <KeyRound className="text-muted-foreground size-3.5 shrink-0" />
-                <span className="measure flex-1 text-sm">{secret.name}</span>
-                <span className="text-muted-foreground text-xs">
-                  {secret.lastAccessedAt
-                    ? `last used ${since(secret.lastAccessedAt)}`
-                    : "never used"}
-                </span>
-                <span className="measure text-muted-foreground w-28 text-right text-xs">
-                  added {stamp(secret.createdAt).slice(0, 10)}
-                </span>
-              </Row>
-            ))}
-          </Panel>
-          <Pager paged={pagedSecrets} />
-          </>
-        ) : secrets.data ? (
-          <Empty icon={KeyRound} title="No secret stored">
-            Values are never shown here — only the names, and when each was last
-            read.
-          </Empty>
-        ) : null}
-      </Section>
     </>
   );
 }

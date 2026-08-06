@@ -16,7 +16,7 @@ import { humanise } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useOrganizationId, useSession } from "@/lib/store";
 import { useAction } from "@/lib/use-hub";
-import { Area, Criteria, Field, Note, Segmented } from "@/components/kit";
+import { Area, Criteria, Field, Note, Picker, Segmented } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -334,15 +334,17 @@ export function NewTask({
             in Workspace → People first.
           </Note>
         ) : (
-          <Segmented
+          <Picker
             value={assignee}
             onChange={setAssignee}
+            placeholder="Choose a person or an agent"
             options={members.map((member) => ({
               value: `${member.actorType}:${member.actorId}`,
               label:
                 member.displayName ??
                 member.email ??
                 `${member.actorType.toLowerCase()} ${member.actorId.slice(0, 8)}`,
+              hint: `${member.actorType.toLowerCase()} · ${humanise(member.role)}`,
             }))}
           />
         )}
@@ -539,10 +541,16 @@ function RolePicker({
   return (
     <div>
       <p className="label mb-1.5">Role</p>
-      <Segmented
+      {/* Six roles with names like AGENT_CONTRIBUTOR do not fit on a row, and
+          each needs a sentence anyway — the list carries them. */}
+      <Picker
         value={role}
         onChange={onChange}
-        options={WORKSPACE_ROLES.map((value) => ({ value, label: humanise(value) }))}
+        options={WORKSPACE_ROLES.map((value) => ({
+          value,
+          label: humanise(value),
+          hint: ROLE_MEANS[value],
+        }))}
       />
       <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
         {ROLE_MEANS[role as keyof typeof ROLE_MEANS]}

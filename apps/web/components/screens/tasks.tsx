@@ -31,6 +31,7 @@ import {
   PageHeader,
   Pager,
   Panel,
+  Picker,
   Row,
   Section,
   Segmented,
@@ -206,10 +207,20 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               size="sm"
               disabled={pending}
               onClick={() =>
-                void act(() => api.tasks.setStatus(workspaceId, view.id, target), reload)
+                void act(
+                  () =>
+                    // §11.7 — reaching VALIDATING is a SUBMISSION, not a
+                    // status pick. The plain route moves the word and records
+                    // no proof, so a workspace that mandates
+                    // `required_validations` would approve anything.
+                    target === "VALIDATING"
+                      ? api.tasks.submit(workspaceId, view.id)
+                      : api.tasks.setStatus(workspaceId, view.id, target),
+                  reload,
+                )
               }
             >
-              {humanise(target)}
+              {target === "VALIDATING" ? "Submit for validation" : humanise(target)}
             </Button>
           ))}
           {/* §4.24, §10.9 — completion is an approval, not a status pick, and
@@ -482,16 +493,22 @@ function Dispatch({
                   }))}
                 />
               </div>
-              <div>
+              <div className="min-w-56">
                 <p className="label mb-1.5">Machine</p>
-                <Segmented
+                <Picker
                   value={workerId}
                   onChange={setWorkerId}
+                  placeholder="Hub decides"
                   options={[
-                    { value: "", label: "Hub decides" },
+                    {
+                      value: "any",
+                      label: "Hub decides",
+                      hint: "picks one that declares the capability",
+                    },
                     ...attached.map((worker) => ({
                       value: worker.id,
                       label: worker.hostname,
+                      hint: `${worker.operatingSystem}/${worker.architecture} · ${worker.capabilities.join(", ")}`,
                     })),
                   ]}
                 />
@@ -505,7 +522,9 @@ function Dispatch({
                       api.runtime.dispatch(workspaceId, {
                         taskId: task.id,
                         provider,
-                        ...(workerId ? { workerId } : {}),
+                        // "any" is this screen's word for "hub decides",
+                        // because a Select cannot hold an empty value.
+                        ...(workerId && workerId !== "any" ? { workerId } : {}),
                       }),
                     onDone,
                   )

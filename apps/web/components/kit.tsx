@@ -20,6 +20,12 @@ import { PAGE_SIZES, type Paged } from "@/lib/paging";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** Tone → the classes that paint it. Kept in one place, used everywhere. */
@@ -709,5 +715,56 @@ export function Criteria({
       </button>
       {hint ? <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p> : null}
     </div>
+  );
+}
+
+/**
+ * One choice out of many, or out of a list that grows.
+ *
+ * `Segmented` is right for three or four fixed options with short names — the
+ * whole vocabulary is visible and one click away. It is wrong the moment the
+ * names get long or the list comes from data: six roles laid out in a row
+ * wrap, truncate, and stop being readable, and a workspace with a dozen
+ * members would be worse. Anything unbounded belongs behind a trigger.
+ */
+export function Picker<T extends string>({
+  value,
+  onChange,
+  options,
+  placeholder = "Choose…",
+  className,
+}: {
+  value: T | "";
+  onChange: (value: T) => void;
+  options: { value: T; label: string; hint?: string }[];
+  placeholder?: string;
+  className?: string;
+}) {
+  const selected = options.find((option) => option.value === value);
+  return (
+    <Select value={value || undefined} onValueChange={(next) => onChange(next as T)}>
+      {/* The trigger carries the NAME only. `SelectValue` would echo the whole
+          item, hint included, making a two-line control that repeats what is
+          already written under it. */}
+      <SelectTrigger className={cn("w-full", className)}>
+        <span className={selected ? undefined : "text-muted-foreground"}>
+          {selected?.label ?? placeholder}
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            <span className="flex flex-col items-start gap-0.5">
+              <span>{option.label}</span>
+              {option.hint ? (
+                <span className="text-muted-foreground text-xs leading-snug">
+                  {option.hint}
+                </span>
+              ) : null}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

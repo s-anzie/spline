@@ -194,7 +194,8 @@ export interface HealthSignalView {
   reason: string;
   count: number;
   resources: { id: string; type: string; since: string; degradedForMs: number }[];
-  threshold: unknown;
+  /** §17.7 — which window was applied, and whether a policy set it. */
+  threshold: { ms: number; source: "policy" | "default" } | null;
 }
 
 export interface HealthView {
@@ -473,6 +474,17 @@ export const api = {
     setStatus: (workspace: string, taskId: string, status: string) =>
       hub.post(`/workspaces/${workspace}/tasks/${taskId}/status`, { status }),
     /**
+     * §11.7 — submitting IS asking for proof.
+     *
+     * Moving a task to VALIDATING with the plain status route only makes it
+     * pass through a step named validation; nothing records what proof was
+     * expected, so `required_validations` never materialises and completion
+     * finds nothing missing. This route asks, and the policy adds whatever it
+     * mandates on top of what the caller names.
+     */
+    submit: (workspace: string, taskId: string, validations: string[] = []) =>
+      hub.post(`/workspaces/${workspace}/tasks/${taskId}/submit`, { validations }),
+    /**
      * §4.24 — the ONE path to COMPLETED. `allowedStatusTargets` deliberately
      * never lists it, so an agent cannot declare its own success by moving a
      * status: an agent submits, a person approves, and the hub checks the
@@ -514,6 +526,14 @@ export const api = {
     commands: (workspace: string, limit = 50) =>
       hub.get<CommandView[]>(`/workspaces/${workspace}/runtime/commands${q({ limit })}`),
     providers: () => hub.get<ProviderView[]>(`/runtime/providers`),
+    /**
+     * §4.14 — a provider is declared unavailable, never guessed at. RESTORE
+     * brings it back; QUOTA_EXHAUSTED says when it comes back by itself.
+     */
+    setAvailability: (
+      provider: string,
+      body: { action: "RESTORE" | "DISABLE" | "QUOTA_EXHAUSTED"; until?: string; reason?: string },
+    ) => hub.post(`/runtime/providers/${provider}/availability`, body),
     /** §6.8 — handing a task to a machine is a human act, so it lives here. */
     dispatch: (
       workspace: string,
@@ -614,11 +634,32 @@ export const api = {
   decisions: (workspace: string) =>
     hub.get<DecisionView[]>(`/workspaces/${workspace}/decisions`),
 
-  secrets: (workspace: string) =>
-    hub.get<SecretView[]>(`/workspaces/${workspace}/secrets`),
+  policies: {
+    list: (workspace: string) =>
+      hub.get<PolicyView[]>(`/workspaces/${workspace}/policies`),
+    set: (
+      workspace: string,
+      body: {
+        scopeType: string;
+        scopeId: string;
+        type: string;
+        rule: string;
+        value: unknown;
+      },
+    ) => hub.post<{ policyId: string }>(`/workspaces/${workspace}/policies`, body),
+    disable: (workspace: string, policyId: string) =>
+      hub.post(`/workspaces/${workspace}/policies/${policyId}/disable`, {}),
+  },
 
-  policies: (workspace: string) =>
-    hub.get<PolicyView[]>(`/workspaces/${workspace}/policies`),
+  secrets: {
+    list: (workspace: string) =>
+      hub.get<SecretView[]>(`/workspaces/${workspace}/secrets`),
+    /** §18.4 — the value goes in here and never comes back out. */
+    set: (workspace: string, name: string, value: string) =>
+      hub.post(`/workspaces/${workspace}/secrets`, { name, value }),
+    remove: (workspace: string, name: string) =>
+      hub.del(`/workspaces/${workspace}/secrets/${name}`),
+  },
 };
 
 export type { HubResult };
