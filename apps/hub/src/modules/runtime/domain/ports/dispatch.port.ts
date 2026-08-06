@@ -16,6 +16,8 @@ export type TaskBriefing =
       description: string | null;
       acceptanceCriteria: readonly string[];
       goalTitle: string | null;
+      /** For scoping memory to the goal, not for the prompt. */
+      goalId: string | null;
     }
   | { dispatchable: false; reason: string };
 

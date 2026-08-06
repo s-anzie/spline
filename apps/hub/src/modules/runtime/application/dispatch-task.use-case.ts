@@ -9,6 +9,7 @@ import {
   WORKER_STORE,
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
+import { AGENT_MEMORY, AgentMemory } from "../domain/ports/agent-memory.port";
 import {
   DISPATCHABLE_TASK,
   DispatchableTask,
@@ -96,6 +97,7 @@ export class DispatchTaskUseCase
 {
   constructor(
     @Inject(DISPATCHABLE_TASK) private readonly tasks: DispatchableTask,
+    @Inject(AGENT_MEMORY) private readonly memory: AgentMemory,
     @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     private readonly enqueue: EnqueueCommandUseCase,
@@ -125,6 +127,17 @@ export class DispatchTaskUseCase
 
     const run = await this.runs.openRun(input.workspaceId, input.taskId);
 
+    /**
+     * §16 — what this workspace has already settled, handed over with the
+     * task. Without it an agent re-litigates last week's convention on every
+     * dispatch, and the memory module is a write-only diary.
+     */
+    const memory = await this.memory.notesFor({
+      workspaceId: input.workspaceId,
+      goalId: briefing.goalId,
+      taskId: input.taskId,
+    });
+
     const enqueued = await this.enqueue.execute({
       workspaceId: input.workspaceId,
       workerId: worker.value,
@@ -139,6 +152,7 @@ export class DispatchTaskUseCase
           description: briefing.description,
           acceptanceCriteria: briefing.acceptanceCriteria,
           goalTitle: briefing.goalTitle,
+          memory,
           hubUrl: input.hubUrl,
         }),
         // Names only. The values never travel in an order (§18.4).

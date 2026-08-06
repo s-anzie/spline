@@ -66,6 +66,7 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
       description: task.description,
       acceptanceCriteria: task.acceptanceCriteria,
       goalTitle: goal?.title ?? null,
+      goalId: goal?.id.value ?? null,
     };
   }
 }

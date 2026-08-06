@@ -191,3 +191,19 @@ Reports explicites, avec leur raison :
   d'un même champ. **Ce qui reste** : le déclencheur périodique du §9.16, qui n'existe nulle part.
 - **§7.14, la resynchronisation des identifiants isolés** : elle concerne une copie de secret dans un
   sandbox. Le hub ne copie aucun secret.
+
+## §16 dans le briefing — et **dans** la barrière
+
+Le prompt porte désormais ce que le workspace a appris (port `AGENT_MEMORY`, fourni par `memory`). Ces
+notes sont écrites **par des agents**. Un agent qui a lu un fichier empoisonné et qui note ce qu'il
+« a appris » laisse donc un texte que tous les suivants liront : de l'injection indirecte avec une
+couche de persistance.
+
+Elles voyagent pour cette raison **à l'intérieur** de `<<<SPLINE-TASK-DATA`, avec le titre et la
+description de la tâche, sous la même phrase de cadrage — et elles passent par `defuse()`, donc un
+marqueur de barrière glissé dans un titre de note est cassé sans que le texte disparaisse de la vue
+d'un opérateur qui enquête. Un test l'exige explicitement, côté domaine et côté e2e.
+
+Une mémoire vide n'imprime **rien du tout** : un intertitre sans contenu coûte des jetons et apprend au
+modèle que les sections d'ici sont souvent vides.
+

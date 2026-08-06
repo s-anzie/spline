@@ -743,6 +743,53 @@ describe("Dispatching a task to an agent (e2e)", () => {
     expect(JSON.stringify(payload)).not.toContain("sk-ant-the-credential");
   });
 
+  /**
+   * §16 — an agent starts every task knowing nothing.
+   *
+   * Without the workspace's memory in the briefing it re-litigates a
+   * convention that was settled last week, on every dispatch, and the memory
+   * module is a diary nobody reads. With it — and INSIDE the fence, because
+   * notes are written by agents and one that read a poisoned file could
+   * otherwise leave instructions for everyone who comes after.
+   */
+  it("hands the agent what this workspace has already learned, as data", async () => {
+    const ctx = await ready();
+
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/memory`))
+      .send({
+        scopeType: "WORKSPACE",
+        scopeId: ctx.workspaceId,
+        type: "CONVENTION",
+        title: "Migrations are never edited in place",
+        content: "Write a new one; the old ones have run in production.",
+      })
+      .expect(201);
+
+    const dispatched = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    expect(dispatched.body.runId).toEqual(expect.any(String));
+
+    const claimed = await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({})
+      .expect(200);
+
+    const prompt = claimed.body[0].payload.prompt as string;
+    expect(prompt).toContain("Migrations are never edited in place");
+    expect(prompt).toContain("the old ones have run in production");
+
+    // Quarantined with the rest of the task's text, not above it.
+    expect(prompt.indexOf("Migrations are never edited")).toBeGreaterThan(
+      prompt.indexOf("<<<SPLINE-TASK-DATA"),
+    );
+    expect(prompt.indexOf("Migrations are never edited")).toBeLessThan(
+      prompt.indexOf("SPLINE-TASK-DATA>>>"),
+    );
+  });
+
   /** §18.4 — and the machine holding the order can then obtain the value. */
   it("lets the machine that holds the order fetch its credentials", async () => {
     const ctx = await ready();

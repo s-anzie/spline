@@ -34,5 +34,8 @@ import { RepositoryModule } from "../repository/repository.module";
     SearchMemoryUseCase,
     ReconstructMemoryUseCase,
   ],
+  // Exported for `AgentMemoryAdapter` (§16 into the agent's briefing): a
+  // provider this module owns, needed by the adapter this module supplies.
+  exports: [ReadContextUseCase],
 })
 export class MemoryModule {}

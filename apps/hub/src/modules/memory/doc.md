@@ -164,3 +164,28 @@ Reports explicites, avec leur raison :
   les **Events** : délibérément non fait — le journal est déjà interrogeable et le recopier en notes
   dupliquerait une source de vérité, ce que l'ouverture du §16 interdit. Les deux sont nommés dans la
   réponse de l'opération, pas seulement ici.
+
+## La mémoire arrive enfin jusqu'à l'agent
+
+Jusqu'ici ce module était **écrit et jamais lu par ceux qu'il concerne**. Les notes existaient, les
+routes répondaient, et un agent dispatché commençait chaque tâche en ne sachant rien : il rejouait la
+convention tranchée la semaine dernière, à chaque fois.
+
+`AgentMemoryAdapter` fournit le port `AGENT_MEMORY` que **runtime déclare** (règle d'inversion : le
+consommateur déclare, le fournisseur livre). Il rend des **notes plates**, pas des `MemoryEntry` : un
+agrégat porte un auteur, une chaîne de supersession et un pointeur de source, dont aucun n'a sa place
+dans un prompt — et les passer inviterait le prompt à arbitrer ce qui est l'affaire de ce module.
+
+### Le plafond, et pourquoi il est annoncé
+
+Le constructeur de contexte plafonne déjà chaque portée à 25. Quatre portées peuplées mettraient donc
+cent paragraphes devant le modèle, **payés à chaque tentative**. L'adaptateur coupe à 30 au total. Ce
+n'est pas un jugement sur les notes qui comptent : elles arrivent du plus général au plus spécifique, la
+coupe tombe donc sur le plus précis — et §17.8 impose qu'une coupe se dise. Elle se dit, dans la liste
+elle-même.
+
+### Une lecture de contexte qui échoue ne bloque pas un dispatch
+
+Un prompt sans mémoire est moins bon qu'un prompt avec. Il vaut infiniment mieux que pas de prompt du
+tout. L'adaptateur rend une liste vide plutôt que de faire échouer l'ordre.
+
