@@ -1,5 +1,6 @@
 import {
   Activity as ActivityIcon,
+  BookMarked,
   Cpu,
   Inbox as InboxIcon,
   ListChecks,
@@ -28,6 +29,7 @@ export const routes = {
   run: (runId: string) => `/runs/${runId}`,
   machines: "/machines",
   activity: "/activity",
+  memory: "/memory",
   inbox: "/inbox",
   threads: "/threads",
   thread: (threadId: string) => `/threads/${threadId}`,
@@ -94,6 +96,12 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
         icon: Cpu,
         hint: "the computers that run agents",
         badge: "machines",
+      },
+      {
+        href: routes.memory,
+        label: "Memory",
+        icon: BookMarked,
+        hint: "what this workspace has settled",
       },
       {
         href: routes.activity,

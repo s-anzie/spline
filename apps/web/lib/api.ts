@@ -327,6 +327,27 @@ export interface ThreadView extends Affordable {
   turns: { actor: Actor; message: string; at: string }[];
 }
 
+/**
+ * §16 — something this workspace settled, so nobody has to settle it twice.
+ *
+ * An entry is a note OR a pointer at something that already exists elsewhere:
+ * memory is never a source of truth, and copying one would create a second.
+ */
+export interface MemoryView {
+  id: string;
+  scope: Actor;
+  type: string;
+  title: string;
+  content: string | null;
+  source: Actor | null;
+  tags: string[];
+  author: Actor;
+  supersededById: string | null;
+  /** False once something newer replaced it. Kept, never deleted. */
+  current: boolean;
+  createdAt: string;
+}
+
 export interface CheckInView {
   actor: Actor;
   silentForMs: number | null;
@@ -518,6 +539,26 @@ export const api = {
         code,
         approve,
       }),
+  },
+
+  memory: {
+    list: (workspace: string, filters: { scopeType?: string; type?: string } = {}) =>
+      hub.get<MemoryView[]>(`/workspaces/${workspace}/memory${q(filters)}`),
+    remember: (
+      workspace: string,
+      body: {
+        scopeType: string;
+        scopeId: string;
+        type: string;
+        title: string;
+        content?: string;
+        tags?: string[];
+        supersedes?: string;
+      },
+    ) => hub.post<{ entryId: string }>(`/workspaces/${workspace}/memory`, body),
+    /** §16 — forgetting is recorded, not erased. The entry stops being current. */
+    forget: (workspace: string, entryId: string) =>
+      hub.post(`/workspaces/${workspace}/memory/${entryId}/forget`, {}),
   },
 
   threads: {
