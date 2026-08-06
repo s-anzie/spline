@@ -22,6 +22,30 @@ export interface Workspace {
   status: string;
 }
 
+export type Screen =
+  | "queue"
+  | "goals"
+  | "tasks"
+  | "runs"
+  | "machines"
+  | "activity"
+  | "inbox"
+  | "workspace";
+
+/**
+ * Where the console is looking. `id` is the thing being drilled into — a run,
+ * a task — and `null` is the list.
+ *
+ * Navigation lives in the store rather than in the URL because the access
+ * token is held in memory (see `hub.ts`): a deep link would hand somebody a
+ * screen that cannot load, then bounce them to sign-in and lose the place
+ * they were pointed at. One address, one session, no dead links.
+ */
+export interface Route {
+  screen: Screen;
+  id: string | null;
+}
+
 interface SessionState {
   email: string | null;
   userId: string | null;
@@ -29,19 +53,21 @@ interface SessionState {
   workspaces: Workspace[];
   /** The workspace every screen is scoped to. §4.2 makes this mandatory. */
   workspaceId: string | null;
+  route: Route;
   loading: boolean;
   error: string | null;
 
   logIn(email: string, password: string): Promise<boolean>;
   logOut(): void;
   chooseWorkspace(workspaceId: string | null): void;
+  go(screen: Screen, id?: string | null): void;
   refreshWorkspaces(): Promise<void>;
 }
 
 /**
  * The session, and nothing else.
  *
- * Deliberately small: page data is fetched by the page that shows it rather
+ * Deliberately small: page data is fetched by the screen that shows it rather
  * than mirrored here. A store that cached every list would need to know when
  * each one goes stale — and an operator's console showing a stale queue is
  * worse than one showing none, because it looks answered.
@@ -52,6 +78,7 @@ export const useSession = create<SessionState>((set, get) => ({
   organizations: [],
   workspaces: [],
   workspaceId: null,
+  route: { screen: "queue", id: null },
   loading: false,
   error: null,
 
@@ -81,12 +108,20 @@ export const useSession = create<SessionState>((set, get) => ({
       organizations: [],
       workspaces: [],
       workspaceId: null,
+      route: { screen: "queue", id: null },
       error: null,
     });
   },
 
   chooseWorkspace(workspaceId) {
-    set({ workspaceId });
+    // Back to the queue: a run id from the previous workspace would resolve
+    // to nothing here, and asking for it is the cross-workspace read §4.2
+    // forbids outright.
+    set({ workspaceId, route: { screen: "queue", id: null } });
+  },
+
+  go(screen, id = null) {
+    set({ route: { screen, id } });
   },
 
   async refreshWorkspaces() {
@@ -108,3 +143,8 @@ export const useSession = create<SessionState>((set, get) => ({
     });
   },
 }));
+
+/** The organization the console acts on behalf of. One, in practice. */
+export function useOrganizationId(): string | null {
+  return useSession((state) => state.organizations[0]?.id ?? null);
+}

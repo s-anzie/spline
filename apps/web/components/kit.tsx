@@ -1,0 +1,512 @@
+"use client";
+
+import { useState } from "react";
+import { Check, ChevronLeft, Copy, type LucideIcon } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { humanise } from "@/lib/format";
+import { toneOf, type Tone } from "@/lib/tone";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+
+/** Tone → the classes that paint it. Kept in one place, used everywhere. */
+export const TONE_TEXT: Record<Tone, string> = {
+  signal: "text-signal",
+  waiting: "text-waiting",
+  live: "text-live",
+  settled: "text-settled",
+  quiet: "text-muted-foreground",
+};
+
+const TONE_DOT: Record<Tone, string> = {
+  signal: "bg-signal",
+  waiting: "bg-waiting",
+  live: "bg-live",
+  settled: "bg-settled",
+  quiet: "bg-muted-foreground/50",
+};
+
+const TONE_WASH: Record<Tone, string> = {
+  signal: "bg-[var(--signal-wash)]",
+  waiting: "bg-[var(--waiting-wash)]",
+  live: "bg-[var(--live-wash)]",
+  settled: "bg-[var(--settled-wash)]",
+  quiet: "bg-muted",
+};
+
+/* ── State ───────────────────────────────────────────────────────────────── */
+
+/**
+ * A status, as a word with its tone.
+ *
+ * Colour alone is not the signal — a reader who cannot separate red from
+ * green still gets the word, and everybody gets the word faster than they
+ * would decode a hue.
+ */
+export function Status({
+  value,
+  className,
+}: {
+  value: string | null | undefined;
+  className?: string;
+}) {
+  const tone = toneOf(value);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium tracking-wide whitespace-nowrap uppercase",
+        TONE_WASH[tone],
+        TONE_TEXT[tone],
+        className,
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 rounded-full",
+          TONE_DOT[tone],
+          tone === "live" && "breathing",
+        )}
+      />
+      {humanise(value)}
+    </span>
+  );
+}
+
+/**
+ * The severity stripe down the left of a row.
+ *
+ * Height carries the same information the colour does, so a queue can be
+ * skimmed by shape alone — which is what happens when somebody glances at a
+ * second monitor rather than reading it.
+ */
+export function Stripe({ tone, live = false }: { tone: Tone; live?: boolean }) {
+  const fill: Record<Tone, string> = {
+    signal: "h-full",
+    waiting: "h-2/3",
+    live: "h-2/3",
+    settled: "h-1/3",
+    quiet: "h-1/5",
+  };
+  return (
+    <span
+      aria-hidden
+      className="bg-border flex w-[3px] shrink-0 items-end self-stretch overflow-hidden rounded-full"
+    >
+      <span
+        className={cn(
+          "w-full rounded-full",
+          fill[tone],
+          TONE_DOT[tone],
+          live && "breathing",
+        )}
+      />
+    </span>
+  );
+}
+
+/* ── Readouts ────────────────────────────────────────────────────────────── */
+
+/**
+ * One number, large enough to read from across a desk.
+ *
+ * The tiles are what the screen opens with: an operator should be able to
+ * tell whether the day is going well before reading a single row.
+ */
+export function Stat({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = "quiet",
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  icon?: LucideIcon;
+  tone?: Tone;
+  onClick?: () => void;
+}) {
+  const inert = value === 0 || value === "0";
+  return (
+    <Card
+      onClick={onClick}
+      className={cn(
+        "gap-0 rounded-lg border p-4 shadow-none transition-colors",
+        onClick && "hover:border-foreground/20 cursor-pointer",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="label">{label}</span>
+        {Icon ? (
+          <Icon
+            className={cn("size-3.5", inert ? "text-muted-foreground/60" : TONE_TEXT[tone])}
+            strokeWidth={1.75}
+          />
+        ) : null}
+      </div>
+      <p
+        className={cn(
+          "measure mt-2.5 text-2xl leading-none font-medium",
+          inert ? "text-muted-foreground" : TONE_TEXT[tone],
+        )}
+      >
+        {value}
+      </p>
+      {hint ? (
+        <p className="text-muted-foreground mt-1.5 truncate text-xs">{hint}</p>
+      ) : null}
+    </Card>
+  );
+}
+
+export function StatRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-4">{children}</div>
+  );
+}
+
+/** A share of something finished, with the number kept beside it. */
+export function Meter({ value }: { value: number }) {
+  const share = Math.max(0, Math.min(100, value));
+  return (
+    <span className="flex items-center gap-2">
+      <span className="bg-border h-1 w-20 shrink-0 overflow-hidden rounded-full">
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            share >= 100 ? "bg-settled" : "bg-live",
+          )}
+          style={{ width: `${share}%` }}
+        />
+      </span>
+      <span className="measure text-muted-foreground w-9 text-right text-xs">
+        {share}%
+      </span>
+    </span>
+  );
+}
+
+/**
+ * An identifier. Monospace because it gets compared character by character,
+ * copyable because the next thing anyone does with one is paste it.
+ */
+export function Id({ value, full = false }: { value: string | null; full?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return <span className="measure text-muted-foreground text-xs">—</span>;
+  return (
+    <button
+      type="button"
+      title={`${value} — click to copy`}
+      onClick={(event) => {
+        event.stopPropagation();
+        void navigator.clipboard?.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      className="text-muted-foreground hover:text-foreground hover:bg-muted group inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors"
+    >
+      <span className="measure text-xs">{full ? value : value.slice(0, 8)}</span>
+      {copied ? (
+        <Check className="size-3 text-settled" />
+      ) : (
+        <Copy className="size-3 opacity-0 transition-opacity group-hover:opacity-60" />
+      )}
+    </button>
+  );
+}
+
+/* ── Frames ──────────────────────────────────────────────────────────────── */
+
+export function PageHeader({
+  title,
+  lead,
+  actions,
+}: {
+  title: string;
+  lead?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <header className="mb-6 flex items-start justify-between gap-8">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight text-balance">{title}</h1>
+        {lead ? (
+          <p className="text-muted-foreground mt-1.5 max-w-prose text-sm leading-relaxed">
+            {lead}
+          </p>
+        ) : null}
+      </div>
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+    </header>
+  );
+}
+
+export function Section({
+  title,
+  count,
+  children,
+  actions,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <section className="mb-7">
+      <div className="mb-2.5 flex items-center justify-between gap-4">
+        <h2 className="label flex items-center gap-2">
+          {title}
+          {count === undefined ? null : (
+            <span className="measure bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[0.625rem] normal-case">
+              {count}
+            </span>
+          )}
+        </h2>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Rows separated by hairlines, framed once — not a stack of floating cards. */
+export function Panel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card
+      className={cn(
+        "divide-border gap-0 divide-y overflow-hidden rounded-lg py-0 shadow-none",
+        className,
+      )}
+    >
+      {children}
+    </Card>
+  );
+}
+
+/** One row of a panel. `onOpen` makes the whole row the target, not a link. */
+export function Row({
+  children,
+  onOpen,
+  className,
+}: {
+  children: React.ReactNode;
+  onOpen?: () => void;
+  className?: string;
+}) {
+  const shared = cn("flex w-full items-center gap-3 px-4 py-3 text-left", className);
+  if (!onOpen) return <div className={shared}>{children}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-row=""
+      className={cn(shared, "hover:bg-accent/60 transition-colors")}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function Empty({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon?: LucideIcon;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="items-center gap-0 rounded-lg px-6 py-8 text-center shadow-none">
+      {Icon ? (
+        <span className="bg-muted text-muted-foreground mb-3 flex size-9 items-center justify-center rounded-full">
+          <Icon className="size-4" strokeWidth={1.75} />
+        </span>
+      ) : null}
+      {title ? <p className="text-sm font-medium">{title}</p> : null}
+      <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm leading-relaxed">
+        {children}
+      </p>
+    </Card>
+  );
+}
+
+/**
+ * A refusal from the hub, shown where the action was.
+ *
+ * The hub's errors name the affordance — what would have worked (§20.6) — so
+ * this prints the hub's own words rather than replacing them with "something
+ * went wrong", the sentence that teaches people to stop reading.
+ */
+export function Note({
+  children,
+  tone = "signal",
+}: {
+  children: React.ReactNode;
+  tone?: Tone;
+}) {
+  return (
+    <p
+      role="status"
+      className={cn(
+        "rounded-md border-l-2 px-3 py-2 text-sm leading-relaxed",
+        TONE_WASH[tone],
+        tone === "signal" && "border-l-signal",
+        tone === "waiting" && "border-l-waiting",
+        tone === "live" && "border-l-live",
+        tone === "settled" && "border-l-settled",
+        tone === "quiet" && "border-l-border",
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+export function Loading({ rows = 3 }: { rows?: number }) {
+  return (
+    <Panel>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 px-4 py-3.5">
+          <Skeleton className="h-8 w-[3px] rounded-full" />
+          <Skeleton className="h-3.5" style={{ width: `${46 - index * 7}%` }} />
+          <Skeleton className="ml-auto h-3.5 w-16" />
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+/* ── Detail ──────────────────────────────────────────────────────────────── */
+
+/** The facts about one thing, in a column an eye can run down. */
+export function Facts({ items }: { items: [string, React.ReactNode][] }) {
+  return (
+    <dl className="divide-border divide-y">
+      {items.map(([term, value]) => (
+        <div key={term} className="flex items-baseline justify-between gap-4 py-2">
+          <dt className="label shrink-0">{term}</dt>
+          {/* Wraps rather than truncates: the values here are the answer
+              ("completed, running, failed"), not a label to scan past. */}
+          <dd className="min-w-0 text-right text-sm break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Structured payloads, folded away until somebody wants them. */
+export function Payload({ value }: { value: unknown }) {
+  if (!value || (typeof value === "object" && Object.keys(value).length === 0)) {
+    return null;
+  }
+  return (
+    <details className="group mt-2">
+      <summary className="label hover:text-foreground cursor-pointer list-none select-none">
+        payload<span className="ml-1 inline-block group-open:rotate-90">›</span>
+      </summary>
+      <pre className="scroll-x measure bg-muted text-muted-foreground mt-2 rounded-md px-3 py-2 text-xs leading-relaxed">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+
+/** A labelled input. The label is always present — placeholders are not labels. */
+export function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  autoFocus,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+  autoFocus?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-1.5", className)}>
+      <Label className="label">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+/** One choice out of a few, all of them visible. Not a dropdown. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string; count?: number }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="bg-muted scroll-x inline-flex gap-0.5 rounded-lg p-0.5">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors",
+              active
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {option.label}
+            {option.count === undefined ? null : (
+              <span className="measure text-muted-foreground text-[0.625rem]">
+                {option.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The back edge of a drill-down. Always present, always the same place. */
+export function BackTo({ label, onBack }: { label: string; onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="text-muted-foreground hover:text-foreground -ml-1 mb-4 inline-flex items-center gap-1 text-xs transition-colors"
+    >
+      <ChevronLeft className="size-3.5" />
+      {label}
+    </button>
+  );
+}

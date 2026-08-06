@@ -1,68 +1,257 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 /**
- * The palette. Spline is an operator's console: it is read at a glance, often
- * when something is wrong, so the neutrals stay quiet and colour means one
- * thing only — this needs you.
+ * Spline is an operator's console. It gets read at a glance, usually because
+ * something needs a decision — so the ground stays quiet, the rules are
+ * hairlines, and saturated colour means exactly one thing: this needs you.
+ *
+ * The neutrals are biased green-grey — patinated steel rather than the blue
+ * every "tech" palette reaches for, and far from the warm cream that reads as
+ * a document. Dark is the primary look: this is a screen that sits open on a
+ * second monitor all day. Light is designed, not derived.
  */
 @theme {
-  --color-ink-50: oklch(0.985 0.002 264);
-  --color-ink-100: oklch(0.96 0.003 264);
-  --color-ink-200: oklch(0.9 0.004 264);
-  --color-ink-400: oklch(0.66 0.008 264);
-  --color-ink-600: oklch(0.46 0.012 264);
-  --color-ink-800: oklch(0.26 0.014 264);
-  --color-ink-900: oklch(0.18 0.014 264);
-  --color-ink-950: oklch(0.13 0.012 264);
+  --color-graphite-50: oklch(0.98 0.003 160);
+  --color-graphite-100: oklch(0.955 0.004 160);
+  --color-graphite-150: oklch(0.928 0.004 162);
+  --color-graphite-200: oklch(0.896 0.005 162);
+  --color-graphite-300: oklch(0.812 0.006 164);
+  --color-graphite-400: oklch(0.66 0.008 166);
+  --color-graphite-500: oklch(0.552 0.009 166);
+  --color-graphite-600: oklch(0.462 0.009 168);
+  --color-graphite-700: oklch(0.352 0.01 170);
+  --color-graphite-750: oklch(0.298 0.01 170);
+  --color-graphite-800: oklch(0.247 0.009 172);
+  --color-graphite-850: oklch(0.205 0.008 172);
+  --color-graphite-900: oklch(0.172 0.008 174);
+  --color-graphite-950: oklch(0.132 0.007 176);
+  --color-graphite-975: oklch(0.108 0.006 178);
 
-  /* One accent, used for what an operator must act on. */
-  --color-signal: oklch(0.68 0.16 45);
-  --color-ok: oklch(0.7 0.13 155);
-  --color-warn: oklch(0.78 0.14 85);
-  --color-danger: oklch(0.62 0.19 25);
+  /* The one accent. Ember: urgent without alarm, legible on both grounds. */
+  --color-ember-300: oklch(0.775 0.135 44);
+  --color-ember-400: oklch(0.702 0.166 40);
+  --color-ember-500: oklch(0.641 0.183 36);
+  --color-ember-600: oklch(0.575 0.172 34);
+
+  /* Waiting, running, settled. Semantic, never decorative. */
+  --color-brass-400: oklch(0.775 0.13 80);
+  --color-brass-600: oklch(0.632 0.126 74);
+  --color-arc-400: oklch(0.712 0.11 232);
+  --color-arc-600: oklch(0.568 0.115 238);
+  --color-verdigris-400: oklch(0.732 0.104 172);
+  --color-verdigris-600: oklch(0.588 0.098 174);
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+/* ── Semantic tokens. Components style through these, never the ramps. ───── */
 :root {
-  --background: var(--color-ink-50);
-  --surface: white;
-  --border: var(--color-ink-200);
-  --text: var(--color-ink-900);
-  --muted: var(--color-ink-600);
+  --radius: 0.5rem;
+
+  --background: var(--color-graphite-100);
+  --foreground: var(--color-graphite-900);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--color-graphite-900);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--color-graphite-900);
+  --primary: var(--color-ember-600);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: var(--color-graphite-150);
+  --secondary-foreground: var(--color-graphite-800);
+  --muted: var(--color-graphite-150);
+  --muted-foreground: var(--color-graphite-500);
+  --accent: var(--color-graphite-150);
+  --accent-foreground: var(--color-graphite-900);
+  --destructive: var(--color-ember-600);
+  --border: var(--color-graphite-200);
+  --input: var(--color-graphite-300);
+  --ring: var(--color-ember-500);
+
+  /* The rail is its own surface: darker than the page in both themes, so the
+     eye always knows where the frame stops and the work starts. */
+  --sidebar: var(--color-graphite-150);
+  --sidebar-foreground: var(--color-graphite-700);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: var(--color-graphite-900);
+  --sidebar-border: var(--color-graphite-200);
+
+  /* State. Four meanings, never mixed with the accent by accident. */
+  --signal: var(--color-ember-600);
+  --waiting: var(--color-brass-600);
+  --live: var(--color-arc-600);
+  --settled: var(--color-verdigris-600);
+  --signal-wash: oklch(0.575 0.172 34 / 0.09);
+  --waiting-wash: oklch(0.632 0.126 74 / 0.1);
+  --live-wash: oklch(0.568 0.115 238 / 0.1);
+  --settled-wash: oklch(0.588 0.098 174 / 0.1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-ink-950);
-    --surface: var(--color-ink-900);
-    --border: oklch(0.28 0.012 264);
-    --text: var(--color-ink-100);
-    --muted: var(--color-ink-400);
+.dark {
+  --background: var(--color-graphite-975);
+  --foreground: var(--color-graphite-100);
+  --card: var(--color-graphite-900);
+  --card-foreground: var(--color-graphite-100);
+  --popover: var(--color-graphite-850);
+  --popover-foreground: var(--color-graphite-100);
+  --primary: var(--color-ember-400);
+  --primary-foreground: var(--color-graphite-975);
+  --secondary: var(--color-graphite-850);
+  --secondary-foreground: var(--color-graphite-150);
+  --muted: var(--color-graphite-850);
+  --muted-foreground: var(--color-graphite-400);
+  --accent: var(--color-graphite-800);
+  --accent-foreground: var(--color-graphite-50);
+  --destructive: var(--color-ember-400);
+  --border: var(--color-graphite-850);
+  --input: var(--color-graphite-750);
+  --ring: var(--color-ember-400);
+
+  --sidebar: var(--color-graphite-950);
+  --sidebar-foreground: var(--color-graphite-400);
+  --sidebar-accent: var(--color-graphite-850);
+  --sidebar-accent-foreground: var(--color-graphite-50);
+  --sidebar-border: var(--color-graphite-850);
+
+  --signal: var(--color-ember-400);
+  --waiting: var(--color-brass-400);
+  --live: var(--color-arc-400);
+  --settled: var(--color-verdigris-400);
+  --signal-wash: oklch(0.702 0.166 40 / 0.14);
+  --waiting-wash: oklch(0.775 0.13 80 / 0.14);
+  --live-wash: oklch(0.712 0.11 232 / 0.14);
+  --settled-wash: oklch(0.732 0.104 172 / 0.14);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --color-signal: var(--signal);
+  --color-waiting: var(--waiting);
+  --color-live: var(--live);
+  --color-settled: var(--settled);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    background: var(--signal-wash);
   }
 }
 
-:root[data-theme="light"] {
-  --background: var(--color-ink-50);
-  --surface: white;
-  --border: var(--color-ink-200);
-  --text: var(--color-ink-900);
-  --muted: var(--color-ink-600);
+@layer utilities {
+  /**
+   * If it is a measurement, it is monospace.
+   *
+   * That is the instrument-panel idea made typographic, and it is not
+   * decoration: ids, costs, durations and exit codes get read in columns and
+   * compared against each other, which proportional digits make impossible.
+   */
+  .measure {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 1;
+  }
+
+  /** Column heads and state names: small, spaced, never shouting. */
+  .label {
+    font-size: 0.6875rem;
+    line-height: 1.1;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+
+  /** Wide content scrolls in its own frame; the page never pans sideways. */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Live, and saying so. One kind of thing breathes; nothing else does. */
+  .breathing {
+    animation: breathe 2.6s ease-in-out infinite;
+  }
 }
 
-:root[data-theme="dark"] {
-  --background: var(--color-ink-950);
-  --surface: var(--color-ink-900);
-  --border: oklch(0.28 0.012 264);
-  --text: var(--color-ink-100);
-  --muted: var(--color-ink-400);
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
-body {
-  background: var(--background);
-  color: var(--text);
-  font-feature-settings: "cv11", "ss01";
+/** The screen arrives composed, not assembled. Once, on mount. */
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.settling {
+  animation: settle 260ms cubic-bezier(0.22, 0.68, 0.35, 1) both;
 }
 
-/* Digits that line up: costs and durations are read in columns. */
-.tabular {
-  font-variant-numeric: tabular-nums;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Scrollbars, so a dense screen does not sprout a white gutter. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
 }

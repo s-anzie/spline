@@ -1,50 +1,48 @@
 "use client";
 
+import { ArrowRight, FolderOpen } from "lucide-react";
+
 import { useSession } from "@/lib/store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toneOf } from "@/lib/tone";
+import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit";
 
 /**
- * §4.2 — isolation is absolute, so every screen is scoped to one workspace
- * and there is no "all workspaces" view to offer.
+ * §4.2 — every read is scoped to one workspace, so this is the only screen
+ * that exists before one is chosen.
+ *
+ * There is deliberately no "all workspaces" option: a console that could
+ * aggregate across them would be the first thing to leak between them.
  */
 export function WorkspacePicker() {
   const { workspaces, chooseWorkspace } = useSession();
 
-  if (workspaces.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No workspace yet</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm" style={{ color: "var(--muted)" }}>
-          Create one from the hub, then reload. A workspace is where every
-          other thing here lives.
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
-        Choose a workspace
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {workspaces.map((workspace) => (
-          <button
-            key={workspace.id}
-            type="button"
-            onClick={() => chooseWorkspace(workspace.id)}
-            className="rounded-xl border p-4 text-left transition hover:shadow-sm"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            <span className="block font-medium">{workspace.name}</span>
-            <span className="text-xs" style={{ color: "var(--muted)" }}>
-              {workspace.status.toLowerCase()}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <>
+      <PageHeader
+        title="Choose a workspace"
+        lead="Everything you do from here on is scoped to the one you pick. Nothing is ever read across two."
+      />
+
+      {workspaces.length === 0 ? (
+        <Empty icon={FolderOpen} title="You are not in a workspace yet">
+          Whoever owns the organization can add you to one.
+        </Empty>
+      ) : (
+        <Panel>
+          {workspaces.map((workspace) => (
+            <Row
+              key={workspace.id}
+              onOpen={() => chooseWorkspace(workspace.id)}
+              className="py-4"
+            >
+              <Stripe tone={toneOf(workspace.status)} />
+              <span className="flex-1 text-sm font-medium">{workspace.name}</span>
+              <Status value={workspace.status} />
+              <ArrowRight className="text-muted-foreground size-3.5" />
+            </Row>
+          ))}
+        </Panel>
+      )}
+    </>
   );
 }
