@@ -464,12 +464,20 @@ export function InviteMember({ onDone }: { onDone: () => void }) {
  * only its hash is kept — so the dialog stays open on it until it has been
  * copied.
  */
+/**
+ * §18.2 — issuing an identity. An ORGANIZATION act.
+ *
+ * This used to create the identity AND grant it a role in whichever workspace
+ * happened to be selected, which is why one form was mounted on two screens
+ * and why an operator wanting the same agent in a second workspace ended up
+ * with a second agent of the same name. The two acts are separate because the
+ * two levels are: the organization owns the identity, a workspace lends it a
+ * role (§18).
+ */
 export function NewAgent({ onDone }: { onDone: () => void }) {
-  const workspaceId = useSession((state) => state.workspaceId)!;
   const organizationId = useOrganizationId();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [role, setRole] = useState<string>("AGENT_CONTRIBUTOR");
   const [issued, setIssued] = useState<{ token: string; actorId: string } | null>(null);
   const { run, pending, error } = useAction();
 
@@ -478,6 +486,7 @@ export function NewAgent({ onDone }: { onDone: () => void }) {
     if (!next) {
       setIssued(null);
       setName("");
+      onDone();
     }
   };
 
@@ -486,16 +495,17 @@ export function NewAgent({ onDone }: { onDone: () => void }) {
       <Dialog open={open} onOpenChange={close}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{name} is ready</DialogTitle>
+            <DialogTitle>{name} exists</DialogTitle>
             <DialogDescription className="leading-relaxed">
-              This token is shown once. The hub keeps only its hash — if it is
-              lost, issue a new one and revoke this.
+              This token is shown once and is never retrievable again. It is
+              how {name} authenticates — it holds no role anywhere yet, so give
+              it one from the workspace it should work in.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3">
-            <div className="bg-muted flex items-start gap-2 rounded-md p-3">
-              <code className="measure min-w-0 flex-1 text-xs break-all">
+            <div className="border-border bg-muted/50 flex items-center gap-2 rounded-lg border p-3">
+              <code className="measure min-w-0 flex-1 truncate text-xs select-all">
                 {issued.token}
               </code>
               <Button
@@ -531,7 +541,7 @@ export function NewAgent({ onDone }: { onDone: () => void }) {
         </Button>
       }
       title="Create an agent"
-      description="An agent is a member like a person: it holds a name, a role, and a credential of its own. Work is assigned to it by name."
+      description="An identity your organization owns. It can then be given a role in any of your workspaces — the same agent, in as many as you like."
       open={open}
       onOpenChange={close}
       submitLabel="Create the agent"
@@ -546,18 +556,10 @@ export function NewAgent({ onDone }: { onDone: () => void }) {
               displayName: name.trim(),
             });
             if (!created.ok) return created;
-            // An identity with no role in any workspace can do nothing at all,
-            // so the membership is part of creating it, not a second errand.
-            const joined = await api.members.invite(workspaceId, {
-              role,
-              actorType: "AGENT",
-              actorId: created.value.actorId,
-            });
-            if (!joined.ok) return joined;
             setIssued({ token: created.value.token, actorId: created.value.actorId });
             return created;
           },
-          onDone,
+          () => undefined,
         )
       }
     >
@@ -568,10 +570,100 @@ export function NewAgent({ onDone }: { onDone: () => void }) {
         placeholder="Reviewer"
         autoFocus
       />
-      <RolePicker role={role} onChange={setRole} />
       {!organizationId ? (
         <Note>Only an organization owner can create an agent.</Note>
       ) : null}
+    </FormDialog>
+  );
+}
+
+/**
+ * §18 — lending one of the organization's agents to this workspace.
+ *
+ * The workspace half of the split above. It creates nothing: it picks an
+ * identity the organization already holds and gives it a role here. An agent
+ * already in this workspace is not offered — the list is what the
+ * organization has MINUS what is already here, so the same agent cannot be
+ * added twice and nobody has to remember who is where.
+ */
+export function AddAgentToWorkspace({
+  members,
+  onDone,
+}: {
+  members: MemberView[];
+  onDone: () => void;
+}) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
+  const organizationId = useOrganizationId();
+  const [open, setOpen] = useState(false);
+  const [actorId, setActorId] = useState("");
+  const [role, setRole] = useState<string>("AGENT_CONTRIBUTOR");
+  const { run, pending, error } = useAction();
+
+  const actors = useResource(
+    () => api.actors.list(organizationId!),
+    [organizationId],
+    { enabled: Boolean(organizationId) },
+  );
+
+  const here = new Set(members.map((member) => member.actorId));
+  const available = (actors.data ?? []).filter(
+    (actor) => actor.actorType === "AGENT" && !actor.revoked && !here.has(actor.actorId),
+  );
+
+  return (
+    <FormDialog
+      trigger={
+        <Button variant="outline" size="sm">
+          <UserPlus />
+          Add an agent
+        </Button>
+      }
+      title="Add an agent to this workspace"
+      description="One of your organization's agents, given a role here. Creating a new identity is done from the organization — the same agent can work in several workspaces."
+      open={open}
+      onOpenChange={setOpen}
+      submitLabel="Give it the role"
+      pending={pending}
+      disabled={!actorId}
+      error={error}
+      onSubmit={() =>
+        void run(
+          () =>
+            api.members.invite(workspaceId, {
+              role,
+              actorType: "AGENT",
+              actorId,
+            }),
+          () => {
+            setOpen(false);
+            setActorId("");
+            onDone();
+          },
+        )
+      }
+    >
+      <div>
+        <p className="label mb-1.5">Which agent</p>
+        {available.length === 0 ? (
+          <Note>
+            Every agent your organization has is already in this workspace.
+            Create another one from Organization → Agents.
+          </Note>
+        ) : (
+          <Picker
+            value={actorId}
+            onChange={setActorId}
+            placeholder="Choose one of your agents"
+            options={available.map((actor) => ({
+              value: actor.actorId,
+              label: actor.displayName,
+              hint: `issued ${actor.createdAt.slice(0, 10)}`,
+            }))}
+          />
+        )}
+      </div>
+      <RolePicker role={role} onChange={setRole} />
     </FormDialog>
   );
 }

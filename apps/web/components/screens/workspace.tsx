@@ -43,7 +43,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Governance } from "@/components/screens/governance";
 import { Repositories } from "@/components/screens/repositories";
-import { InviteMember, NewAgent } from "@/components/forms";
+import { AddAgentToWorkspace, InviteMember } from "@/components/forms";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -359,7 +359,13 @@ function People({ workspaceId }: { workspaceId: string }) {
         actions={
           <div className="flex gap-2">
             <InviteMember onDone={members.reload} />
-            <NewAgent onDone={members.reload} />
+            {/* §18 — a workspace lends a role; it does not mint identities.
+                Creating one is an organization act, and doing both here is
+                what produced three agents of the same name. */}
+            <AddAgentToWorkspace
+              members={members.data ?? []}
+              onDone={members.reload}
+            />
           </div>
         }
       >
