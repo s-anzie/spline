@@ -229,10 +229,12 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
             </Card>
           </Section>
 
+          {/* The answer to a delegation is not a detail to unfold — it is the
+              reason the thread existed. Open. */}
           {view.outcome ? (
             <Section title="What came of it">
               <Card className="gap-0 p-4 shadow-none">
-                <Payload value={view.outcome} />
+                <Payload value={view.outcome} open />
               </Card>
             </Section>
           ) : null}

@@ -433,12 +433,12 @@ export function Facts({ items }: { items: [string, React.ReactNode][] }) {
 }
 
 /** Structured payloads, folded away until somebody wants them. */
-export function Payload({ value }: { value: unknown }) {
+export function Payload({ value, open = false }: { value: unknown; open?: boolean }) {
   if (!value || (typeof value === "object" && Object.keys(value).length === 0)) {
     return null;
   }
   return (
-    <details className="group mt-2">
+    <details className="group mt-2" open={open}>
       <summary className="label hover:text-foreground cursor-pointer list-none select-none">
         payload<span className="ml-1 inline-block group-open:rotate-90">›</span>
       </summary>

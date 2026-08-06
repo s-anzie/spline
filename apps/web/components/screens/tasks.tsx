@@ -6,13 +6,14 @@ import {
   CircleCheck,
   ClipboardList,
   ListChecks,
+  MessagesSquare,
   OctagonAlert,
   Play,
   Rocket,
   ShieldCheck,
 } from "lucide-react";
 
-import { api, type TaskView } from "@/lib/api";
+import { api, type TaskView, type ThreadView } from "@/lib/api";
 import { humanise, money, since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
@@ -170,6 +171,10 @@ export function TaskDetail({ taskId }: { taskId: string }) {
     () => api.runs.list(workspaceId, { taskId }),
     [workspaceId, taskId],
   );
+  // §10.18a — the threads that delegated THIS task. The hub has no route
+  // that filters by task, and it does not need one: the caller's own threads
+  // are the only ones they may read anyway.
+  const threads = useResource(() => api.threads.mine(workspaceId), [workspaceId]);
   const { run: act, pending, error } = useAction();
 
   if (task.loading) return <Loading rows={4} />;
@@ -179,6 +184,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   const reload = () => {
     task.reload();
     runs.reload();
+    threads.reload();
   };
 
   return (
@@ -191,7 +197,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
       />
 
       {/* §20.6 — the hub says which moves exist; the screen offers those. */}
-      {view.allowedStatusTargets.length > 0 ? (
+      {view.allowedStatusTargets.length > 0 || view.status === "VALIDATING" ? (
         <div className="mb-6 flex flex-wrap gap-2">
           {view.allowedStatusTargets.map((target) => (
             <Button
@@ -206,6 +212,19 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               {humanise(target)}
             </Button>
           ))}
+          {/* §4.24, §10.9 — completion is an approval, not a status pick, and
+              the affordance list never advertises it. Naming the button after
+              what it is keeps that visible instead of hiding it in a menu. */}
+          {view.status === "VALIDATING" ? (
+            <Button
+              size="sm"
+              disabled={pending}
+              onClick={() => void act(() => api.tasks.complete(workspaceId, view.id), reload)}
+            >
+              <CircleCheck />
+              Approve as done
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {error ? (
@@ -268,6 +287,13 @@ export function TaskDetail({ taskId }: { taskId: string }) {
       </div>
 
       <Blockers task={view} workspaceId={workspaceId} onDone={reload} />
+
+      <Delegation
+        task={view}
+        threads={(threads.data ?? []).filter((thread) => thread.taskId === view.id)}
+        onDone={reload}
+      />
+
       <Dispatch task={view} workspaceId={workspaceId} onDone={reload} />
 
       <Section title="Runs" count={runs.data?.length}>
@@ -497,6 +523,114 @@ function Dispatch({
           </>
         )}
       </Card>
+    </Section>
+  );
+}
+
+/**
+ * §10.18a — assignment is not delegation.
+ *
+ * Assigning a task tells somebody to do it. Nobody is waiting, and nothing
+ * ties what comes back to whoever wanted it. A thread carrying this task's id
+ * is that link: the hub delivers the task's outcome into the thread the
+ * moment it settles, so the person who asked is told without watching.
+ */
+function Delegation({
+  task,
+  threads,
+  onDone,
+}: {
+  task: TaskView;
+  threads: ThreadView[];
+  onDone: () => void;
+}) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
+  const [subject, setSubject] = useState("");
+  const [asking, setAsking] = useState(false);
+  const { run, pending, error } = useAction();
+
+  return (
+    <Section title="Delegation" count={threads.length}>
+      {threads.length > 0 ? (
+        <Panel>
+          {threads.map((thread) => (
+            <Row key={thread.threadId} href={routes.thread(thread.threadId)}>
+              <Stripe tone={toneOf(thread.status)} live={thread.status === "OPEN"} />
+              <MessagesSquare className="text-muted-foreground size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-sm">{thread.subject}</span>
+              <span className="measure text-muted-foreground text-xs">
+                {thread.turnsLeft}/{thread.turnBudget}
+              </span>
+              <Status value={thread.status} />
+            </Row>
+          ))}
+        </Panel>
+      ) : null}
+
+      {asking ? (
+        <Card className="mt-3 gap-3 p-4 shadow-none">
+          <Field
+            label="What you want to know"
+            value={subject}
+            onChange={setSubject}
+            placeholder="Tell me when this lands, and what you had to change"
+            autoFocus
+          />
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Opened with {task.assignee.type.toLowerCase()}{" "}
+            <span className="measure">{task.assignee.id.slice(0, 8)}</span>, the
+            actor this task is assigned to. When the task settles, its outcome
+            is delivered into the thread by the hub.
+          </p>
+          {error ? <Note>{error}</Note> : null}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={pending || subject.trim().length === 0}
+              onClick={() =>
+                void run(
+                  () =>
+                    api.threads.open(workspaceId, {
+                      participantType: task.assignee.type,
+                      participantId: task.assignee.id,
+                      subject: subject.trim(),
+                      taskId: task.id,
+                    }),
+                  () => {
+                    setAsking(false);
+                    setSubject("");
+                    onDone();
+                  },
+                )
+              }
+            >
+              <MessagesSquare />
+              {pending ? "Opening…" : "Open the thread"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setAsking(false)}>
+              Cancel
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <div className={threads.length > 0 ? "mt-3" : undefined}>
+          {threads.length === 0 ? (
+            <Empty icon={MessagesSquare} title="Assigned, but nobody is waiting">
+              Open a thread to be told what came of it, rather than checking
+              back yourself.
+            </Empty>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => setAsking(true)}
+          >
+            <MessagesSquare />
+            Follow this task
+          </Button>
+        </div>
+      )}
     </Section>
   );
 }

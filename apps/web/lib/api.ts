@@ -451,6 +451,14 @@ export const api = {
     ) => hub.post<{ taskId: string }>(`/workspaces/${workspace}/tasks`, body),
     setStatus: (workspace: string, taskId: string, status: string) =>
       hub.post(`/workspaces/${workspace}/tasks/${taskId}/status`, { status }),
+    /**
+     * §4.24 — the ONE path to COMPLETED. `allowedStatusTargets` deliberately
+     * never lists it, so an agent cannot declare its own success by moving a
+     * status: an agent submits, a person approves, and the hub checks the
+     * proof before it agrees.
+     */
+    complete: (workspace: string, taskId: string) =>
+      hub.post(`/workspaces/${workspace}/tasks/${taskId}/complete`, {}),
     assign: (workspace: string, taskId: string, assignee: Actor) =>
       hub.post(`/workspaces/${workspace}/tasks/${taskId}/assign`, {
         assigneeType: assignee.type,
