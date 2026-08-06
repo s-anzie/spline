@@ -15,6 +15,20 @@ import { Permission } from "./permission-matrix";
  * line of the cycle maps to one permission, which is what makes this list
  * reviewable rather than a guess.
  */
+/**
+ * What a grant may ASK for. Not what any agent gets.
+ *
+ * The leash is the intersection of this list and what the actor's role
+ * actually holds (`IssueTaskGrantUseCase`), so adding to it widens nobody's
+ * powers — it only lets a role exercise something it already carried.
+ *
+ * `manage_goals` and `manage_tasks` are here for the manager, and for the
+ * manager alone: `AGENT_MANAGER` holds them, `AGENT_CONTRIBUTOR` does not, so
+ * the same request produces a shorter list for a contributor without a line
+ * of code deciding that anywhere. That is the point of intersecting rather
+ * than enumerating per role — a new role gets the right answer for free, and
+ * a wrong one cannot be granted by forgetting a branch.
+ */
 export const PROTOCOL_SCOPES: readonly Permission[] = [
   "read_workspace_state",
   "contribute_knowledge",
@@ -22,6 +36,10 @@ export const PROTOCOL_SCOPES: readonly Permission[] = [
   "request_validation",
   "acquire_locks",
   "execute_tasks",
+  // Organising the work, not doing it: create a goal, cut it into tasks,
+  // assign them. A contributor is filtered out of both.
+  "manage_goals",
+  "manage_tasks",
 ];
 
 export class TaskGrantIssued extends BaseDomainEvent {

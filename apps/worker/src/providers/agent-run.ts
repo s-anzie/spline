@@ -18,6 +18,12 @@ export interface AgentGrant {
   hubUrl: string;
   serverCommand: string;
   serverArgs: readonly string[];
+  /**
+   * What the hub decided this agent may do, as the intersection of the
+   * protocol's scopes with its role. Carried down so the bridge offers only
+   * those tools — a manager sees `cut_task`, a contributor does not.
+   */
+  scopes?: readonly string[];
 }
 
 export interface AgentRunDeps {
@@ -127,6 +133,7 @@ export async function runAgent(
           workspaceId: command.workspaceId,
           taskId,
           grantToken: grant.token,
+          ...(grant.scopes ? { grantScopes: grant.scopes } : {}),
           serverCommand: grant.serverCommand,
           serverArgs: grant.serverArgs,
         })

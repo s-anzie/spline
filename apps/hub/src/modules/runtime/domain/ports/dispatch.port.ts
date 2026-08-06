@@ -87,3 +87,19 @@ export interface TaskAssignee {
 }
 
 export const TASK_ASSIGNEE = "runtime/TaskAssignee";
+
+/**
+ * §4.6 — whether the actor a task is assigned to organises work or does it.
+ *
+ * Declared here rather than read from the permission matrix directly: runtime
+ * dispatches, it does not own what a role means. The answer decides which
+ * briefing goes out, and getting it from the same source that decides which
+ * TOOLS go out is what keeps the two from disagreeing — an agent told to call
+ * `cut_task` without holding `manage_tasks` would be told about a tool it was
+ * never given.
+ */
+export interface OrganisingActor {
+  organises(actor: ActorRef, workspaceId: string): Promise<boolean>;
+}
+
+export const ORGANISING_ACTOR = "runtime/OrganisingActor";

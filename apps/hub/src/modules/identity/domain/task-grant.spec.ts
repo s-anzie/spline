@@ -1,4 +1,5 @@
 import { ActorRef } from "./actor";
+import { PERMISSIONS, roleHasPermission } from "./permission-matrix";
 import { PROTOCOL_SCOPES, TaskGrant } from "./task-grant";
 
 const now = new Date("2026-08-05T12:00:00.000Z");
@@ -92,7 +93,13 @@ describe("TaskGrant", () => {
   /**
    * §10 — the protocol's own scopes. Stated as a test because the list is a
    * review decision: each line of §10.2's cycle maps to one permission, and
-   * an addition here widens what every agent may do mid-task.
+   * an addition here widens what an agent MAY BE LENT mid-task.
+   *
+   * `manage_goals` and `manage_tasks` were added for the manager, and the
+   * reason they are safe is not that they are small — they are not. It is
+   * that the grant is issued as the intersection of this list with the
+   * actor's role, so a contributor asking for them receives neither. The test
+   * below proves that side of it; this one is the gate on the list itself.
    */
   it("names exactly the permissions the protocol cycle needs", () => {
     expect([...PROTOCOL_SCOPES].sort()).toEqual(
@@ -100,6 +107,8 @@ describe("TaskGrant", () => {
         "acquire_locks",
         "contribute_knowledge",
         "execute_tasks",
+        "manage_goals",
+        "manage_tasks",
         "read_workspace_state",
         "record_decisions",
         "request_validation",
@@ -111,5 +120,51 @@ describe("TaskGrant", () => {
     for (const forbidden of ["manage_members", "manage_workspace", "manage_machines"]) {
       expect(PROTOCOL_SCOPES).not.toContain(forbidden);
     }
+  });
+});
+
+/**
+ * §10, §18.12 — what a MANAGER may be lent, and what a contributor may not.
+ *
+ * The whole autonomous-team idea rests on one thing already being true: the
+ * leash is the intersection of what a grant asks for and what the actor's
+ * role actually holds. So widening the askable set does not widen anybody's
+ * powers — it lets a manager exercise the organising permissions its role
+ * already carried and had no way to use, and it changes nothing at all for a
+ * contributor.
+ */
+describe("PROTOCOL_SCOPES", () => {
+  it("offers the organising permissions, so a manager can be lent them", () => {
+    expect(PROTOCOL_SCOPES).toContain("manage_goals");
+    expect(PROTOCOL_SCOPES).toContain("manage_tasks");
+  });
+
+  it("asks only for permissions that exist in the matrix", () => {
+    for (const scope of PROTOCOL_SCOPES) {
+      expect(PERMISSIONS).toContain(scope);
+    }
+  });
+
+  /**
+   * The two roles, side by side. A contributor asking for the same scopes
+   * gets the same short list it always got — the filter is the leash, and it
+   * is a property of the role rather than of the request.
+   */
+  it("hands a manager more than a contributor, from the same request", () => {
+    const forManager = PROTOCOL_SCOPES.filter((scope) =>
+      roleHasPermission("AGENT_MANAGER", scope),
+    );
+    const forContributor = PROTOCOL_SCOPES.filter((scope) =>
+      roleHasPermission("AGENT_CONTRIBUTOR", scope),
+    );
+
+    expect(forManager).toContain("manage_tasks");
+    expect(forManager).toContain("manage_goals");
+    expect(forContributor).not.toContain("manage_tasks");
+    expect(forContributor).not.toContain("manage_goals");
+    // And a read-only agent still cannot even execute.
+    expect(
+      PROTOCOL_SCOPES.filter((scope) => roleHasPermission("READ_ONLY_AGENT", scope)),
+    ).not.toContain("execute_tasks");
   });
 });

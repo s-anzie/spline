@@ -243,3 +243,52 @@ que la règle existe pour refuser.
 **invisible** dans la console : la liste des machines lit `worker_nodes`, et cette machine-là n'existe
 que comme une demande `CLAIMED`. C'est précisément l'état dans lequel l'opérateur s'est retrouvé, sans
 rien à l'écran pour le lui dire. §17 demande mieux.
+
+## Le manager organise (§4.5, §4.6)
+
+**Le constat.** Un agent savait faire une tâche. Personne ne savait en fabriquer. L'utilisateur écrivait
+le but, découpait les tâches, les assignait, les dispatchait une par une — l'orchestration, c'était lui.
+
+**Ce qui manquait n'était pas la permission.** `AGENT_MANAGER` détenait `manage_goals` et `manage_tasks`
+depuis toujours dans la matrice. Ce qu'il n'avait, c'était **aucun outil pour les exercer** : le pont MCP
+exposait huit verbes du cycle §10 et rien d'autre. Une permission sans surface est une permission qui
+n'existe pas.
+
+**La laisse n'a pas bougé, et c'est le point.** Un grant est l'**intersection** de ce que le protocole
+demande avec ce que le rôle de l'acteur détient. Élargir `PROTOCOL_SCOPES` à `manage_goals` /
+`manage_tasks` n'élargit donc les pouvoirs de personne : un `AGENT_MANAGER` reçoit les deux, un
+`AGENT_CONTRIBUTOR` n'en reçoit aucun, et aucune ligne de code ne décide ça quelque part. Un rôle ajouté
+demain aura la bonne réponse sans qu'on y pense, et un rôle qui perd la permission perd les outils.
+
+**Trois endroits posent la même question à la même source, ce qui les empêche de diverger :**
+
+- le **grant**, qui décide des scopes ;
+- le **pont**, qui n'enregistre que les outils dont le scope est porté — filtrer ici plutôt que laisser
+  le hub refuser à l'appel n'est pas une ceinture de plus, c'est un autre comportement : un modèle à
+  qui on présente un outil interdit l'essaie, se fait refuser, et passe son tour à raisonner sur une
+  erreur de permission au lieu de travailler ;
+- le **briefing**, qui nomme ces outils-là. Un modèle qui doit découvrir ses propres outils y passe un
+  tour, et conclut souvent qu'il n'en a pas.
+
+**Deux briefings, pas un paragraphe ajouté.** Un agent à qui l'on dit « tu ne déclares jamais ton
+travail terminé » **et** « organise le travail » passe son tour à décider laquelle des deux phrases le
+concerne. Le manager reçoit son propre texte : la marche à suivre dans l'ordre, et trois interdits — ne
+pas faire le travail lui-même, ne rien déclarer fini, ne pas fabriquer d'agents.
+
+**La barrière anti-injection ne bouge pas non plus.** Le besoin arrive d'une personne qui tape dans une
+boîte : c'est exactement la matière que §18.12 met en quarantaine, et elle reste dans la clôture.
+
+**Un détail qui a coûté un test.** Les modèles écrivent une liste de trois façons — tableau, ligne à
+virgules, une par ligne, avec ou sans puces. Le hub refuse un tableau vide. Un manager dont les critères
+seraient arrivés en une seule chaîne se serait fait dire que sa propre tâche est malformée, sans rien
+pour agir. `list()` accepte les trois, et ne coupe pas « 1,5 s » en deux.
+
+**Reste ouvert, et nommé plutôt que sous-entendu :**
+
+- **Le point d'entrée.** Il faut encore créer la tâche d'orchestration à la main. La boîte « dis à
+  l'équipe ce dont tu as besoin » n'existe pas.
+- **Le dispatch automatique (§9).** Le manager crée les tâches ; personne ne les lance. C'est la pièce
+  qui sépare « il organise » de « ils travaillent pendant que je dors » — et elle ne partira pas sans
+  son plafond.
+- **Créer des agents.** Émettre une identité reste un acte de personne (§18). Un agent qui fabriquerait
+  des agents pourrait se multiplier hors de vue, et la facture est celle de l'opérateur.

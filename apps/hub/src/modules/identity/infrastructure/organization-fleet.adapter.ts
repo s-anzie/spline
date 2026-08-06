@@ -10,6 +10,11 @@ import {
 } from "../../runtime/domain/ports/organization-fleet.port";
 import { ActorRef } from "../domain/actor";
 import {
+  ORGANISING_ACTOR,
+  OrganisingActor,
+} from "../../runtime/domain/ports/dispatch.port";
+import { PermissionsService } from "../application/permissions.service";
+import {
   ACTOR_CREDENTIAL_REPOSITORY,
   ActorCredentialRepository,
   USER_REPOSITORY,
@@ -79,6 +84,27 @@ export class ActorStandingAdapter implements ActorStanding {
   }
 }
 
+/**
+ * §4.6 — a manager organises; everybody else does the work.
+ *
+ * `manage_tasks` is the question, not the role name: a role added later that
+ * carries it gets the manager's briefing without anybody remembering to add
+ * a branch here, and one that loses it stops getting it. The permission is
+ * the fact; the role is how it is held.
+ */
+@Injectable()
+export class OrganisingActorAdapter implements OrganisingActor {
+  constructor(private readonly permissions: PermissionsService) {}
+
+  async organises(actor: ActorRef, workspaceId: string): Promise<boolean> {
+    return this.permissions.can(
+      { actorType: actor.type, actorId: actor.actorId },
+      "manage_tasks",
+      workspaceId,
+    );
+  }
+}
+
 /** Global, and importing IdentityModule: see the note in kernel/doc.md. */
 @Global()
 @Module({
@@ -88,7 +114,9 @@ export class ActorStandingAdapter implements ActorStanding {
     { provide: ORGANIZATION_FLEET, useExisting: OrganizationFleetAdapter },
     ActorStandingAdapter,
     { provide: ACTOR_STANDING, useExisting: ActorStandingAdapter },
+    OrganisingActorAdapter,
+    { provide: ORGANISING_ACTOR, useExisting: OrganisingActorAdapter },
   ],
-  exports: [ORGANIZATION_FLEET, ACTOR_STANDING],
+  exports: [ORGANIZATION_FLEET, ACTOR_STANDING, ORGANISING_ACTOR],
 })
 export class OrganizationFleetModule {}

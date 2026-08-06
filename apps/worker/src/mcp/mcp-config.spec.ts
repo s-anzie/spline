@@ -93,3 +93,81 @@ describe("writeMcpBridge", () => {
     expect(env.SPLINE_TASK_ID).toBe("t-1");
   });
 });
+
+
+/**
+ * §18.12 — the surface narrows to what the grant actually paid for.
+ *
+ * A contributor and a manager run the same binary on the same machine; the
+ * only thing that differs is the scope list the hub computed from their role.
+ */
+describe("what the bridge offers", () => {
+  const base = {
+    hubUrl: "http://hub",
+    workspaceId: "w-1",
+    taskId: "t-1",
+    grantToken: "grant_1.secret",
+    serverCommand: "node",
+    serverArgs: ["server.js"],
+  };
+
+  it("offers a contributor the cycle and none of the organising tools", () => {
+    const directory = mkdtempSync(join(tmpdir(), "spline-scope-"));
+    const surface = writeMcpBridge({
+      ...base,
+      directory,
+      grantScopes: [
+        "read_workspace_state",
+        "contribute_knowledge",
+        "execute_tasks",
+        "acquire_locks",
+        "record_decisions",
+        "request_validation",
+      ],
+    });
+
+    expect(surface.allowedTools).toContain("mcp__spline__publish_progress");
+    expect(surface.allowedTools).not.toContain("mcp__spline__cut_task");
+    expect(surface.allowedTools).not.toContain("mcp__spline__state_goal");
+  });
+
+  it("offers a manager the organising tools as well", () => {
+    const directory = mkdtempSync(join(tmpdir(), "spline-scope-"));
+    const surface = writeMcpBridge({
+      ...base,
+      directory,
+      grantScopes: ["read_workspace_state", "manage_goals", "manage_tasks"],
+    });
+
+    expect(surface.allowedTools).toContain("mcp__spline__state_goal");
+    expect(surface.allowedTools).toContain("mcp__spline__cut_task");
+    expect(surface.allowedTools).toContain("mcp__spline__list_team");
+    // It was not granted execution, so it is not offered it either.
+    expect(surface.allowedTools).not.toContain("mcp__spline__request_validation");
+  });
+
+  it("tells the server the same list it wrote the allowlist from", () => {
+    const directory = mkdtempSync(join(tmpdir(), "spline-scope-"));
+    writeMcpBridge({ ...base, directory, grantScopes: ["manage_tasks"] });
+
+    const written = JSON.parse(
+      readFileSync(join(directory, ".spline", "mcp.json"), "utf8"),
+    ) as { mcpServers: Record<string, { env: Record<string, string> }> };
+
+    expect(written.mcpServers.spline?.env.SPLINE_GRANT_SCOPES).toBe("manage_tasks");
+  });
+
+  /**
+   * An older hub answers with no scope list. Offering everything is the right
+   * fallback: the hub checks each call anyway, so the agent is merely told
+   * about tools it will be refused rather than being locked out of ones it
+   * holds.
+   */
+  it("offers everything when the hub said nothing", () => {
+    const directory = mkdtempSync(join(tmpdir(), "spline-scope-"));
+    const surface = writeMcpBridge({ ...base, directory });
+
+    expect(surface.allowedTools).toContain("mcp__spline__cut_task");
+    expect(surface.allowedTools).toContain("mcp__spline__publish_progress");
+  });
+});

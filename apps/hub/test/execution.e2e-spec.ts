@@ -1125,39 +1125,69 @@ describe("Task grants (e2e)", () => {
    */
   describe("the intersection", () => {
     /**
-     * The observable direction today. Both agent roles that may hold a task
-     * carry every protocol scope — a task cannot be assigned to an actor
-     * without `execute_tasks` — so "role holds less than asked" cannot be
-     * reached from here. What CAN be shown is the other side, and it is the
-     * one that matters: an AGENT_MANAGER holds `manage_tasks` and
-     * `manage_goals`, and the grant carries neither.
+     * The intersection, in both directions, on the same request.
+     *
+     * This used to assert that a MANAGER received neither `manage_tasks` nor
+     * `manage_goals` — true then, because the protocol did not ask for them.
+     * It does now: those two are what let a manager turn a need into a goal
+     * and cut it into tasks (§4.5, §4.6). The property being guarded is not
+     * "managers get little", it is "the grant is the intersection" — so the
+     * test moved to showing the two roles side by side. A contributor asking
+     * for exactly the same thing still receives neither.
      */
-    it("grants only the protocol's scopes, even to a role that holds more", async () => {
+    it("gives a manager the organising scopes", async () => {
       const ctx = await dispatched("AGENT_MANAGER");
-
       const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
 
       expect(grant.body.scopes).toContain("read_workspace_state");
       expect(grant.body.scopes).toContain("execute_tasks");
-      // Held by the role, absent from the grant.
+      expect(grant.body.scopes).toContain("manage_tasks");
+      expect(grant.body.scopes).toContain("manage_goals");
+    });
+
+    /** The same request, the other role. The filter is the role, not the ask. */
+    it("gives a contributor none of them, from the same request", async () => {
+      const ctx = await dispatched("AGENT_CONTRIBUTOR");
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+      expect(grant.body.scopes).toContain("execute_tasks");
       expect(grant.body.scopes).not.toContain("manage_tasks");
       expect(grant.body.scopes).not.toContain("manage_goals");
     });
 
+    /**
+     * The refusal itself, on a scope that is still outside the protocol for
+     * everybody — approving a validation is a person's act (§4.24), and no
+     * grant has ever carried it.
+     */
     it("refuses a route the grant does not carry, naming what it does", async () => {
       const ctx = await dispatched("AGENT_MANAGER");
       const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
 
-      // The agent's ROLE allows this; its grant does not.
       const refused = await request(http)
-        .patch(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}`)
+        .post(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}/complete`)
         .set("Authorization", `Bearer ${grant.body.token}`)
-        .send({ title: "Renamed by a grant that may not" })
+        .send({})
         .expect(403);
 
       expect(refused.body.message).toContain("does not carry");
       // §20.6 — the refusal says what would have worked.
       expect(refused.body.message).toContain("read_workspace_state");
+    });
+
+    /**
+     * And the manager's new reach is real: the same token that is refused
+     * above can cut a task, which is the whole point of widening it.
+     */
+    it("lets a manager's grant actually organise", async () => {
+      const ctx = await dispatched("AGENT_MANAGER");
+      const grant = await ctx.auth(request(http).post(ctx.grantUrl)).expect(200);
+
+      await request(http)
+        .patch(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}`)
+        .set("Authorization", `Bearer ${grant.body.token}`)
+        .send({ title: "Recut by the manager" })
+        .expect(200);
     });
 
     it("allows what it does carry", async () => {

@@ -12,6 +12,10 @@ import {
 import { AGENT_MEMORY, AgentMemory } from "../domain/ports/agent-memory.port";
 import {
   DISPATCHABLE_TASK,
+  ORGANISING_ACTOR,
+  OrganisingActor,
+  TASK_ASSIGNEE,
+  TaskAssignee,
   DispatchableTask,
   RUN_LEDGER,
   RunLedger,
@@ -100,6 +104,8 @@ export class DispatchTaskUseCase
     @Inject(AGENT_MEMORY) private readonly memory: AgentMemory,
     @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
+    @Inject(TASK_ASSIGNEE) private readonly assignees: TaskAssignee,
+    @Inject(ORGANISING_ACTOR) private readonly organisingActor: OrganisingActor,
     private readonly enqueue: EnqueueCommandUseCase,
   ) {}
 
@@ -124,6 +130,11 @@ export class DispatchTaskUseCase
     const previous = await this.runs.latestFor(input.workspaceId, input.taskId);
     const resumedSessionId =
       previous && previous.provider === input.provider ? previous.providerSessionId : null;
+
+    const assignee = await this.assignees.assigneeOf(input.workspaceId, input.taskId);
+    const organising = assignee
+      ? await this.organisingActor.organises(assignee, input.workspaceId)
+      : false;
 
     const run = await this.runs.openRun(input.workspaceId, input.taskId);
 
@@ -154,6 +165,10 @@ export class DispatchTaskUseCase
           goalTitle: briefing.goalTitle,
           memory,
           hubUrl: input.hubUrl,
+          // §4.6 — a manager is briefed to organise, not to execute. Asked
+          // of the same permission the bridge uses to choose its tools, so
+          // the prompt cannot name a tool the agent was never given.
+          organising,
         }),
         // Names only. The values never travel in an order (§18.4).
         secretNames: [...(input.secretNames ?? [])],

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { HubCall, PROTOCOL_TOOLS, ToolContext } from "./protocol-tools";
+import { HubCall, PROTOCOL_TOOLS, ToolContext, toolsFor } from "./protocol-tools";
 
 /**
  * §10, §18.12 — the bridge an agent uses to run the protocol.
@@ -20,6 +20,8 @@ interface Settings {
   hubUrl: string;
   context: ToolContext;
   grantToken: string;
+  /** Absent means every tool: an older hub sends no scope list. */
+  scopes?: readonly string[];
 }
 
 function settingsFrom(env: NodeJS.ProcessEnv): Settings {
@@ -42,6 +44,14 @@ function settingsFrom(env: NodeJS.ProcessEnv): Settings {
       taskId: env.SPLINE_TASK_ID!.trim(),
     },
     grantToken: env.SPLINE_GRANT_TOKEN!.trim(),
+    // Absent on purpose when the hub said nothing: see `toolsFor`.
+    ...(env.SPLINE_GRANT_SCOPES?.trim()
+      ? {
+          scopes: env.SPLINE_GRANT_SCOPES.split(",")
+            .map((scope) => scope.trim())
+            .filter(Boolean),
+        }
+      : {}),
   };
 }
 
@@ -90,7 +100,7 @@ function shapeOf(tool: (typeof PROTOCOL_TOOLS)[number]) {
 export function buildServer(settings: Settings): McpServer {
   const server = new McpServer({ name: "spline", version: "1.0.0" });
 
-  for (const tool of PROTOCOL_TOOLS) {
+  for (const tool of toolsFor(settings.scopes)) {
     server.registerTool(
       tool.name,
       {

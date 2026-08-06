@@ -15,6 +15,15 @@ export interface McpBridgeInput {
   taskId: string;
   /** §18.10 — the agent's own credential, for this task, for an hour. */
   grantToken: string;
+  /**
+   * What that credential actually carries, as the hub computed it.
+   *
+   * Passed down so the bridge offers only the tools this agent may use: a
+   * contributor never sees `cut_task`, and a manager does. Absent means "all
+   * of them", which is what an older hub answers — safe, since every call is
+   * checked again on arrival.
+   */
+  grantScopes?: readonly string[];
   /** How the server is started. Injected so a test needs no built bundle. */
   serverCommand: string;
   serverArgs: readonly string[];
@@ -49,6 +58,8 @@ export function writeMcpBridge(input: McpBridgeInput): ToolSurface {
           SPLINE_WORKSPACE_ID: input.workspaceId,
           SPLINE_TASK_ID: input.taskId,
           SPLINE_GRANT_TOKEN: input.grantToken,
+          // Read by the server to decide which tools to register at all.
+          ...(input.grantScopes ? { SPLINE_GRANT_SCOPES: input.grantScopes.join(",") } : {}),
         },
       },
     },
@@ -62,6 +73,6 @@ export function writeMcpBridge(input: McpBridgeInput): ToolSurface {
     // The PATH, never the JSON: see above. `ToolSurface` has no field that
     // could carry the config inline, which is what makes this unforgettable.
     mcpConfigPath: path,
-    allowedTools: allowedToolNames(SERVER_NAME),
+    allowedTools: allowedToolNames(SERVER_NAME, input.grantScopes),
   };
 }

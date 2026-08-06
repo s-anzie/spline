@@ -16,22 +16,51 @@ describe("the protocol tools", () => {
    * adding a line widens what every agent may do mid-task, and that should be
    * a decision somebody made rather than a diff nobody noticed.
    */
-  it("exposes exactly the verbs of the §10 cycle", () => {
+  it("exposes exactly the verbs of the §10 cycle, plus the organising ones", () => {
     expect(PROTOCOL_TOOLS.map((entry) => entry.name).sort()).toEqual([
       "acquire_lock",
+      "cut_task",
+      "hand_over",
+      "list_goals",
+      "list_team",
       "publish_progress",
       "read_workspace",
       "record_decision",
       "release_lock",
       "report_blocker",
       "request_validation",
+      "state_goal",
       "synchronize",
     ]);
   });
 
+  /**
+   * The half of the leash that lives here.
+   *
+   * A tool declares the permission it spends, and the bridge serves only the
+   * ones the grant carries. Without a scope a tool would be handed to
+   * everybody and refused by the hub at call time — which works, but tells an
+   * agent it can do something and then punishes it for trying.
+   */
+  it("says what each tool spends", () => {
+    for (const entry of PROTOCOL_TOOLS) {
+      expect(entry.scope).toBeTruthy();
+    }
+  });
+
+  it("puts the organising tools behind the organising permissions", () => {
+    const scopeOf = (name: string) => tool(name).scope;
+
+    expect(scopeOf("state_goal")).toBe("manage_goals");
+    expect(scopeOf("cut_task")).toBe("manage_tasks");
+    expect(scopeOf("hand_over")).toBe("manage_tasks");
+    // Reading the team is not organising: a contributor may look.
+    expect(scopeOf("list_team")).toBe("read_workspace_state");
+  });
+
   it("says which step of the cycle each one serves", () => {
     for (const entry of PROTOCOL_TOOLS) {
-      expect(entry.step).toMatch(/§10\./);
+      expect(entry.step).toMatch(/§\d/);
       // Read by a model: a description nobody can act on is a tool nobody uses.
       expect(entry.description.length).toBeGreaterThan(40);
     }
@@ -43,10 +72,31 @@ describe("the protocol tools", () => {
    * another workspace's tasks with a credential minted for this one.
    */
   describe("the agent never names its own workspace or task", () => {
+    /**
+     * The workspace, never — for any tool. That one is absolute: a grant is
+     * minted for one workspace, and a tool that let the agent name another
+     * would be the §4.2 crossing with a credential attached.
+     */
     it.each(PROTOCOL_TOOLS.map((entry) => entry.name))(
-      "%s takes neither as a parameter",
+      "%s never names a workspace",
       (name) => {
         expect(Object.keys(tool(name).parameters)).not.toContain("workspaceId");
+      },
+    );
+
+    /**
+     * The task, never — for the cycle tools. An agent doing a task must not be
+     * able to point them at somebody else's.
+     *
+     * The organising tools are the deliberate exception: `hand_over` moves a
+     * task that is by definition not the manager's own, and `cut_task` names
+     * the goal it serves. They stay inside the workspace the path carries, and
+     * the hub checks `manage_tasks` on every one of them.
+     */
+    const CYCLE_TOOLS = PROTOCOL_TOOLS.filter((entry) => entry.step.includes("§10."));
+    it.each(CYCLE_TOOLS.map((entry) => entry.name))(
+      "%s acts on its own task and no other",
+      (name) => {
         expect(Object.keys(tool(name).parameters)).not.toContain("taskId");
       },
     );
@@ -132,6 +182,112 @@ describe("the protocol tools", () => {
    * dangerous direction, since a tool nothing allows simply fails at runtime
    * in a way nobody understands.
    */
+  /**
+   * The organising tools, called the way a model actually calls them.
+   */
+  describe("organising the work", () => {
+    it("states a goal in this workspace, with what would prove it", () => {
+      const call = tool("state_goal").request(context, {
+        title: "Improve the document creation flow",
+        description: "Take every piece of information it needs into account",
+        successCriteria: ["no field is asked for twice", "a draft survives a reload"],
+      });
+
+      expect(call).toEqual({
+        method: "POST",
+        path: "/workspaces/w-1/goals",
+        body: {
+          title: "Improve the document creation flow",
+          description: "Take every piece of information it needs into account",
+          successCriteria: ["no field is asked for twice", "a draft survives a reload"],
+        },
+      });
+    });
+
+    /**
+     * Models send lists three different ways, and the hub refuses an empty
+     * array — so a manager whose criteria arrived as one string would be told
+     * its own task is malformed with nothing to act on.
+     */
+    it.each([
+      ["a real array", ["one", "two"]],
+      ["a comma-separated line", "one, two"],
+      ["one per line", "one\ntwo"],
+      ["a bulleted list", "- one\n- two"],
+      ["a numbered list", "1. one\n2. two"],
+      ["semicolons", "one; two"],
+    ])("takes criteria written as %s", (_label, written) => {
+      const call = tool("state_goal").request(context, {
+        title: "T",
+        successCriteria: written,
+      });
+
+      expect(call.body?.successCriteria).toEqual(["one", "two"]);
+    });
+
+    it("keeps a decimal inside one criterion rather than splitting it", () => {
+      const call = tool("state_goal").request(context, {
+        title: "T",
+        successCriteria: "the page loads in 1,5 s; nothing else changes",
+      });
+
+      expect(call.body?.successCriteria).toEqual([
+        "the page loads in 1,5 s",
+        "nothing else changes",
+      ]);
+    });
+
+    it("cuts a task out of a goal and gives it to somebody by name", () => {
+      const call = tool("cut_task").request(context, {
+        goalId: "g-9",
+        title: "Audit the current form",
+        description: "List every field and where it comes from",
+        acceptanceCriteria: ["every field is listed with its source"],
+        assigneeId: "agent-7",
+      });
+
+      expect(call.method).toBe("POST");
+      expect(call.path).toBe("/workspaces/w-1/tasks");
+      expect(call.body).toEqual({
+        goalId: "g-9",
+        title: "Audit the current form",
+        description: "List every field and where it comes from",
+        acceptanceCriteria: ["every field is listed with its source"],
+        // §4.6 — assigned from its first instant, so the tool cannot omit it.
+        assigneeType: "AGENT",
+        assigneeId: "agent-7",
+      });
+    });
+
+    it("hands an existing task to somebody else", () => {
+      const call = tool("hand_over").request(context, {
+        taskId: "t-42",
+        assigneeId: "agent-3",
+      });
+
+      expect(call.method).toBe("POST");
+      expect(call.path).toBe("/workspaces/w-1/tasks/t-42/assign");
+      expect(call.body).toEqual({ assigneeType: "AGENT", assigneeId: "agent-3" });
+    });
+
+    it("reads the team and the goals of its own workspace only", () => {
+      expect(tool("list_team").request(context, {}).path).toBe("/workspaces/w-1/members");
+      expect(tool("list_goals").request(context, {}).path).toBe("/workspaces/w-1/goals");
+    });
+
+    /**
+     * §18 — organising is not staffing. Issuing an identity is an
+     * organization-level act reserved to a person, so no tool here can reach
+     * it: an agent that could mint agents could multiply out of sight, and
+     * the bill would be the operator's.
+     */
+    it("offers no way to create an identity, or to touch the organization", () => {
+      for (const entry of PROTOCOL_TOOLS) {
+        expect(entry.request(context, {}).path).toMatch(/^\/workspaces\/w-1(\/|$)/);
+      }
+    });
+  });
+
   it("derives the allowlist from the tools themselves", () => {
     const names = allowedToolNames("spline");
 

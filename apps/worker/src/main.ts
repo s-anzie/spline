@@ -224,6 +224,10 @@ async function main(): Promise<void> {
                 const granted = await hub.commandGrant(command.id);
                 return {
                   token: granted.token,
+                  // What that token actually carries, so the bridge offers
+                  // the manager its organising tools and offers a
+                  // contributor none of them.
+                  scopes: granted.scopes,
                   hubUrl: config.hubUrl,
                   serverCommand: process.execPath,
                   serverArgs: [config.mcpServerPath],
