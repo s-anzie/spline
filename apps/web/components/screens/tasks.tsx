@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   CircleCheck,
   ClipboardList,
@@ -13,6 +14,8 @@ import {
 
 import { api, type TaskView } from "@/lib/api";
 import { humanise, money, since, stamp } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -25,6 +28,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Row,
   Section,
@@ -48,19 +52,9 @@ const FILTERS = [
   { value: "COMPLETED", label: "Done" },
 ];
 
-export function Tasks() {
-  const { workspaceId, route, go } = useSession();
-  if (route.id) {
-    return (
-      <TaskDetail workspaceId={workspaceId!} taskId={route.id} onBack={() => go("tasks")} />
-    );
-  }
-  return <TaskList workspaceId={workspaceId!} />;
-}
-
-function TaskList({ workspaceId }: { workspaceId: string }) {
+export function TaskList() {
+  const workspaceId = useSession((state) => state.workspaceId)!;
   const [status, setStatus] = useState("");
-  const go = useSession((state) => state.go);
   const tasks = useResource(() => api.tasks.list(workspaceId), [workspaceId], {
     pollMs: 20_000,
   });
@@ -74,6 +68,7 @@ function TaskList({ workspaceId }: { workspaceId: string }) {
   }, [tasks.data]);
 
   const shown = (tasks.data ?? []).filter((task) => !status || task.status === status);
+  const paged = usePaged(shown);
   const blocked = counts.get("BLOCKED") ?? 0;
 
   return (
@@ -130,9 +125,10 @@ function TaskList({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {shown.length > 0 ? (
+        <>
         <Panel>
-          {shown.map((task) => (
-            <Row key={task.id} onOpen={() => go("tasks", task.id)} className="py-3">
+          {paged.items.map((task) => (
+            <Row key={task.id} href={routes.task(task.id)} className="py-3">
               <Stripe tone={toneOf(task.status)} live={task.status === "RUNNING"} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{task.title}</p>
@@ -158,21 +154,15 @@ function TaskList({ workspaceId }: { workspaceId: string }) {
             </Row>
           ))}
         </Panel>
+        <Pager paged={paged} />
+        </>
       ) : null}
     </>
   );
 }
 
-function TaskDetail({
-  workspaceId,
-  taskId,
-  onBack,
-}: {
-  workspaceId: string;
-  taskId: string;
-  onBack: () => void;
-}) {
-  const go = useSession((state) => state.go);
+export function TaskDetail({ taskId }: { taskId: string }) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
   const task = useResource(() => api.tasks.get(workspaceId, taskId), [workspaceId, taskId]);
   const runs = useResource(
     () => api.runs.list(workspaceId, { taskId }),
@@ -191,7 +181,7 @@ function TaskDetail({
 
   return (
     <>
-      <BackTo label="Tasks" onBack={onBack} />
+      <BackTo label="Tasks" href={routes.tasks} />
       <PageHeader
         title={view.title}
         lead={view.description ?? undefined}
@@ -257,13 +247,12 @@ function TaskDetail({
               [
                 "goal",
                 view.goalId ? (
-                  <button
-                    type="button"
+                  <Link
+                    href={routes.goal(view.goalId)}
                     className="underline underline-offset-2"
-                    onClick={() => go("goals", view.goalId)}
                   >
                     {view.goalId.slice(0, 8)}
-                  </button>
+                  </Link>
                 ) : (
                   "—"
                 ),
@@ -283,7 +272,7 @@ function TaskDetail({
         {runs.data && runs.data.length > 0 ? (
           <Panel>
             {runs.data.map((entry) => (
-              <Row key={entry.runId} onOpen={() => go("runs", entry.runId)}>
+              <Row key={entry.runId} href={routes.run(entry.runId)}>
                 <Stripe tone={toneOf(entry.status)} live={entry.status === "RUNNING"} />
                 <span className="measure text-muted-foreground text-xs">
                   #{entry.attemptNumber}

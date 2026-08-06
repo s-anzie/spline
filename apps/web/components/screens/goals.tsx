@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { CircleCheckBig, CornerDownRight, Target } from "lucide-react";
 
 import { api, type GoalView } from "@/lib/api";
 import { humanise, since, stamp } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -16,6 +19,7 @@ import {
   Meter,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Row,
   Section,
@@ -27,16 +31,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
-export function Goals() {
-  const { workspaceId, route, go } = useSession();
-  if (route.id) {
-    return <GoalDetail workspaceId={workspaceId!} goalId={route.id} onBack={() => go("goals")} />;
-  }
-  return <GoalList workspaceId={workspaceId!} />;
-}
-
-function GoalList({ workspaceId }: { workspaceId: string }) {
-  const go = useSession((state) => state.go);
+export function GoalList() {
+  const workspaceId = useSession((state) => state.workspaceId)!;
   const goals = useResource(() => api.goals.list(workspaceId), [workspaceId], {
     pollMs: 30_000,
   });
@@ -52,6 +48,9 @@ function GoalList({ workspaceId }: { workspaceId: string }) {
   const orphans = all.filter(
     (goal) => goal.parentGoalId && !all.some((other) => other.id === goal.parentGoalId),
   );
+  // Paged over the top level: a parent and its children are one entry to
+  // read, so splitting a family across two pages would be worse than useless.
+  const paged = usePaged([...roots, ...orphans]);
 
   const active = all.filter((goal) => goal.status === "ACTIVE").length;
   const done = all.filter((goal) => goal.status === "COMPLETED").length;
@@ -94,37 +93,27 @@ function GoalList({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {all.length > 0 ? (
+        <>
         <Panel>
-          {[...roots, ...orphans].map((goal) => (
+          {paged.items.map((goal) => (
             <div key={goal.id} className="divide-border divide-y">
-              <GoalRow goal={goal} onOpen={() => go("goals", goal.id)} />
+              <GoalRow goal={goal} />
               {childrenOf(goal.id).map((child) => (
-                <GoalRow
-                  key={child.id}
-                  goal={child}
-                  onOpen={() => go("goals", child.id)}
-                  indented
-                />
+                <GoalRow key={child.id} goal={child} indented />
               ))}
             </div>
           ))}
         </Panel>
+        <Pager paged={paged} />
+        </>
       ) : null}
     </>
   );
 }
 
-function GoalRow({
-  goal,
-  onOpen,
-  indented = false,
-}: {
-  goal: GoalView;
-  onOpen: () => void;
-  indented?: boolean;
-}) {
+function GoalRow({ goal, indented = false }: { goal: GoalView; indented?: boolean }) {
   return (
-    <Row onOpen={onOpen} className={indented ? "pl-10" : undefined}>
+    <Row href={routes.goal(goal.id)} className={indented ? "pl-10" : undefined}>
       {indented ? (
         <CornerDownRight className="text-muted-foreground size-3.5 shrink-0" />
       ) : (
@@ -143,16 +132,8 @@ function GoalRow({
   );
 }
 
-function GoalDetail({
-  workspaceId,
-  goalId,
-  onBack,
-}: {
-  workspaceId: string;
-  goalId: string;
-  onBack: () => void;
-}) {
-  const go = useSession((state) => state.go);
+export function GoalDetail({ goalId }: { goalId: string }) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
   const goal = useResource(() => api.goals.get(workspaceId, goalId), [workspaceId, goalId]);
   const tasks = useResource(
     () => api.tasks.list(workspaceId, { goalId }),
@@ -171,7 +152,7 @@ function GoalDetail({
 
   return (
     <>
-      <BackTo label="Goals" onBack={onBack} />
+      <BackTo label="Goals" href={routes.goals} />
       <PageHeader
         title={view.title}
         lead={view.description ?? undefined}
@@ -243,13 +224,12 @@ function GoalDetail({
               [
                 "parent",
                 view.parentGoalId ? (
-                  <button
-                    type="button"
+                  <Link
+                    href={routes.goal(view.parentGoalId)}
                     className="underline underline-offset-2"
-                    onClick={() => go("goals", view.parentGoalId)}
                   >
                     {view.parentGoalId.slice(0, 8)}
-                  </button>
+                  </Link>
                 ) : (
                   "root goal"
                 ),
@@ -270,7 +250,7 @@ function GoalDetail({
         {tasks.data && tasks.data.length > 0 ? (
           <Panel>
             {tasks.data.map((task) => (
-              <Row key={task.id} onOpen={() => go("tasks", task.id)}>
+              <Row key={task.id} href={routes.task(task.id)}>
                 <Stripe tone={toneOf(task.status)} live={task.status === "RUNNING"} />
                 <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
                 <Status value={task.status} />

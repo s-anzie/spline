@@ -1,20 +1,11 @@
 "use client";
 
-import {
-  Activity as ActivityIcon,
-  Cpu,
-  Inbox as InboxIcon,
-  ListChecks,
-  Moon,
-  Play,
-  Settings2,
-  Sun,
-  Target,
-  TriangleAlert,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import { useSession, type Screen } from "@/lib/store";
+import { NAV, routes } from "@/lib/routes";
+import { useSession } from "@/lib/store";
 import {
   CommandDialog,
   CommandEmpty,
@@ -25,17 +16,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 
-const DESTINATIONS: { screen: Screen; label: string; icon: typeof Target; hint: string }[] =
-  [
-    { screen: "queue", label: "Queue", icon: TriangleAlert, hint: "what needs a person" },
-    { screen: "goals", label: "Goals", icon: Target, hint: "what this is all for" },
-    { screen: "tasks", label: "Tasks", icon: ListChecks, hint: "the unit of work" },
-    { screen: "runs", label: "Runs", icon: Play, hint: "what executed, and what it cost" },
-    { screen: "machines", label: "Machines", icon: Cpu, hint: "what runs the agents" },
-    { screen: "activity", label: "Activity", icon: ActivityIcon, hint: "the journal" },
-    { screen: "inbox", label: "Inbox", icon: InboxIcon, hint: "addressed to you" },
-    { screen: "workspace", label: "Workspace", icon: Settings2, hint: "health, people, rules" },
-  ];
+const DESTINATIONS = NAV.flatMap((group) => group.items);
 
 /**
  * ⌘K.
@@ -52,7 +33,8 @@ export function CommandMenu({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { workspaces, workspaceId, go, chooseWorkspace } = useSession();
+  const router = useRouter();
+  const { workspaces, workspaceId, chooseWorkspace } = useSession();
   const { theme, setTheme } = useTheme();
 
   const run = (action: () => void) => {
@@ -74,9 +56,9 @@ export function CommandMenu({
         <CommandGroup heading="Screens">
           {DESTINATIONS.map((destination) => (
             <CommandItem
-              key={destination.screen}
+              key={destination.href}
               value={`${destination.label} ${destination.hint}`}
-              onSelect={() => run(() => go(destination.screen))}
+              onSelect={() => run(() => router.push(destination.href))}
             >
               <destination.icon className="size-4 opacity-70" strokeWidth={1.75} />
               <span>{destination.label}</span>
@@ -97,7 +79,12 @@ export function CommandMenu({
                   <CommandItem
                     key={workspace.id}
                     value={`workspace ${workspace.name}`}
-                    onSelect={() => run(() => chooseWorkspace(workspace.id))}
+                    onSelect={() =>
+                      run(() => {
+                        chooseWorkspace(workspace.id);
+                        router.push(routes.queue);
+                      })
+                    }
                   >
                     <span className="measure text-muted-foreground text-xs">↳</span>
                     <span>{workspace.name}</span>

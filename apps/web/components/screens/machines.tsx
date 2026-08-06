@@ -14,6 +14,7 @@ import {
 import { api } from "@/lib/api";
 import { collapse, type WaitingMachine } from "@/lib/enrolments";
 import { humanise, since, stamp } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
 import { useOrganizationId, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -24,6 +25,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Row,
   Section,
@@ -70,6 +72,9 @@ export function Machines() {
     (command) => command.status === "PENDING" || command.status === "CLAIMED",
   ).length;
   const waiting = collapse(enrolments.data ?? []);
+  const pagedWorkers = usePaged(all);
+  const pagedSessions = usePaged(sessions.data ?? []);
+  const pagedCommands = usePaged(commands.data ?? []);
 
   return (
     <>
@@ -143,8 +148,9 @@ export function Machines() {
           </Empty>
         ) : null}
         {all.length > 0 ? (
+          <>
           <Panel>
-            {all.map((worker) => (
+            {pagedWorkers.items.map((worker) => (
               <div key={worker.id} className="flex items-stretch gap-3 px-4 py-3.5">
                 {/* Stale beats status: a worker whose last word was "ONLINE" an
                     hour ago is not online, whatever the row says. */}
@@ -193,13 +199,16 @@ export function Machines() {
               </div>
             ))}
           </Panel>
+          <Pager paged={pagedWorkers} />
+          </>
         ) : null}
       </Section>
 
       <Section title="Sessions" count={sessions.data?.length}>
         {sessions.data && sessions.data.length > 0 ? (
+          <>
           <Panel>
-            {sessions.data.map((session) => (
+            {pagedSessions.items.map((session) => (
               <Row key={session.id}>
                 <Stripe tone={toneOf(session.status)} live={session.status === "RUNNING"} />
                 <span className="min-w-0 flex-1 text-sm">
@@ -224,6 +233,8 @@ export function Machines() {
               </Row>
             ))}
           </Panel>
+          <Pager paged={pagedSessions} />
+          </>
         ) : (
           <Empty icon={Cpu}>No agent session has been opened on these machines.</Empty>
         )}
@@ -231,8 +242,9 @@ export function Machines() {
 
       <Section title="Command queue" count={commands.data?.length}>
         {commands.data && commands.data.length > 0 ? (
+          <>
           <Panel>
-            {commands.data.map((command) => (
+            {pagedCommands.items.map((command) => (
               <Row key={command.id}>
                 <Stripe tone={toneOf(command.status)} />
                 <span className="flex-1 text-sm font-medium">{humanise(command.type)}</span>
@@ -246,6 +258,8 @@ export function Machines() {
               </Row>
             ))}
           </Panel>
+          <Pager paged={pagedCommands} />
+          </>
         ) : (
           <Empty icon={ListTree}>
             The queue is empty — every order has been claimed and reported.

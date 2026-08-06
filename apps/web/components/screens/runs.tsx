@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CircleDollarSign,
   Play,
@@ -10,6 +12,8 @@ import {
 
 import { api, type RunView } from "@/lib/api";
 import { duration, humanise, money, since, stamp, tokens } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -21,6 +25,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Row,
   Section,
@@ -43,21 +48,20 @@ import {
 const spent = (run: RunView) =>
   run.attempts.reduce((total, attempt) => total + (attempt.cost ?? 0), 0);
 
-export function Runs() {
-  const { workspaceId, route, go } = useSession();
-  if (route.id) {
-    return <RunDetail workspaceId={workspaceId!} runId={route.id} onBack={() => go("runs")} />;
-  }
-  return <RunList workspaceId={workspaceId!} />;
-}
+/**
+ * The cap the hub is asked for. Handed to the pager, so a full page says the
+ * record continues past it rather than implying this is all there ever was.
+ */
+const CAP = 100;
 
-function RunList({ workspaceId }: { workspaceId: string }) {
-  const go = useSession((state) => state.go);
-  const runs = useResource(() => api.runs.list(workspaceId, { limit: 100 }), [workspaceId], {
+export function RunList() {
+  const workspaceId = useSession((state) => state.workspaceId)!;
+  const runs = useResource(() => api.runs.list(workspaceId, { limit: CAP }), [workspaceId], {
     pollMs: 10_000,
   });
 
   const all = runs.data ?? [];
+  const paged = usePaged(all);
   const running = all.filter((run) => run.status === "RUNNING").length;
   const failed = all.filter((run) => run.status === "FAILED").length;
   const total = all.reduce((sum, run) => sum + spent(run), 0);
@@ -109,9 +113,10 @@ function RunList({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {all.length > 0 ? (
+        <>
         <Panel>
-          {all.map((run) => (
-            <Row key={run.runId} onOpen={() => go("runs", run.runId)} className="py-3">
+          {paged.items.map((run) => (
+            <Row key={run.runId} href={routes.run(run.runId)} className="py-3">
               <Stripe tone={toneOf(run.status)} live={run.status === "RUNNING"} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
@@ -140,21 +145,16 @@ function RunList({ workspaceId }: { workspaceId: string }) {
             </Row>
           ))}
         </Panel>
+        <Pager paged={paged} cap={CAP} />
+        </>
       ) : null}
     </>
   );
 }
 
-function RunDetail({
-  workspaceId,
-  runId,
-  onBack,
-}: {
-  workspaceId: string;
-  runId: string;
-  onBack: () => void;
-}) {
-  const go = useSession((state) => state.go);
+export function RunDetail({ runId }: { runId: string }) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
+  const router = useRouter();
   const run = useResource(() => api.runs.get(workspaceId, runId), [workspaceId, runId], {
     pollMs: 8_000,
   });
@@ -171,7 +171,7 @@ function RunDetail({
 
   return (
     <>
-      <BackTo label="Runs" onBack={onBack} />
+      <BackTo label="Runs" href={routes.runs} />
       <PageHeader
         title={`Run #${view.attemptNumber}`}
         lead={
@@ -185,7 +185,9 @@ function RunDetail({
               size="sm"
               disabled={pending}
               onClick={() =>
-                void act(() => api.runs.retry(workspaceId, view.taskId), () => go("runs"))
+                void act(() => api.runs.retry(workspaceId, view.taskId), () =>
+                  router.push(routes.runs),
+                )
               }
             >
               <RotateCcw />
@@ -301,14 +303,13 @@ function RunDetail({
               ["run", <Id key="run" value={view.runId} />],
               [
                 "task",
-                <button
+                <Link
                   key="task"
-                  type="button"
+                  href={routes.task(view.taskId)}
                   className="underline underline-offset-2"
-                  onClick={() => go("tasks", view.taskId)}
                 >
                   {view.taskId.slice(0, 8)}
-                </button>,
+                </Link>,
               ],
               ["machine", <Id key="worker" value={view.workerId} />],
               ["started", stamp(view.startedAt).slice(0, 16)],

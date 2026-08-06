@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ArrowRight, RefreshCw, ScrollText } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { since, stamp } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useResource } from "@/lib/use-hub";
@@ -13,12 +16,16 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Payload,
   Segmented,
   Stripe,
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+
+/** What the hub is asked for. The journal always continues past it. */
+const CAP = 150;
 
 /**
  * The journal.
@@ -29,9 +36,8 @@ import { Button } from "@/components/ui/button";
  */
 export function Activity() {
   const workspaceId = useSession((state) => state.workspaceId)!;
-  const go = useSession((state) => state.go);
   const [family, setFamily] = useState("");
-  const events = useResource(() => api.events.list(workspaceId, 150), [workspaceId], {
+  const events = useResource(() => api.events.list(workspaceId, CAP), [workspaceId], {
     pollMs: 8_000,
   });
 
@@ -47,6 +53,7 @@ export function Activity() {
   const shown = (events.data ?? []).filter(
     (event) => !family || event.type.startsWith(`${family}.`),
   );
+  const paged = usePaged(shown);
 
   return (
     <>
@@ -88,8 +95,9 @@ export function Activity() {
       ) : null}
 
       {shown.length > 0 ? (
+        <>
         <Panel>
-          {shown.map((event) => (
+          {paged.items.map((event) => (
             <div
               key={event.id}
               className="hover:bg-accent/40 flex items-stretch gap-3 px-4 py-2.5 transition-colors"
@@ -122,16 +130,17 @@ export function Activity() {
                 {/* Targets that have a screen of their own are reachable from
                     the row — the journal is where an investigation starts. */}
                 {event.target.type === "TASK" || event.target.type === "RUN" ? (
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-xs transition-colors"
-                    onClick={() =>
-                      go(event.target.type === "TASK" ? "tasks" : "runs", event.target.id)
+                  <Link
+                    href={
+                      event.target.type === "TASK"
+                        ? routes.task(event.target.id)
+                        : routes.run(event.target.id)
                     }
+                    className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-xs transition-colors"
                   >
                     open the {event.target.type.toLowerCase()}
                     <ArrowRight className="size-3" />
-                  </button>
+                  </Link>
                 ) : null}
 
                 <Payload value={event.payload} />
@@ -139,6 +148,8 @@ export function Activity() {
             </div>
           ))}
         </Panel>
+        <Pager paged={paged} cap={CAP} />
+        </>
       ) : null}
     </>
   );

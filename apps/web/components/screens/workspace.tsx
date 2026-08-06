@@ -19,6 +19,8 @@ import {
 
 import { api } from "@/lib/api";
 import { duration, humanise, since, stamp } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -28,6 +30,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Payload,
   Row,
@@ -174,10 +177,11 @@ function Health({ workspaceId }: { workspaceId: string }) {
  * more than a task holding none, and no score is invented to say so.
  */
 function Schedule({ workspaceId }: { workspaceId: string }) {
-  const go = useSession((state) => state.go);
   const schedule = useResource(() => api.schedule.get(workspaceId), [workspaceId], {
     pollMs: 20_000,
   });
+  const ready = usePaged(schedule.data?.ready ?? []);
+  const waiting = usePaged(schedule.data?.waiting ?? []);
 
   if (schedule.loading) return <Loading rows={3} />;
   if (schedule.error) return <Note>{schedule.error}</Note>;
@@ -236,9 +240,10 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
 
       <Section title="Ready to pick up" count={schedule.data.ready.length}>
         {schedule.data.ready.length > 0 ? (
+          <>
           <Panel>
-            {schedule.data.ready.map((entry) => (
-              <Row key={entry.taskId} onOpen={() => go("tasks", entry.taskId)}>
+            {ready.items.map((entry) => (
+              <Row key={entry.taskId} href={routes.task(entry.taskId)}>
                 <Stripe tone="waiting" />
                 <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
                 <span className="label w-16 text-right">{humanise(entry.priority)}</span>
@@ -252,6 +257,8 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
               </Row>
             ))}
           </Panel>
+          <Pager paged={ready} />
+          </>
         ) : (
           <Empty icon={ScrollText}>
             Nothing is ready. Everything is running, waiting, or done.
@@ -261,9 +268,10 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
 
       <Section title="Waiting on something" count={schedule.data.waiting.length}>
         {schedule.data.waiting.length > 0 ? (
+          <>
           <Panel>
-            {schedule.data.waiting.map((entry) => (
-              <Row key={entry.taskId} onOpen={() => go("tasks", entry.taskId)}>
+            {waiting.items.map((entry) => (
+              <Row key={entry.taskId} href={routes.task(entry.taskId)}>
                 <Stripe tone="quiet" />
                 <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
                 {/* Held by what, and why — a list of ids would send the reader
@@ -276,6 +284,8 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
               </Row>
             ))}
           </Panel>
+          <Pager paged={waiting} />
+          </>
         ) : (
           <Empty icon={ScrollText}>Nothing is waiting on anything else.</Empty>
         )}
@@ -286,6 +296,7 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
 
 function People({ workspaceId }: { workspaceId: string }) {
   const members = useResource(() => api.members(workspaceId), [workspaceId]);
+  const paged = usePaged(members.data ?? []);
 
   if (members.loading) return <Loading rows={3} />;
   if (members.error) return <Note>{members.error}</Note>;
@@ -316,7 +327,7 @@ function People({ workspaceId }: { workspaceId: string }) {
 
       <Section title="Members" count={all.length}>
         <Panel>
-          {all.map((member) => (
+          {paged.items.map((member) => (
             <Row key={member.membershipId}>
               <Stripe tone={member.actorType === "HUMAN" ? "settled" : "live"} />
               {member.actorType === "HUMAN" ? (
@@ -336,6 +347,7 @@ function People({ workspaceId }: { workspaceId: string }) {
             </Row>
           ))}
         </Panel>
+        <Pager paged={paged} />
       </Section>
     </>
   );
@@ -348,12 +360,13 @@ function People({ workspaceId }: { workspaceId: string }) {
 function Locks({ workspaceId }: { workspaceId: string }) {
   const locks = useResource(() => api.locks(workspaceId), [workspaceId], { pollMs: 15_000 });
   const { run, pending, error } = useAction();
+  const held = (locks.data ?? []).filter((lock) => lock.active);
+  const past = (locks.data ?? []).filter((lock) => !lock.active);
+  const pagedHeld = usePaged(held);
+  const pagedPast = usePaged(past);
 
   if (locks.loading) return <Loading rows={2} />;
   if (locks.error) return <Note>{locks.error}</Note>;
-
-  const held = (locks.data ?? []).filter((lock) => lock.active);
-  const past = (locks.data ?? []).filter((lock) => !lock.active);
 
   return (
     <>
@@ -365,8 +378,9 @@ function Locks({ workspaceId }: { workspaceId: string }) {
 
       <Section title="Held right now" count={held.length}>
         {held.length > 0 ? (
+          <>
           <Panel>
-            {held.map((lock) => (
+            {pagedHeld.items.map((lock) => (
               <Row key={lock.id}>
                 <Stripe tone="live" live />
                 <Lock className="text-muted-foreground size-3.5 shrink-0" />
@@ -399,6 +413,8 @@ function Locks({ workspaceId }: { workspaceId: string }) {
               </Row>
             ))}
           </Panel>
+          <Pager paged={pagedHeld} />
+          </>
         ) : (
           <Empty icon={Unlock} title="No resource is locked">
             Nothing is being held exclusively right now.
@@ -409,7 +425,7 @@ function Locks({ workspaceId }: { workspaceId: string }) {
       {past.length > 0 ? (
         <Section title="Released or expired" count={past.length}>
           <Panel>
-            {past.slice(0, 20).map((lock) => (
+            {pagedPast.items.map((lock) => (
               <Row key={lock.id}>
                 <Stripe tone="quiet" />
                 <span className="text-muted-foreground flex-1 text-sm">
@@ -423,6 +439,7 @@ function Locks({ workspaceId }: { workspaceId: string }) {
               </Row>
             ))}
           </Panel>
+          <Pager paged={pagedPast} />
         </Section>
       ) : null}
     </>
@@ -432,6 +449,7 @@ function Locks({ workspaceId }: { workspaceId: string }) {
 /** The record of what was chosen, what was turned down, and why. */
 function Decisions({ workspaceId }: { workspaceId: string }) {
   const decisions = useResource(() => api.decisions(workspaceId), [workspaceId]);
+  const paged = usePaged(decisions.data ?? []);
 
   if (decisions.loading) return <Loading rows={3} />;
   if (decisions.error) return <Note>{decisions.error}</Note>;
@@ -445,8 +463,9 @@ function Decisions({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
+    <>
     <Panel>
-      {decisions.data.map((decision) => (
+      {paged.items.map((decision) => (
         <div key={decision.id} className="flex items-stretch gap-3 px-4 py-3.5">
           <Stripe tone={decision.isSuperseded ? "quiet" : "settled"} />
           <div className="min-w-0 flex-1">
@@ -479,6 +498,8 @@ function Decisions({ workspaceId }: { workspaceId: string }) {
         </div>
       ))}
     </Panel>
+    <Pager paged={paged} />
+    </>
   );
 }
 
@@ -486,6 +507,8 @@ function Decisions({ workspaceId }: { workspaceId: string }) {
 function Governance({ workspaceId }: { workspaceId: string }) {
   const policies = useResource(() => api.policies(workspaceId), [workspaceId]);
   const secrets = useResource(() => api.secrets(workspaceId), [workspaceId]);
+  const pagedPolicies = usePaged(policies.data ?? []);
+  const pagedSecrets = usePaged(secrets.data ?? []);
 
   return (
     <>
@@ -493,8 +516,9 @@ function Governance({ workspaceId }: { workspaceId: string }) {
         {policies.loading ? <Loading rows={2} /> : null}
         {policies.error ? <Note>{policies.error}</Note> : null}
         {policies.data?.length ? (
+          <>
           <Panel>
-            {policies.data.map((policy) => (
+            {pagedPolicies.items.map((policy) => (
               <div key={policy.id} className="flex items-stretch gap-3 px-4 py-3">
                 <Stripe tone={policy.enabled ? "settled" : "quiet"} />
                 <Scale className="text-muted-foreground size-3.5 shrink-0" />
@@ -514,6 +538,8 @@ function Governance({ workspaceId }: { workspaceId: string }) {
               </div>
             ))}
           </Panel>
+          <Pager paged={pagedPolicies} />
+          </>
         ) : policies.data ? (
           <Empty icon={Scale} title="No policy is set">
             The workspace runs on the hub&apos;s defaults.
@@ -524,8 +550,9 @@ function Governance({ workspaceId }: { workspaceId: string }) {
       <Section title="Secrets" count={secrets.data?.length}>
         {secrets.error ? <Note>{secrets.error}</Note> : null}
         {secrets.data?.length ? (
+          <>
           <Panel>
-            {secrets.data.map((secret) => (
+            {pagedSecrets.items.map((secret) => (
               <Row key={secret.name}>
                 {/* A secret nothing has ever read is either new or dead. */}
                 <Stripe tone={secret.lastAccessedAt ? "settled" : "quiet"} />
@@ -542,6 +569,8 @@ function Governance({ workspaceId }: { workspaceId: string }) {
               </Row>
             ))}
           </Panel>
+          <Pager paged={pagedSecrets} />
+          </>
         ) : secrets.data ? (
           <Empty icon={KeyRound} title="No secret stored">
             Values are never shown here — only the names, and when each was last

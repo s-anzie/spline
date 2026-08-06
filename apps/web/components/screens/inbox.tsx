@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowRight, Inbox as InboxIcon, MailCheck, Megaphone } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { humanise, since } from "@/lib/format";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { useAction, useResource } from "@/lib/use-hub";
 import {
@@ -11,6 +14,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Payload,
   Row,
@@ -29,7 +33,6 @@ import { Button } from "@/components/ui/button";
  */
 export function Inbox() {
   const workspaceId = useSession((state) => state.workspaceId)!;
-  const go = useSession((state) => state.go);
   const unread = useResource(() => api.notifications.unread(workspaceId), [workspaceId], {
     pollMs: 15_000,
   });
@@ -37,6 +40,8 @@ export function Inbox() {
     pollMs: 30_000,
   });
   const { run, pending, error } = useAction();
+  const pendingRead = usePaged(unread.data ?? []);
+  const sent = usePaged(all.data ?? []);
 
   const reload = () => {
     unread.reload();
@@ -65,8 +70,9 @@ export function Inbox() {
           </Empty>
         ) : null}
         {unread.data && unread.data.length > 0 ? (
+          <>
           <Panel>
-            {unread.data.map((recipient) => (
+            {pendingRead.items.map((recipient) => (
               <div key={recipient.id} className="flex items-stretch gap-3 px-4 py-3.5">
                 <Stripe
                   tone={recipient.notification.kind === "SYSTEM_ALERT" ? "signal" : "waiting"}
@@ -115,13 +121,11 @@ export function Inbox() {
                       </Button>
                     ))}
                     {recipient.notification.taskId ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => go("tasks", recipient.notification.taskId)}
-                      >
-                        Open the task
-                        <ArrowRight />
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={routes.task(recipient.notification.taskId)}>
+                          Open the task
+                          <ArrowRight />
+                        </Link>
                       </Button>
                     ) : null}
                   </div>
@@ -129,13 +133,16 @@ export function Inbox() {
               </div>
             ))}
           </Panel>
+          <Pager paged={pendingRead} />
+          </>
         ) : null}
       </Section>
 
       <Section title="Everything sent in this workspace" count={all.data?.length}>
         {all.data && all.data.length > 0 ? (
+          <>
           <Panel>
-            {all.data.map((notification) => (
+            {sent.items.map((notification) => (
               <Row key={notification.id}>
                 {/* An alert is a system fact; a message is somebody talking.
                     The tone follows that, not the scope. */}
@@ -158,6 +165,8 @@ export function Inbox() {
               </Row>
             ))}
           </Panel>
+          <Pager paged={sent} />
+          </>
         ) : (
           <Empty icon={InboxIcon} title="Nothing has been sent">
             Notifications appear here as soon as an agent or the hub addresses

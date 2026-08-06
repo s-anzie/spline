@@ -1,6 +1,6 @@
 import { api, type Actor } from "./api";
 import { collapse } from "./enrolments";
-import type { Screen } from "./store";
+import { routes } from "./routes";
 
 /**
  * §17.8 — what needs a person, named.
@@ -28,8 +28,8 @@ export interface Intervention {
   title: string;
   /** Why it is here. Never a status word on its own. */
   detail: string;
-  /** Where the rest of the story is. */
-  target: { screen: Screen; id: string | null } | null;
+  /** The address of the rest of the story. */
+  href: string | null;
   /** Sorts the queue: what has waited longest is most likely forgotten. */
   since: string | null;
   /** Set on entries whose whole resolution fits on this screen. */
@@ -75,7 +75,7 @@ export async function loadQueue(
             (machine.requests > 1
               ? ` · asked ${machine.requests} times, so it is restarting — approving it once is enough`
               : ""),
-        target: { screen: "machines", id: null },
+        href: routes.machines,
         since: machine.since,
         ...(machine.expired ? {} : { inline: "approve-machine" as const }),
       });
@@ -91,7 +91,7 @@ export async function loadQueue(
         kind: "validation",
         title: "A run is waiting to be validated",
         detail: `task ${run.taskId.slice(0, 8)} · ${run.attempts[0]?.provider ?? "?"} · $${cost.toFixed(4)} over ${run.attempts.length} attempt${run.attempts.length === 1 ? "" : "s"}`,
-        target: { screen: "runs", id: run.runId },
+        href: routes.run(run.runId),
         since: run.startedAt,
       });
     }
@@ -106,7 +106,7 @@ export async function loadQueue(
         kind: "blocked",
         title: task.title,
         detail: open[0]?.description ?? "blocked, with no reason recorded",
-        target: { screen: "tasks", id: task.id },
+        href: routes.task(task.id),
         since: open[0]?.reportedAt ?? null,
       });
     }
@@ -123,7 +123,7 @@ export async function loadQueue(
         kind: "silent",
         title: `${name(entry.actor)} has gone quiet`,
         detail: entry.reason,
-        target: { screen: "activity", id: null },
+        href: routes.activity,
         since: null,
       });
     }
@@ -137,7 +137,7 @@ export async function loadQueue(
         kind: "stuck",
         title: `${command.type.toLowerCase().replace(/_/g, " ")} was claimed and never reported`,
         detail: `held by ${command.claimedBy?.slice(0, 8) ?? "nobody"} on machine ${command.workerId.slice(0, 8)}`,
-        target: { screen: "machines", id: null },
+        href: routes.machines,
         since: null,
       });
     }

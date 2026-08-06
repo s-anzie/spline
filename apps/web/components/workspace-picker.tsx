@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ArrowRight, FolderOpen } from "lucide-react";
 
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit";
@@ -15,6 +17,7 @@ import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit"
  */
 export function WorkspacePicker() {
   const { workspaces, chooseWorkspace } = useSession();
+  const router = useRouter();
 
   return (
     <>
@@ -32,7 +35,10 @@ export function WorkspacePicker() {
           {workspaces.map((workspace) => (
             <Row
               key={workspace.id}
-              onOpen={() => chooseWorkspace(workspace.id)}
+              onOpen={() => {
+                chooseWorkspace(workspace.id);
+                router.push(routes.queue);
+              }}
               className="py-4"
             >
               <Stripe tone={toneOf(workspace.status)} />

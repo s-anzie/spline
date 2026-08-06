@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   CheckCheck,
@@ -16,6 +17,8 @@ import {
 import { api } from "@/lib/api";
 import { since } from "@/lib/format";
 import { loadQueue, type Intervention, type InterventionKind } from "@/lib/queue";
+import { usePaged } from "@/lib/paging";
+import { routes } from "@/lib/routes";
 import { useOrganizationId, useSession } from "@/lib/store";
 import type { Tone } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
@@ -25,6 +28,7 @@ import {
   Loading,
   Note,
   PageHeader,
+  Pager,
   Panel,
   Stat,
   StatRow,
@@ -45,7 +49,7 @@ const KIND: Record<
 };
 
 export function Queue() {
-  const { workspaceId, go } = useSession();
+  const workspaceId = useSession((state) => state.workspaceId);
   const organizationId = useOrganizationId();
 
   // The queue is gathered from five routes and tolerates any of them failing
@@ -61,6 +65,7 @@ export function Queue() {
   );
 
   const entries = queue.data ?? [];
+  const paged = usePaged(entries);
   const count = (kind: InterventionKind) =>
     entries.filter((entry) => entry.kind === kind).length;
   const urgent = entries.filter(
@@ -123,38 +128,35 @@ export function Queue() {
       {queue.data && entries.length === 0 ? (
         <Empty icon={CheckCheck} title="Nothing is waiting on a person">
           That is not the same as nothing happening.{" "}
-          <button
-            type="button"
-            className="text-foreground underline underline-offset-2"
-            onClick={() => go("runs")}
-          >
+          <Link href={routes.runs} className="text-foreground underline underline-offset-2">
             Runs
-          </button>{" "}
+          </Link>{" "}
           shows what is executing, and{" "}
-          <button
-            type="button"
+          <Link
+            href={routes.activity}
             className="text-foreground underline underline-offset-2"
-            onClick={() => go("activity")}
           >
             Activity
-          </button>{" "}
+          </Link>{" "}
           shows what the workspace has been doing.
         </Empty>
       ) : null}
 
       {entries.length > 0 ? (
-        <Panel>
-          {entries.map((entry) => (
-            <QueueRow key={entry.key} entry={entry} onDone={queue.reload} />
-          ))}
-        </Panel>
+        <>
+          <Panel>
+            {paged.items.map((entry) => (
+              <QueueRow key={entry.key} entry={entry} onDone={queue.reload} />
+            ))}
+          </Panel>
+          <Pager paged={paged} />
+        </>
       ) : null}
     </>
   );
 }
 
 function QueueRow({ entry, onDone }: { entry: Intervention; onDone: () => void }) {
-  const go = useSession((state) => state.go);
   const [pairing, setPairing] = useState(false);
   const kind = KIND[entry.kind];
 
@@ -182,14 +184,12 @@ function QueueRow({ entry, onDone }: { entry: Intervention; onDone: () => void }
               {pairing ? "Cancel" : "Pair this machine"}
             </Button>
           ) : null}
-          {entry.target ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => go(entry.target!.screen, entry.target!.id)}
-            >
-              Open
-              <ArrowRight />
+          {entry.href ? (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={entry.href}>
+                Open
+                <ArrowRight />
+              </Link>
             </Button>
           ) : null}
         </div>

@@ -1,29 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Activity as ActivityIcon,
-  Check,
-  ChevronsUpDown,
-  Cpu,
-  Inbox as InboxIcon,
-  ListChecks,
-  LogOut,
-  Monitor,
-  Moon,
-  Play,
-  Search,
-  Settings2,
-  Sun,
-  Target,
-  TriangleAlert,
-} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Search, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
 import { since } from "@/lib/format";
 import { usePulse } from "@/lib/pulse";
-import { useOrganizationId, useSession, type Screen } from "@/lib/store";
+import { isCurrent, NAV, routes, titleFor, type NavItem } from "@/lib/routes";
+import { useOrganizationId, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { TONE_TEXT } from "@/components/kit";
 import { CommandMenu } from "@/components/command-menu";
@@ -38,60 +25,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-/**
- * The rail is grouped the way an operator's attention is, not the way the
- * data model is: what is on me, what the work is, what is running it.
- *
- * Eight equal entries in one flat list read as eight equal things, and they
- * are not — the queue is checked twenty times a day, governance twice a year.
- */
-interface Item {
-  screen: Screen;
-  label: string;
-  icon: typeof Target;
-  badge?: "needsYou" | "unread" | "machines";
-}
-
-const GROUPS: { heading: string; items: Item[] }[] = [
-  {
-    heading: "On you",
-    items: [
-      { screen: "queue", label: "Queue", icon: TriangleAlert, badge: "needsYou" },
-      { screen: "inbox", label: "Inbox", icon: InboxIcon, badge: "unread" },
-    ],
-  },
-  {
-    heading: "The work",
-    items: [
-      { screen: "goals", label: "Goals", icon: Target },
-      { screen: "tasks", label: "Tasks", icon: ListChecks },
-      { screen: "runs", label: "Runs", icon: Play },
-    ],
-  },
-  {
-    heading: "What runs it",
-    items: [
-      { screen: "machines", label: "Machines", icon: Cpu, badge: "machines" },
-      { screen: "activity", label: "Activity", icon: ActivityIcon },
-      { screen: "workspace", label: "Workspace", icon: Settings2 },
-    ],
-  },
-];
-
-const TITLES: Record<Screen, string> = {
-  queue: "Queue",
-  goals: "Goals",
-  tasks: "Tasks",
-  runs: "Runs",
-  machines: "Machines",
-  activity: "Activity",
-  inbox: "Inbox",
-  workspace: "Workspace",
-};
-
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { email, workspaceId, workspaces, route, go, chooseWorkspace, logOut } =
-    useSession();
+  const { email, workspaceId, workspaces, chooseWorkspace, logOut } = useSession();
+  const pathname = usePathname();
+  const router = useRouter();
   const organizationId = useOrganizationId();
   const pulse = usePulse(workspaceId, organizationId);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -109,7 +46,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const current = workspaces.find((workspace) => workspace.id === workspaceId);
 
-  const badgeFor = (badge: Item["badge"]): string | null => {
+  const badgeFor = (badge: NavItem["badge"]): string | null => {
     if (badge === "needsYou") return pulse.needsYou ? String(pulse.needsYou) : null;
     if (badge === "unread") return pulse.unread ? String(pulse.unread) : null;
     if (badge === "machines" && pulse.machinesTotal !== null) {
@@ -119,14 +56,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <nav className="bg-sidebar border-sidebar-border sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r">
-        <div className="flex h-14 items-center gap-2 px-4">
+        <Link href={routes.queue} className="flex h-14 items-center gap-2 px-4">
           <Spool />
           <span className="text-[0.9375rem] font-semibold tracking-tight">
             Spline
           </span>
-        </div>
+        </Link>
 
         {current ? (
           <div className="px-3">
@@ -155,7 +92,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 {workspaces.map((workspace) => (
                   <DropdownMenuItem
                     key={workspace.id}
-                    onSelect={() => chooseWorkspace(workspace.id)}
+                    onSelect={() => {
+                      chooseWorkspace(workspace.id);
+                      router.push(routes.queue);
+                    }}
                     className="gap-2"
                   >
                     <Initials name={workspace.name} small />
@@ -192,18 +132,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <ScrollArea className="flex-1">
           <div className="px-3 py-3">
-            {GROUPS.map((group) => (
+            {NAV.map((group) => (
               <div key={group.heading} className="mb-5">
                 <p className="label mb-1.5 px-2">{group.heading}</p>
                 <ul className="flex flex-col gap-px">
                   {group.items.map((item) => {
-                    const active = route.screen === item.screen;
+                    const active = isCurrent(pathname, item.href);
                     const badge = badgeFor(item.badge);
                     return (
-                      <li key={item.screen}>
-                        <button
-                          type="button"
-                          onClick={() => go(item.screen)}
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
                           aria-current={active ? "page" : undefined}
                           className={cn(
                             "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
@@ -232,7 +171,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                               {badge}
                             </span>
                           ) : null}
-                        </button>
+                        </Link>
                       </li>
                     );
                   })}
@@ -269,28 +208,32 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background/85 border-border sticky top-0 z-20 flex h-14 items-center gap-4 border-b px-7 backdrop-blur">
-          <span className="text-sm font-medium">{TITLES[route.screen]}</span>
-          {route.id ? (
+        <header className="bg-background border-border flex h-14 shrink-0 items-center gap-4 border-b px-7">
+          <span className="text-sm font-medium">{titleFor(pathname)}</span>
+          {detailOf(pathname) ? (
             <span className="measure text-muted-foreground text-xs">
-              / {route.id.slice(0, 8)}
+              / {detailOf(pathname)}
             </span>
           ) : null}
 
           {workspaceId ? (
             <div className="ml-auto flex items-center gap-2">
-              <HealthChip pulse={pulse} onOpen={() => go("workspace")} />
+              <HealthChip pulse={pulse} onOpen={() => router.push(routes.workspace)} />
               <ThemeToggle />
             </div>
           ) : null}
         </header>
 
-        <main
-          key={`${route.screen}:${route.id ?? ""}`}
-          className="settling mx-auto w-full max-w-6xl px-7 py-8"
-        >
-          {children}
-        </main>
+        {/* The one scroller on the page. `min-h-0` is what lets it shrink
+            inside the flex column instead of pushing the frame off-screen. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <main
+            key={pathname}
+            className="settling mx-auto w-full max-w-6xl px-7 py-8"
+          >
+            {children}
+          </main>
+        </div>
       </div>
 
       <CommandMenu open={paletteOpen} onOpenChange={setPaletteOpen} />
@@ -427,4 +370,10 @@ function Spool() {
       <circle cx="10" cy="4.5" r="2.1" fill="var(--signal)" />
     </svg>
   );
+}
+
+/** The id in a drill-down URL, shortened for the breadcrumb. */
+function detailOf(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  return segments.length > 1 ? (segments[1]?.slice(0, 8) ?? null) : null;
 }

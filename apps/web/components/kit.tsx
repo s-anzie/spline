@@ -1,11 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronLeft, Copy, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { humanise } from "@/lib/format";
 import { toneOf, type Tone } from "@/lib/tone";
+import { PAGE_SIZES, type Paged } from "@/lib/paging";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -294,28 +303,43 @@ export function Panel({
   );
 }
 
-/** One row of a panel. `onOpen` makes the whole row the target, not a link. */
+/**
+ * One row of a panel.
+ *
+ * `href` makes the WHOLE row the link — not a title inside it — so the target
+ * is the size of the row, and it still opens in a new tab on middle click
+ * like anything else with an address.
+ */
 export function Row({
   children,
+  href,
   onOpen,
   className,
 }: {
   children: React.ReactNode;
+  href?: string;
+  /** For a row that DOES something rather than going somewhere. */
   onOpen?: () => void;
   className?: string;
 }) {
   const shared = cn("flex w-full items-center gap-3 px-4 py-3 text-left", className);
-  if (!onOpen) return <div className={shared}>{children}</div>;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      data-row=""
-      className={cn(shared, "hover:bg-accent/60 transition-colors")}
-    >
-      {children}
-    </button>
-  );
+  const interactive = cn(shared, "hover:bg-accent/60 transition-colors");
+
+  if (href) {
+    return (
+      <Link href={href} data-row="" className={interactive}>
+        {children}
+      </Link>
+    );
+  }
+  if (onOpen) {
+    return (
+      <button type="button" onClick={onOpen} data-row="" className={interactive}>
+        {children}
+      </button>
+    );
+  }
+  return <div className={shared}>{children}</div>;
 }
 
 export function Empty({
@@ -498,15 +522,96 @@ export function Segmented<T extends string>({
 }
 
 /** The back edge of a drill-down. Always present, always the same place. */
-export function BackTo({ label, onBack }: { label: string; onBack: () => void }) {
+export function BackTo({ label, href }: { label: string; href: string }) {
   return (
-    <button
-      type="button"
-      onClick={onBack}
+    <Link
+      href={href}
       className="text-muted-foreground hover:text-foreground -ml-1 mb-4 inline-flex items-center gap-1 text-xs transition-colors"
     >
       <ChevronLeft className="size-3.5" />
       {label}
-    </button>
+    </Link>
+  );
+}
+
+/* ── Paging ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The footer of a long list: where you are, how many there are, how many to
+ * show, and the way forward.
+ *
+ * `cap` is the limit the hub was asked for. When the list came back exactly
+ * that long, the record almost certainly continues past it — and a pager that
+ * said "125 of 125" would be quietly claiming otherwise. §17.8: never a bare
+ * count, and never a silent truncation.
+ */
+export function Pager<T>({ paged, cap }: { paged: Paged<T>; cap?: number }) {
+  const capped = cap !== undefined && paged.total >= cap;
+  if (paged.total <= PAGE_SIZES[0] && !capped) return null;
+
+  return (
+    <div className="text-muted-foreground mt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+      <span>
+        <span className="measure text-foreground">
+          {paged.from}–{paged.to}
+        </span>{" "}
+        of <span className="measure text-foreground">{paged.total}</span>
+        {capped ? (
+          <span className="text-waiting">
+            {" "}
+            · the hub returned its most recent {cap}; there is more behind this
+          </span>
+        ) : null}
+      </span>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5">
+          <span className="label">per page</span>
+          {/* `appearance-none` so the control belongs to this console rather
+              than to whichever operating system it is being read on. */}
+          <span className="relative">
+            <select
+              value={paged.size}
+              onChange={(event) => paged.setSize(Number(event.target.value))}
+              className="border-input bg-card hover:bg-accent measure text-foreground cursor-pointer appearance-none rounded-md border py-1 pr-6 pl-2 text-xs transition-colors"
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden
+              className="text-muted-foreground pointer-events-none absolute top-1/2 right-1.5 size-3 -translate-y-1/2"
+            />
+          </span>
+        </label>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => paged.go(paged.page - 1)}
+            disabled={paged.page <= 1}
+            aria-label="Previous page"
+            className="hover:bg-accent rounded-md p-1 transition-colors disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="measure text-foreground px-1">
+            {paged.page}/{paged.pageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => paged.go(paged.page + 1)}
+            disabled={paged.page >= paged.pageCount}
+            aria-label="Next page"
+            className="hover:bg-accent rounded-md p-1 transition-colors disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
