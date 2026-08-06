@@ -45,6 +45,13 @@ async function credentialFor(
       capabilities: config.capabilities,
       labels: config.labels,
     },
+    // Remembered on disk, so a restart resumes this request rather than
+    // filing another one (§6.3).
+    tickets: {
+      load: () => identities.loadPendingEnrolment(),
+      save: (ticket) => identities.savePendingEnrolment(ticket),
+    },
+    now: () => new Date(),
     announce: (line) => console.info(line),
     sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
     pollIntervalMs: 5_000,

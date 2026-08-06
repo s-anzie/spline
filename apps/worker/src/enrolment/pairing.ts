@@ -23,9 +23,27 @@ export interface PairingHub {
   claimEnrolment(enrolmentId: string, deviceId: string): Promise<ClaimOutcome>;
 }
 
+/**
+ * The one request this machine has open, remembered across restarts.
+ *
+ * Without it, every restart is a new pairing request: one machine becomes a
+ * queue of hundreds of identical rows, the code on the console changes faster
+ * than an operator can type it, and the only deliberately unauthenticated
+ * route in the system gets hammered by its own daemon. That is not a
+ * hypothetical — a crash loop here produced 1957 of them before the hub's
+ * throttle stopped it.
+ */
+export interface TicketStore {
+  load(): EnrolmentTicket | null;
+  /** `null` clears it: the request has been decided, or it has expired. */
+  save(ticket: EnrolmentTicket | null): void;
+}
+
 export interface PairingDeps {
   hub: PairingHub;
   machine: EnrolmentRequest;
+  tickets: TicketStore;
+  now: () => Date;
   /** Where the code is shown. Injected so a test can read what a human would. */
   announce: (line: string) => void;
   sleep: (ms: number) => Promise<void>;
@@ -51,11 +69,20 @@ export type PairingResult =
  * stop, not die halfway through with a half-written state file.
  */
 export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
+  // A request this machine already has, and that a human can still approve,
+  // is resumed rather than replaced. The code stays the same across a restart
+  // — which is what makes it typeable.
+  const held = deps.tickets.load();
   let ticket: EnrolmentTicket;
-  try {
-    ticket = await deps.hub.requestEnrolment(deps.machine);
-  } catch (error) {
-    return { isFailure: true, error: `could not ask the hub to pair: ${String(error)}` };
+  if (held && !hasExpired(held, deps.now())) {
+    ticket = held;
+  } else {
+    try {
+      ticket = await deps.hub.requestEnrolment(deps.machine);
+    } catch (error) {
+      return { isFailure: true, error: `could not ask the hub to pair: ${String(error)}` };
+    }
+    deps.tickets.save(ticket);
   }
 
   for (const line of [
@@ -89,6 +116,7 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
     }
 
     if (outcome.status === "approved") {
+      deps.tickets.save(null);
       return {
         isFailure: false,
         value: { token: outcome.token, actorId: outcome.actorId },
@@ -97,6 +125,7 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
     // Rejected is a decision, not a delay. Polling on would be nagging an
     // operator who already said no.
     if (outcome.status === "rejected") {
+      deps.tickets.save(null);
       return {
         isFailure: true,
         error: "this pairing request was refused by the organization's owner",
@@ -105,10 +134,22 @@ export async function pairMachine(deps: PairingDeps): Promise<PairingResult> {
     await deps.sleep(deps.pollIntervalMs);
   }
 
+  // Polling stopped. The request is only forgotten if it can no longer be
+  // approved — otherwise the next start picks up exactly where this left off.
+  if (hasExpired(ticket, deps.now())) {
+    deps.tickets.save(null);
+  }
   return {
     isFailure: true,
     error:
       "nobody approved this machine before the code expired — restart the " +
       "worker to get a new one",
   };
+}
+
+function hasExpired(ticket: EnrolmentTicket, now: Date): boolean {
+  const expiry = new Date(ticket.expiresAt).getTime();
+  // An unparseable stamp is treated as expired: asking again costs one
+  // request, trusting it costs a machine that can never pair.
+  return Number.isNaN(expiry) || expiry <= now.getTime();
 }

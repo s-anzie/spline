@@ -1,4 +1,4 @@
-import { PairingHub, pairMachine } from "./pairing";
+import { EnrolmentTicket, PairingHub, pairMachine, TicketStore } from "./pairing";
 
 function hub(overrides: Partial<PairingHub> = {}): PairingHub {
   return {
@@ -12,9 +12,25 @@ function hub(overrides: Partial<PairingHub> = {}): PairingHub {
   };
 }
 
+/** The one open request this machine has, as the daemon would remember it. */
+function tickets(held: EnrolmentTicket | null = null): TicketStore & { held: () => EnrolmentTicket | null } {
+  let current = held;
+  return {
+    load: () => current,
+    save: (ticket) => {
+      current = ticket;
+    },
+    held: () => current,
+  };
+}
+
+const NOW = new Date("2026-08-05T10:00:00.000Z");
+
 function deps(overrides: Record<string, unknown> = {}) {
   return {
     hub: hub(),
+    tickets: tickets(),
+    now: () => NOW,
     machine: {
       deviceId: "device-abc",
       hostname: "workshop-01",
@@ -127,5 +143,92 @@ describe("pairMachine", () => {
     expect(requestEnrolment).toHaveBeenCalledWith(
       expect.objectContaining({ capabilities: ["docker"], deviceId: "device-abc" }),
     );
+  });
+  /**
+   * A machine that restarts — a crash, a reboot, a supervisor that gives up
+   * and tries again — must come back to the SAME request.
+   *
+   * Asking again on every start turns one machine into hundreds of identical
+   * pending requests, shows the operator a code that changes faster than they
+   * can type it, and hammers the one route in the system that is deliberately
+   * unauthenticated. Seen for real: 1957 restarts in a row, each one a new
+   * enrolment, until the hub's throttle cut it off.
+   */
+  it("resumes the request it already has instead of asking for another", async () => {
+    const requestEnrolment = jest.fn();
+    const held = tickets({
+      enrolmentId: "e-held",
+      code: "K7QM4T2X",
+      expiresAt: "2026-08-05T10:10:00.000Z",
+    });
+    const claimEnrolment = jest
+      .fn()
+      .mockResolvedValue({ status: "approved", token: "worker_c.s", actorId: "a-1" });
+    const d = deps({ hub: hub({ requestEnrolment, claimEnrolment }), tickets: held });
+
+    const result = await pairMachine(d);
+
+    expect(result.isFailure).toBe(false);
+    expect(requestEnrolment).not.toHaveBeenCalled();
+    expect(claimEnrolment).toHaveBeenCalledWith("e-held", "device-abc");
+  });
+
+  it("keeps the request it opened, so the next start can resume it", async () => {
+    const held = tickets();
+    const d = deps({
+      hub: hub({ claimEnrolment: async () => ({ status: "pending" }) }),
+      tickets: held,
+      maxAttempts: 2,
+    });
+
+    await pairMachine(d);
+
+    expect(held.held()?.enrolmentId).toBe("e-1");
+  });
+
+  it("asks again once the code it was holding has expired", async () => {
+    const requestEnrolment = jest.fn().mockResolvedValue({
+      enrolmentId: "e-fresh",
+      code: "NEWCODE1",
+      expiresAt: "2026-08-05T10:10:00.000Z",
+    });
+    const stale = tickets({
+      enrolmentId: "e-old",
+      code: "OLDCODE1",
+      // Ten minutes before `NOW`.
+      expiresAt: "2026-08-05T09:50:00.000Z",
+    });
+    const d = deps({
+      // Still waiting on a human, so the fresh request is still being held.
+      hub: hub({ requestEnrolment, claimEnrolment: async () => ({ status: "pending" }) }),
+      tickets: stale,
+      maxAttempts: 1,
+    });
+
+    await pairMachine(d);
+
+    expect(requestEnrolment).toHaveBeenCalledTimes(1);
+    expect(stale.held()?.enrolmentId).toBe("e-fresh");
+  });
+
+  it("forgets the request once it has been decided, either way", async () => {
+    const open = (): EnrolmentTicket => ({
+      enrolmentId: "e-held",
+      code: "K7QM4T2X",
+      expiresAt: "2026-08-05T10:10:00.000Z",
+    });
+
+    const approved = tickets(open());
+    await pairMachine(deps({ tickets: approved }));
+    expect(approved.held()).toBeNull();
+
+    const refused = tickets(open());
+    await pairMachine(
+      deps({
+        hub: hub({ claimEnrolment: async () => ({ status: "rejected" }) }),
+        tickets: refused,
+      }),
+    );
+    expect(refused.held()).toBeNull();
   });
 });
