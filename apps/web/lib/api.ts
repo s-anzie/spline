@@ -232,6 +232,17 @@ export interface DecisionView {
   decidedAt: string;
 }
 
+/** §18.2 — a non-human identity, as the registry holds it. */
+export interface ActorView {
+  credentialId: string;
+  actorType: string;
+  actorId: string;
+  displayName: string;
+  revoked: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 export interface MemberView {
   membershipId: string;
   actorType: string;
@@ -299,6 +310,27 @@ export interface CheckInView {
   reason: string;
 }
 
+/** The hub's own vocabularies, so a form never offers what would be refused. */
+export const PRIORITIES = ["CRITICAL", "HIGH", "NORMAL", "LOW", "BACKGROUND"] as const;
+export const WORKSPACE_ROLES = [
+  "OWNER",
+  "HUMAN_OPERATOR",
+  "AGENT_MANAGER",
+  "AGENT_CONTRIBUTOR",
+  "READ_ONLY_AGENT",
+  "VIEWER",
+] as const;
+
+/** What each role can do, said in words rather than left to the name. */
+export const ROLE_MEANS: Record<(typeof WORKSPACE_ROLES)[number], string> = {
+  OWNER: "everything, including the workspace itself and its machines",
+  HUMAN_OPERATOR: "runs the work: dispatches, validates, pairs machines",
+  AGENT_MANAGER: "plans and assigns work, cannot operate machines",
+  AGENT_CONTRIBUTOR: "executes what it is assigned, asks for validation",
+  READ_ONLY_AGENT: "reads the workspace and records decisions, changes nothing",
+  VIEWER: "reads, and nothing else",
+};
+
 const q = (params: Record<string, string | number | undefined>): string => {
   const pairs = Object.entries(params).filter(([, value]) => value !== undefined);
   return pairs.length
@@ -312,7 +344,60 @@ const q = (params: Record<string, string | number | undefined>): string => {
  * a console ends up talking to somebody else's hub.
  */
 export const api = {
+  /** The two routes a stranger may call: they create the account and the org. */
+  auth: {
+    register: (body: { email: string; password: string; displayName: string }) =>
+      hub.post<{ userId: string; organizationId: string }>("/auth/register", body),
+  },
+
+  organizations: {
+    create: (body: { name: string }) =>
+      hub.post<{ organizationId: string }>("/organizations", body),
+  },
+
+  workspaces: {
+    create: (body: { organizationId: string; name: string; description?: string }) =>
+      hub.post<{ workspaceId: string; slug: string }>("/workspaces", body),
+  },
+
+  /** §18.2 — the registry of non-human actors: agents and services. */
+  actors: {
+    list: (organizationId: string) =>
+      hub.get<ActorView[]>(`/organizations/${organizationId}/actors`),
+    /** The token comes back once and is never retrievable again. */
+    create: (organizationId: string, body: { actorType: string; displayName: string }) =>
+      hub.post<{ actorId: string; credentialId: string; token: string }>(
+        `/organizations/${organizationId}/actors`,
+        body,
+      ),
+    revoke: (organizationId: string, credentialId: string) =>
+      hub.post(`/organizations/${organizationId}/actors/${credentialId}/revoke`, {}),
+  },
+
+  members: {
+    list: (workspace: string) => hub.get<MemberView[]>(`/workspaces/${workspace}/members`),
+    /** Humans join by email; every other actor by explicit reference. */
+    invite: (
+      workspace: string,
+      body: { role: string; email?: string; actorType?: string; actorId?: string },
+    ) => hub.post<{ membershipId: string }>(`/workspaces/${workspace}/members`, body),
+    changeRole: (workspace: string, membershipId: string, role: string) =>
+      hub.patch(`/workspaces/${workspace}/members/${membershipId}`, { role }),
+    revoke: (workspace: string, membershipId: string) =>
+      hub.del(`/workspaces/${workspace}/members/${membershipId}`),
+  },
+
   goals: {
+    create: (
+      workspace: string,
+      body: {
+        title: string;
+        description?: string;
+        successCriteria: string[];
+        priority?: string;
+        parentGoalId?: string;
+      },
+    ) => hub.post<{ goalId: string }>(`/workspaces/${workspace}/goals`, body),
     list: (workspace: string) =>
       hub.get<GoalView[]>(`/workspaces/${workspace}/goals`),
     get: (workspace: string, goalId: string) =>
@@ -331,12 +416,14 @@ export const api = {
     create: (
       workspace: string,
       body: {
+        goalId: string;
         title: string;
         description?: string;
-        goalId?: string;
-        priority?: string;
+        /** Mandatory: §4.6 — a task is assigned from its first instant. */
+        acceptanceCriteria: string[];
         assigneeType: string;
         assigneeId: string;
+        priority?: string;
       },
     ) => hub.post<{ taskId: string }>(`/workspaces/${workspace}/tasks`, body),
     setStatus: (workspace: string, taskId: string, status: string) =>
@@ -432,9 +519,6 @@ export const api = {
 
   decisions: (workspace: string) =>
     hub.get<DecisionView[]>(`/workspaces/${workspace}/decisions`),
-
-  members: (workspace: string) =>
-    hub.get<MemberView[]>(`/workspaces/${workspace}/members`),
 
   secrets: (workspace: string) =>
     hub.get<SecretView[]>(`/workspaces/${workspace}/secrets`),

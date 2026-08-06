@@ -42,6 +42,7 @@ import {
   PrismaWorkspaceMembershipRepository,
 } from "./infrastructure/prisma-identity.repositories";
 import { ActorAuthGuard } from "./interface/actor-auth.guard";
+import { ActorRegistryController } from "./interface/actor-registry.controller";
 import { AuthController } from "./interface/auth.controller";
 import { OrganizationController } from "./interface/organization.controller";
 import { PermissionsGuard } from "./interface/permissions.guard";
@@ -60,7 +61,12 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
       }),
     }),
   ],
-  controllers: [AuthController, OrganizationController, WorkspaceMemberController],
+  controllers: [
+    AuthController,
+    ActorRegistryController,
+    OrganizationController,
+    WorkspaceMemberController,
+  ],
   providers: [
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: PrismaOrganizationRepository },

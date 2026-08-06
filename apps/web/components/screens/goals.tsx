@@ -30,6 +30,7 @@ import {
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AddButton, NewGoal, NewTask } from "@/components/forms";
 
 export function GoalList() {
   const workspaceId = useSession((state) => state.workspaceId)!;
@@ -63,6 +64,7 @@ export function GoalList() {
       <PageHeader
         title="Goals"
         lead="What this workspace is for, and how far along it is. Progress is computed from the tasks underneath — it is never typed in by hand."
+        actions={<NewGoal trigger={<AddButton>State a need</AddButton>} />}
       />
 
       <StatRow>
@@ -87,8 +89,9 @@ export function GoalList() {
       {goals.loading ? <Loading rows={4} /> : null}
       {goals.error ? <Note>{goals.error}</Note> : null}
       {goals.data && all.length === 0 ? (
-        <Empty icon={Target} title="No goals yet">
-          A goal is the thing tasks are broken out of.
+        <Empty icon={Target} title="Nothing has been asked for yet">
+          A goal is where a need enters the system: say what you want and how
+          anyone will know it happened. Breaking it into tasks comes after.
         </Empty>
       ) : null}
 
@@ -139,6 +142,7 @@ export function GoalDetail({ goalId }: { goalId: string }) {
     () => api.tasks.list(workspaceId, { goalId }),
     [workspaceId, goalId],
   );
+  const members = useResource(() => api.members.list(workspaceId), [workspaceId]);
   const { run: act, pending, error } = useAction();
 
   if (goal.loading) return <Loading rows={4} />;
@@ -246,7 +250,18 @@ export function GoalDetail({ goalId }: { goalId: string }) {
         </Card>
       </div>
 
-      <Section title="Tasks" count={tasks.data?.length}>
+      <Section
+        title="Tasks"
+        count={tasks.data?.length}
+        actions={
+          <NewTask
+            goal={view}
+            members={members.data ?? []}
+            onDone={reload}
+            trigger={<AddButton>New task</AddButton>}
+          />
+        }
+      >
         {tasks.data && tasks.data.length > 0 ? (
           <Panel>
             {tasks.data.map((task) => (
@@ -259,8 +274,8 @@ export function GoalDetail({ goalId }: { goalId: string }) {
           </Panel>
         ) : (
           <Empty icon={Target} title="No tasks under this goal">
-            Its progress will stay at zero until it has some — the number is
-            computed from them.
+            Nothing happens until this need is broken into tasks — and its
+            progress stays at zero, because the number is computed from them.
           </Empty>
         )}
       </Section>

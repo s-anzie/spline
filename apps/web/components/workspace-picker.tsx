@@ -7,6 +7,7 @@ import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit";
+import { AddButton, NewWorkspace } from "@/components/forms";
 
 /**
  * §4.2 — every read is scoped to one workspace, so this is the only screen
@@ -22,13 +23,16 @@ export function WorkspacePicker() {
   return (
     <>
       <PageHeader
-        title="Choose a workspace"
+        title={workspaces.length ? "Choose a workspace" : "Start here"}
         lead="Everything you do from here on is scoped to the one you pick. Nothing is ever read across two."
+        actions={<NewWorkspace trigger={<AddButton>New workspace</AddButton>} />}
       />
 
       {workspaces.length === 0 ? (
-        <Empty icon={FolderOpen} title="You are not in a workspace yet">
-          Whoever owns the organization can add you to one.
+        <Empty icon={FolderOpen} title="No workspace yet">
+          A workspace is where goals, tasks, machines and the record live.
+          Create one — or ask whoever owns the organization to add you to
+          theirs.
         </Empty>
       ) : (
         <Panel>

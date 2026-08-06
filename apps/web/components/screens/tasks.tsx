@@ -40,6 +40,7 @@ import {
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AddButton, NewGoal } from "@/components/forms";
 
 /** The hub's own task vocabulary, in the order work moves through it. */
 const FILTERS = [
@@ -76,6 +77,7 @@ export function TaskList() {
       <PageHeader
         title="Tasks"
         lead="The unit of work an agent is given. A task carries its own acceptance criteria, so what counts as finished is written down before anything runs."
+        actions={<NewGoal trigger={<AddButton>State a need</AddButton>} />}
       />
 
       <StatRow>
@@ -120,7 +122,7 @@ export function TaskList() {
         <Empty icon={ClipboardList} title={status ? "Nothing here" : "No tasks yet"}>
           {status
             ? `No task is ${humanise(status)} right now.`
-            : "A goal is broken into tasks, and a task is what gets handed to a machine."}
+            : "A task always belongs to a goal — state the need first, then break it down."}
         </Empty>
       ) : null}
 

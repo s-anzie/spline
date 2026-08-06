@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ArrowRight, Cpu, KeyRound, Receipt } from "lucide-react";
 
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/store";
+import { useAction } from "@/lib/use-hub";
 import { Field, Note } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 
@@ -34,8 +36,28 @@ const CLAIMS = [
  */
 export function SignIn() {
   const { logIn, loading, error } = useSession();
+  const [creating, setCreating] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const { run, pending, error: refusal } = useAction();
+
+  /**
+   * Registering creates the account AND the organization that owns everything
+   * it will ever make — then signs in with the same credentials, because
+   * asking somebody to type a password twice in a row to reach the same place
+   * is a form we can simply not show.
+   */
+  const register = () =>
+    void run(
+      () =>
+        api.auth.register({
+          email: email.trim(),
+          password,
+          displayName: displayName.trim(),
+        }),
+      () => void logIn(email.trim(), password),
+    );
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
@@ -118,24 +140,36 @@ export function SignIn() {
           className="w-full max-w-sm"
           onSubmit={(event) => {
             event.preventDefault();
-            void logIn(email, password);
+            if (creating) register();
+            else void logIn(email, password);
           }}
         >
-          <h2 className="text-lg font-semibold tracking-tight">Sign in</h2>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {creating ? "Create an account" : "Sign in"}
+          </h2>
           <p className="text-muted-foreground mt-1.5 mb-7 text-sm leading-relaxed">
-            The session lives in this tab only — closing it signs you out. That
-            is deliberate: a token in local storage is a token any script on
-            this origin can read.
+            {creating
+              ? "This also creates the organization that will own your workspaces, your machines and your agents."
+              : "The session lives in this tab only — closing it signs you out. That is deliberate: a token in local storage is a token any script on this origin can read."}
           </p>
 
           <div className="space-y-4">
+            {creating ? (
+              <Field
+                label="Your name"
+                value={displayName}
+                onChange={setDisplayName}
+                placeholder="Ada Lovelace"
+                autoFocus
+              />
+            ) : null}
             <Field
               label="Email"
               type="email"
               value={email}
               onChange={setEmail}
               placeholder="you@example.com"
-              autoFocus
+              autoFocus={!creating}
             />
             <Field
               label="Password"
@@ -145,20 +179,42 @@ export function SignIn() {
             />
           </div>
 
-          {error ? (
+          {error ?? refusal ? (
             <div className="mt-4">
-              <Note>{error}</Note>
+              <Note>{error ?? refusal}</Note>
             </div>
           ) : null}
 
           <Button
             type="submit"
             className="mt-6 w-full"
-            disabled={loading || !email || !password}
+            disabled={
+              loading ||
+              pending ||
+              !email ||
+              !password ||
+              (creating && !displayName.trim())
+            }
           >
-            {loading ? "Signing in…" : "Sign in"}
-            {loading ? null : <ArrowRight />}
+            {loading || pending
+              ? creating
+                ? "Creating…"
+                : "Signing in…"
+              : creating
+                ? "Create account"
+                : "Sign in"}
+            {loading || pending ? null : <ArrowRight />}
           </Button>
+
+          <button
+            type="button"
+            onClick={() => setCreating((mode) => !mode)}
+            className="text-muted-foreground hover:text-foreground mt-4 w-full text-center text-xs transition-colors"
+          >
+            {creating
+              ? "I already have an account"
+              : "No account yet? Create one"}
+          </button>
         </form>
       </section>
     </div>

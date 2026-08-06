@@ -85,7 +85,8 @@ export function useResource<T>(
 export function useAction(): {
   run: (
     call: () => Promise<HubResult<unknown>>,
-    onDone?: () => void,
+    /** Handed what the hub answered — a creation route replies with the id. */
+    onDone?: (value: unknown) => void,
   ) => Promise<boolean>;
   pending: boolean;
   error: string | null;
@@ -95,7 +96,10 @@ export function useAction(): {
   const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(
-    async (call: () => Promise<HubResult<unknown>>, onDone?: () => void) => {
+    async (
+      call: () => Promise<HubResult<unknown>>,
+      onDone?: (value: unknown) => void,
+    ) => {
       setPending(true);
       setError(null);
       const result = await call();
@@ -104,7 +108,7 @@ export function useAction(): {
         setError(result.error.message);
         return false;
       }
-      onDone?.();
+      onDone?.(result.value);
       return true;
     },
     [],

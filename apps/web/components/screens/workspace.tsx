@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Activity as ActivityIcon,
   Bot,
+  Check,
   CircleAlert,
   Clock,
   Gauge,
@@ -17,7 +18,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
+import { api, ROLE_MEANS, WORKSPACE_ROLES } from "@/lib/api";
 import { duration, humanise, since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
@@ -42,6 +43,15 @@ import {
   Stripe,
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { InviteMember, NewAgent } from "@/components/forms";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Tab = "health" | "schedule" | "people" | "locks" | "decisions" | "governance";
 
@@ -295,8 +305,9 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
 }
 
 function People({ workspaceId }: { workspaceId: string }) {
-  const members = useResource(() => api.members(workspaceId), [workspaceId]);
+  const members = useResource(() => api.members.list(workspaceId), [workspaceId]);
   const paged = usePaged(members.data ?? []);
+  const { run, pending, error } = useAction();
 
   if (members.loading) return <Loading rows={3} />;
   if (members.error) return <Note>{members.error}</Note>;
@@ -325,7 +336,22 @@ function People({ workspaceId }: { workspaceId: string }) {
         />
       </StatRow>
 
-      <Section title="Members" count={all.length}>
+      {error ? (
+        <div className="mb-4">
+          <Note>{error}</Note>
+        </div>
+      ) : null}
+
+      <Section
+        title="Members"
+        count={all.length}
+        actions={
+          <div className="flex gap-2">
+            <InviteMember onDone={members.reload} />
+            <NewAgent onDone={members.reload} />
+          </div>
+        }
+      >
         <Panel>
           {paged.items.map((member) => (
             <Row key={member.membershipId}>
@@ -340,7 +366,59 @@ function People({ workspaceId }: { workspaceId: string }) {
                   <span className="measure">{member.actorId.slice(0, 12)}</span>
                 )}
               </span>
-              <span className="label w-40 text-right">{humanise(member.role)}</span>
+              {/* The role is the whole authorisation story for this actor,
+                  so it is editable where it is read — not two screens away. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="label hover:text-foreground w-40 text-right transition-colors"
+                  >
+                    {humanise(member.role)}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel className="label">Role</DropdownMenuLabel>
+                  {WORKSPACE_ROLES.map((role) => (
+                    <DropdownMenuItem
+                      key={role}
+                      className="flex-col items-start gap-0.5"
+                      onSelect={() =>
+                        void run(
+                          () =>
+                            api.members.changeRole(
+                              workspaceId,
+                              member.membershipId,
+                              role,
+                            ),
+                          members.reload,
+                        )
+                      }
+                    >
+                      <span className="flex w-full items-center gap-2">
+                        <span className="flex-1">{humanise(role)}</span>
+                        {member.role === role ? <Check className="size-3.5" /> : null}
+                      </span>
+                      <span className="text-muted-foreground text-xs leading-snug">
+                        {ROLE_MEANS[role]}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-signal"
+                    onSelect={() =>
+                      void run(
+                        () => api.members.revoke(workspaceId, member.membershipId),
+                        members.reload,
+                      )
+                    }
+                  >
+                    Remove from this workspace
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <span className="measure text-muted-foreground w-20 text-right text-xs">
                 {since(member.joinedAt)}
               </span>

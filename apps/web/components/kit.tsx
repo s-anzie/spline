@@ -8,6 +8,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Plus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -612,6 +614,100 @@ export function Pager<T>({ paged, cap }: { paged: Paged<T>; cap?: number }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A multi-line field. Same frame as `Field`, room for a paragraph. */
+export function Area({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  hint?: string;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label className="label">{label}</Label>
+      <textarea
+        value={value}
+        rows={rows}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="border-input bg-card focus-visible:ring-ring/50 min-h-16 w-full rounded-md border px-3 py-2 text-sm leading-relaxed outline-none focus-visible:ring-[3px]"
+      />
+      {hint ? <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * The list that says when something is finished.
+ *
+ * Deliberately a list rather than a paragraph: the hub requires at least one
+ * criterion, an agent is told to satisfy them one by one, and a validator
+ * checks them one by one. Prose would have to be re-read and re-interpreted
+ * at each of those three steps.
+ */
+export function Criteria({
+  label,
+  hint,
+  values,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  hint?: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}) {
+  const set = (index: number, text: string) =>
+    onChange(values.map((value, at) => (at === index ? text : value)));
+
+  return (
+    <div className="grid gap-1.5">
+      <Label className="label">{label}</Label>
+      <div className="grid gap-1.5">
+        {values.map((value, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <span className="measure text-muted-foreground w-5 shrink-0 text-xs">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <Input
+              value={value}
+              placeholder={index === 0 ? placeholder : undefined}
+              onChange={(event) => set(index, event.target.value)}
+            />
+            <button
+              type="button"
+              aria-label={`Remove criterion ${index + 1}`}
+              disabled={values.length === 1}
+              onClick={() => onChange(values.filter((_, at) => at !== index))}
+              className="text-muted-foreground hover:text-foreground rounded p-1 disabled:pointer-events-none disabled:opacity-30"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...values, ""])}
+        className="text-muted-foreground hover:text-foreground mt-0.5 inline-flex w-fit items-center gap-1 text-xs transition-colors"
+      >
+        <Plus className="size-3.5" />
+        Add a criterion
+      </button>
+      {hint ? <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p> : null}
     </div>
   );
 }

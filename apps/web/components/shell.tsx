@@ -3,7 +3,16 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Search, Sun } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  LogOut,
+  Monitor,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
@@ -14,6 +23,7 @@ import { useOrganizationId, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { TONE_TEXT } from "@/components/kit";
 import { CommandMenu } from "@/components/command-menu";
+import { NewWorkspace } from "@/components/forms";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -105,9 +115,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
                     ) : null}
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuSeparator />
+                <NewWorkspace
+                  trigger={
+                    <button
+                      type="button"
+                      className="hover:bg-accent flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm"
+                    >
+                      <Plus className="size-3.5" />
+                      New workspace
+                    </button>
+                  }
+                />
                 {/* §4.2 — there is no "all workspaces". Saying so is kinder
                     than letting somebody hunt for the option. */}
-                <DropdownMenuSeparator />
                 <p className="text-muted-foreground px-2 py-1.5 text-xs leading-relaxed">
                   Nothing is ever read across two workspaces.
                 </p>

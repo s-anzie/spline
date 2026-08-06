@@ -16,6 +16,8 @@ import { ChangeMembershipRoleUseCase } from "../application/change-membership-ro
 import { InviteWorkspaceMemberUseCase } from "../application/invite-workspace-member.use-case";
 import { RevokeWorkspaceMembershipUseCase } from "../application/revoke-workspace-membership.use-case";
 import {
+  ACTOR_CREDENTIAL_REPOSITORY,
+  ActorCredentialRepository,
   USER_REPOSITORY,
   UserRepository,
   WORKSPACE_MEMBERSHIP_REPOSITORY,
@@ -30,7 +32,11 @@ interface MemberView {
   actorType: string;
   actorId: string;
   role: string;
-  /** Only resolvable for humans — other actor types are named by their module. */
+  /**
+   * Humans are named by their profile, everything else by the credential that
+   * brought it into existence — §18.2's registry is where a non-human actor's
+   * name lives, because v3 has no Agent entity to hold one.
+   */
   displayName: string | null;
   email: string | null;
   joinedAt: string;
@@ -50,6 +56,8 @@ export class WorkspaceMemberController {
     @Inject(WORKSPACE_MEMBERSHIP_REPOSITORY)
     private readonly memberships: WorkspaceMembershipRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(ACTOR_CREDENTIAL_REPOSITORY)
+    private readonly credentials: ActorCredentialRepository,
   ) {}
 
   @Post()
@@ -77,12 +85,19 @@ export class WorkspaceMemberController {
           membership.actor.type === "HUMAN"
             ? await this.users.findById(membership.actor.actorId)
             : null;
+        // One lookup per non-human member. A workspace holds a handful of
+        // them, so the round trips are cheaper than a port change — and this
+        // is the only place that needs the mapping.
+        const credential =
+          membership.actor.type === "HUMAN"
+            ? null
+            : (await this.credentials.listByActor(membership.actor))[0];
         return {
           membershipId: membership.id.value,
           actorType: membership.actor.type,
           actorId: membership.actor.actorId,
           role: membership.role,
-          displayName: user?.displayName ?? null,
+          displayName: user?.displayName ?? credential?.displayName ?? null,
           email: user?.email.value ?? null,
           joinedAt: membership.createdAt.toISOString(),
         };
