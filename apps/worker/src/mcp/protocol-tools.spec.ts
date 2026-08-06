@@ -237,6 +237,25 @@ describe("the protocol tools", () => {
       ]);
     });
 
+    it("hangs a goal under another when a need turns out to be several", () => {
+      const call = tool("state_goal").request(context, {
+        title: "Rewrite the intake form",
+        successCriteria: ["one screen, no repeated fields"],
+        parentGoalId: "g-parent",
+      });
+
+      expect(call.body?.parentGoalId).toBe("g-parent");
+    });
+
+    it("leaves a standalone goal without a parent rather than inventing one", () => {
+      const call = tool("state_goal").request(context, {
+        title: "Rewrite the intake form",
+        successCriteria: ["one screen"],
+      });
+
+      expect(call.body).not.toHaveProperty("parentGoalId");
+    });
+
     it("cuts a task out of a goal and gives it to somebody by name", () => {
       const call = tool("cut_task").request(context, {
         goalId: "g-9",

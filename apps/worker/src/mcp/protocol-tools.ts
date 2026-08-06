@@ -255,6 +255,11 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
           "What a person will check before calling this done. At least one, each checkable on its own.",
         required: true,
       },
+      parentGoalId: {
+        type: "string",
+        description:
+          "The goal this one serves, when a need turns out to be several. Leave it out for a goal that stands on its own.",
+      },
     },
     request: (context, args) => ({
       method: "POST",
@@ -263,6 +268,12 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
         title: text(args, "title"),
         ...(text(args, "description") ? { description: text(args, "description") } : {}),
         successCriteria: list(args, "successCriteria"),
+        // §4.5 — a need that is really several becomes a tree, and the tree
+        // is what says which piece served which. Without it a manager that
+        // splits a need produces goals nobody can relate to each other.
+        ...(text(args, "parentGoalId")
+          ? { parentGoalId: text(args, "parentGoalId") }
+          : {}),
       },
     }),
   },
