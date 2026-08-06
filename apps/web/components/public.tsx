@@ -1,6 +1,11 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 import { routes } from "@/lib/routes";
+import { useSession } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -41,7 +46,7 @@ export function Wordmark({ href = routes.home }: { href?: string }) {
 }
 
 /**
- * The same three curves as the console's sign-in pane, drawn very quietly.
+ * The same three curves as the door's left pane, drawn very quietly.
  * Decoration, so it is hidden from anything that reads the page aloud.
  */
 export function Curves({ className }: { className?: string }) {
@@ -76,40 +81,123 @@ export function Curves({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Whether this browser already has a session, and one attempt to find out.
+ *
+ * The public pages have to ask: offering "Sign in" to somebody who is signed
+ * in is the kind of small wrongness that makes a site feel like it is not
+ * paying attention. The answer costs one request against the cookie the hub
+ * set — the console cannot read that cookie itself, so there is no cheaper
+ * way to know.
+ */
+function useVisitor(): { known: boolean; signedIn: boolean; name: string | null } {
+  const { email, displayName, restored, restore } = useSession();
+
+  useEffect(() => {
+    void restore();
+  }, [restore]);
+
+  return { known: restored, signedIn: Boolean(email), name: displayName ?? email };
+}
+
+/**
+ * What to offer, once we know who is asking.
+ *
+ * Until the answer lands, a placeholder of the same size holds the space.
+ * Rendering the signed-out buttons first would mean flashing "create an
+ * account" at somebody who has one; rendering nothing would move the header
+ * as the page settles.
+ */
+export function VisitorActions({ size = "sm" }: { size?: "sm" | "lg" }) {
+  const { known, signedIn } = useVisitor();
+  const big = size === "lg";
+
+  if (!known) {
+    return (
+      <div
+        aria-hidden
+        className={cn(
+          "bg-muted/60 animate-pulse rounded-md",
+          big ? "h-11 w-64" : "h-8 w-52",
+        )}
+      />
+    );
+  }
+
+  if (signedIn) {
+    return (
+      <Button size={big ? "lg" : "sm"} asChild>
+        <Link href={routes.queue}>
+          Open the console
+          <ArrowRight />
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant={big ? "outline" : "ghost"} size={big ? "lg" : "sm"} asChild>
+        <Link href={routes.signIn}>Sign in</Link>
+      </Button>
+      <Button size={big ? "lg" : "sm"} asChild>
+        <Link href={routes.signUp}>
+          Create an account
+          {big ? <ArrowRight /> : null}
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 export function PublicHeader() {
   return (
-    <header className="border-border/70 sticky top-0 z-20 border-b backdrop-blur">
+    <header className="border-border/70 bg-background/85 sticky top-0 z-20 border-b backdrop-blur-md">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
         <Wordmark />
-        <nav className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href={routes.signIn}>Sign in</Link>
-          </Button>
-          <Button size="sm" asChild>
-            <Link href={routes.signUp}>Create an account</Link>
-          </Button>
-        </nav>
+        <VisitorActions />
       </div>
     </header>
   );
 }
 
 export function PublicFooter() {
+  const { known, signedIn } = useVisitor();
+
   return (
     <footer className="border-border/70 border-t">
       <div className="text-muted-foreground mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 py-8 text-xs sm:flex-row sm:items-center sm:justify-between">
-        <p>
+        <p className="max-w-md leading-relaxed">
           Spline — a hub, and the machines that answer to it. Self-hosted; it
           listens on loopback until you decide otherwise.
         </p>
-        <div className="flex gap-4">
-          <Link href={routes.signIn} className="hover:text-foreground transition-colors">
-            Sign in
-          </Link>
-          <Link href={routes.signUp} className="hover:text-foreground transition-colors">
-            Create an account
-          </Link>
-        </div>
+        {known ? (
+          <div className="flex gap-5">
+            {signedIn ? (
+              <Link
+                href={routes.queue}
+                className="hover:text-foreground transition-colors"
+              >
+                Open the console
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href={routes.signIn}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href={routes.signUp}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Create an account
+                </Link>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
     </footer>
   );
