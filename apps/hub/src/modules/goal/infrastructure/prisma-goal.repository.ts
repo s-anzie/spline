@@ -101,4 +101,13 @@ export class PrismaGoalRepository implements GoalRepository {
     return open > 0;
   }
 
+  async findByTitle(workspaceId: string, title: string): Promise<Goal | null> {
+    const row = await this.prisma.goal.findFirst({
+      // Scoped to the workspace, like every other read here: two workspaces
+      // each have their own standing goal, and they are not the same one.
+      where: { workspaceId, title },
+      orderBy: { createdAt: "asc" },
+    });
+    return row ? GoalMapper.toDomain(row) : null;
+  }
 }

@@ -42,6 +42,12 @@ import { ReleaseTaskOnSessionCrashedListener } from "./application/release-task-
     CancelTasksOnGoalCancelledListener,
   ],
   exports: [
-    TaskHealthProbe,TASK_REPOSITORY, GetTaskUseCase],
+    TaskHealthProbe,
+    TASK_REPOSITORY,
+    GetTaskUseCase,
+    // For `WorkIntakeAdapter` (§4.5): a need handed to a manager becomes a
+    // task, and only this module knows how to make one correctly.
+    CreateTaskUseCase,
+  ],
 })
 export class TaskModule {}

@@ -5,6 +5,7 @@ import { WorkspaceModule } from "../workspace/workspace.module";
 import { ChangeGoalStatusUseCase } from "./application/change-goal-status.use-case";
 import { CompleteGoalUseCase } from "./application/complete-goal.use-case";
 import { CreateGoalUseCase } from "./application/create-goal.use-case";
+import { EnsureRequestsGoalUseCase } from "./application/ensure-requests-goal.use-case";
 import { GetGoalUseCase } from "./application/get-goal.use-case";
 import { ManageGoalDependencyUseCase } from "./application/manage-goal-dependency.use-case";
 import { ListGoalsUseCase } from "./application/list-goals.use-case";
@@ -21,6 +22,7 @@ import { GoalController } from "./interface/goal.controller";
   providers: [
     { provide: GOAL_REPOSITORY, useClass: PrismaGoalRepository },
     CreateGoalUseCase,
+    EnsureRequestsGoalUseCase,
     GetGoalUseCase,
     ListGoalsUseCase,
     UpdateGoalDetailsUseCase,
@@ -31,6 +33,7 @@ import { GoalController } from "./interface/goal.controller";
     RecomputeGoalProgressUseCase,
   ],
   exports: [
+    EnsureRequestsGoalUseCase,
     GOAL_REPOSITORY,
     UpdateGoalProgressUseCase,
     RecomputeGoalProgressUseCase,

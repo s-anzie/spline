@@ -15,6 +15,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsObject,
+  IsBoolean,
   IsOptional,
   IsString,
   Max,
@@ -45,6 +46,16 @@ import { MAX_TURN_BUDGET, THREAD_STATUSES, Thread, ThreadStatus } from "../domai
 export class OpenThreadDto {
   @IsIn(ACTOR_TYPES)
   participantType!: ActorType;
+
+  /**
+   * §4.5 — hand it over as work rather than asking a question about it.
+   *
+   * Only somebody who can organise may be handed a need; the refusal says so
+   * rather than creating work nobody can act on.
+   */
+  @IsOptional()
+  @IsBoolean()
+  handOver?: boolean;
 
   @IsString()
   @IsNotEmpty()
@@ -146,7 +157,7 @@ export class ConversationController {
     @Param("workspaceId") workspaceId: string,
     @CurrentActor() actor: ActorIdentity,
     @Body() dto: OpenThreadDto,
-  ): Promise<{ threadId: string }> {
+  ): Promise<{ threadId: string; taskId?: string }> {
     const result = await this.openThread.execute({
       workspaceId,
       initiator: asActorRef(actor),

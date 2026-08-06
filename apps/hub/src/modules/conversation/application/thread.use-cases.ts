@@ -4,6 +4,7 @@ import { flushDomainEvents } from "../../../kernel/application/flush-domain-even
 import { UseCase } from "../../../kernel/application/use-case";
 import { GuardViolation } from "../../../kernel/domain/guard";
 import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
+import { WORK_INTAKE, WorkIntake } from "../domain/ports/work-intake.port";
 import {
   EVENT_PUBLISHER,
   EventPublisher,
@@ -30,6 +31,14 @@ export interface OpenThreadInput {
   subject: string;
   /** §10.18a — set when this thread delegates work and awaits its answer. */
   taskId?: string;
+  /**
+   * §4.5 — hand the subject over as WORK rather than as a question.
+   *
+   * The participant must be able to organise, and the need becomes a task
+   * they hold. The thread then carries that task, which is what gets the
+   * asker told when it ends — the same machinery a delegation already uses.
+   */
+  handOver?: boolean;
   turnBudget?: number;
 }
 
@@ -43,17 +52,19 @@ export interface OpenThreadInput {
  */
 @Injectable()
 export class OpenThreadUseCase
-  implements UseCase<OpenThreadInput, Result<{ threadId: string }, GuardViolation>>
+  implements
+    UseCase<OpenThreadInput, Result<{ threadId: string; taskId?: string }, GuardViolation>>
 {
   constructor(
     @Inject(THREAD_REPOSITORY) private readonly threads: ThreadRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(WORK_INTAKE) private readonly intake: WorkIntake,
   ) {}
 
   async execute(
     input: OpenThreadInput,
-  ): Promise<Result<{ threadId: string }, GuardViolation>> {
+  ): Promise<Result<{ threadId: string; taskId?: string }, GuardViolation>> {
     const participant = ActorRef.create(input.participantType, input.participantId);
     if (participant.isFailure) {
       return Result.fail(participant.error);
@@ -66,12 +77,32 @@ export class OpenThreadUseCase
       );
     }
 
+    /**
+     * The work is made BEFORE the thread, and that order matters: a thread
+     * that promised to carry a task which then failed to exist would tell the
+     * asker their need was taken when nothing holds it. Refusing first costs
+     * a request; the other way round costs a silence nobody notices.
+     */
+    let handedOver: string | null = null;
+    if (input.handOver) {
+      const opened = await this.intake.openRequest({
+        workspaceId: input.workspaceId,
+        need: input.subject,
+        manager: participant.value,
+        asker: input.initiator,
+      });
+      if (opened.isFailure) {
+        return Result.fail(opened.error as GuardViolation);
+      }
+      handedOver = opened.value.taskId;
+    }
+
     const thread = Thread.open({
       workspaceId: input.workspaceId,
       initiator: input.initiator,
       participant: participant.value,
       subject: input.subject,
-      taskId: input.taskId ?? null,
+      taskId: handedOver ?? input.taskId ?? null,
       turnBudget: input.turnBudget,
       now: this.clock.now(),
     });
@@ -81,7 +112,10 @@ export class OpenThreadUseCase
 
     await this.threads.save(thread.value);
     await flushDomainEvents(thread.value, this.publisher);
-    return Result.ok({ threadId: thread.value.id.value });
+    return Result.ok({
+      threadId: thread.value.id.value,
+      ...(handedOver ? { taskId: handedOver } : {}),
+    });
   }
 }
 

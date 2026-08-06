@@ -16,5 +16,13 @@ export interface GoalRepository {
   list(filter: ListGoalsFilter): Promise<Goal[]>;
   /** Open = not COMPLETED and not CANCELLED — the completion gate (§2.2). */
   hasOpenChildren(goalId: string): Promise<boolean>;
+  /**
+   * The one goal a workspace has by name rather than by id: the standing
+   * place where stated needs land (`EnsureRequestsGoalUseCase`). Looked up by
+   * title because the title IS its identity — a slug column would be a second
+   * way to say the same thing, and the two would drift the first time
+   * somebody renamed it.
+   */
+  findByTitle(workspaceId: string, title: string): Promise<Goal | null>;
 }
 export const GOAL_REPOSITORY = "goal/GoalRepository";

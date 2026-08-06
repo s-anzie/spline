@@ -26,6 +26,14 @@ export class InMemoryGoalRepository implements GoalRepository {
     });
   }
 
+  async findByTitle(workspaceId: string, title: string): Promise<Goal | null> {
+    return (
+      [...this.goals.values()].find(
+        (goal) => goal.workspaceId === workspaceId && goal.title === title,
+      ) ?? null
+    );
+  }
+
   async hasOpenChildren(goalId: string): Promise<boolean> {
     return [...this.goals.values()].some(
       (goal) =>
