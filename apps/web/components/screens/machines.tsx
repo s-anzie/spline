@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Cpu,
   KeyRound,
@@ -12,16 +11,14 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { collapse, type WaitingMachine } from "@/lib/enrolments";
 import { type FleetView } from "@/lib/api";
-import { humanise, since, stamp } from "@/lib/format";
+import { humanise, since } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { useOrganizationId, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
 import {
   Empty,
-  Field,
   Id,
   Loading,
   Note,
@@ -36,7 +33,6 @@ import {
   Stripe,
 } from "@/components/kit";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 
 export function Machines() {
   const workspaceId = useSession((state) => state.workspaceId)!;
@@ -51,14 +47,9 @@ export function Machines() {
   const commands = useResource(() => api.runtime.commands(workspaceId), [workspaceId], {
     pollMs: 10_000,
   });
-  const providers = useResource(() => api.runtime.providers(), [], { pollMs: 60_000 });
-  const enrolments = useResource(
-    () => api.enrolments.pending(organizationId!),
-    [organizationId],
-    { pollMs: 10_000, enabled: Boolean(organizationId) },
-  );
-  // §6.3 — everything this organization owns, so a workspace with none has
-  // somewhere to go other than "pair it again".
+  // §6.3 — what this organization owns, so a workspace with none has
+  // somewhere to go other than "pair it again". Pairing itself, the fleet as
+  // a whole and the providers live above the workspace, where they belong.
   const fleet = useResource(() => api.fleet(organizationId!), [organizationId], {
     pollMs: 20_000,
     enabled: Boolean(organizationId),
@@ -69,7 +60,6 @@ export function Machines() {
     workers.reload();
     sessions.reload();
     commands.reload();
-    enrolments.reload();
     fleet.reload();
   };
 
@@ -79,12 +69,6 @@ export function Machines() {
   const queued = (commands.data ?? []).filter(
     (command) => command.status === "PENDING" || command.status === "CLAIMED",
   ).length;
-  // An expired request is not something anybody can act on: the code it is
-  // waiting for stopped working, and counting it as "at the door" sends an
-  // operator hunting for a code that can never be accepted.
-  const asking = collapse(enrolments.data ?? []);
-  const waiting = asking.filter((machine) => !machine.expired);
-  const stale = asking.filter((machine) => machine.expired);
   const elsewhere = (fleet.data ?? []).filter(
     (machine) => !machine.serves.includes(workspaceId),
   );
@@ -144,21 +128,17 @@ export function Machines() {
           hint="claimed or not yet taken"
         />
         <Stat
-          label="At the door"
-          value={waiting.length}
+          label="Yours, elsewhere"
+          value={elsewhere.length}
           icon={KeyRound}
-          tone={waiting.length ? "waiting" : "quiet"}
+          tone={elsewhere.length ? "waiting" : "quiet"}
           hint={
-            waiting.length
-              ? "needs your code"
-              : stale.length
-                ? `${stale.length} asked too long ago to still count`
-                : "nobody waiting"
+            elsewhere.length
+              ? "attach one below"
+              : "every machine you own already serves this"
           }
         />
       </StatRow>
-
-      <Pairing waiting={waiting} stale={stale} organizationId={organizationId} onDone={reloadAll} />
 
       <Attach
         machines={elsewhere}
@@ -297,150 +277,7 @@ export function Machines() {
         )}
       </Section>
 
-      <Section title="Providers" count={providers.data?.length}>
-        {providers.data && providers.data.length > 0 ? (
-          <Panel>
-            {providers.data.map((provider) => (
-              <Row key={provider.id}>
-                <Stripe tone={provider.effectiveAvailable ? "settled" : "signal"} />
-                <Plug className="text-muted-foreground size-3.5 shrink-0" />
-                <span className="w-24 shrink-0 text-sm font-medium">{provider.provider}</span>
-                <span className="text-muted-foreground flex-1 truncate text-xs">
-                  {provider.capabilities.join(", ") || "no capability declared"}
-                </span>
-                {/* §4.14 — availability is computed from the quota window at
-                    read, so it can never disagree with the window itself. */}
-                <span
-                  className={`text-right text-xs ${
-                    provider.effectiveAvailable ? "text-muted-foreground" : "text-signal"
-                  }`}
-                >
-                  {provider.effectiveAvailable
-                    ? "available"
-                    : provider.quotaUnavailableUntil
-                      ? `back ${stamp(provider.quotaUnavailableUntil).slice(0, 16)}`
-                      : (provider.quotaReason ?? "unavailable")}
-                </span>
-              </Row>
-            ))}
-          </Panel>
-        ) : (
-          <Empty icon={Plug}>No provider profile is registered on this hub.</Empty>
-        )}
-      </Section>
     </>
-  );
-}
-
-/**
- * §6.3 — the operator's half of pairing.
- *
- * The list shows what asked; the code proves which one. The hub deliberately
- * never sends the code down, so somebody who can read this screen still
- * cannot approve the machine they just enrolled.
- */
-function Pairing({
-  waiting,
-  stale,
-  organizationId,
-  onDone,
-}: {
-  waiting: WaitingMachine[];
-  stale: WaitingMachine[];
-  organizationId: string | null;
-  onDone: () => void;
-}) {
-  const [code, setCode] = useState("");
-  const { run, pending, error } = useAction();
-
-  if (waiting.length === 0) {
-    // Requests whose window closed are shown, and shown as dead — hiding them
-    // would leave an operator wondering where their machine went, and
-    // offering a code box for them would waste their time.
-    return stale.length === 0 ? null : (
-      <Section title="Asked too long ago" count={stale.length}>
-        <Note tone="quiet">
-          {stale.map((machine) => machine.hostname).join(", ")} asked to be
-          paired, but the code stopped being valid. Nothing here can be typed:
-          restart the worker on that machine for a fresh one — or, if it is
-          already paired, attach it below instead.
-        </Note>
-      </Section>
-    );
-  }
-
-  return (
-    <Section title="Waiting to be paired" count={waiting.length}>
-      <Card className="gap-0 overflow-hidden py-0 shadow-none">
-        <div className="divide-border divide-y">
-          {waiting.map((machine) => (
-            <Row key={machine.hostname}>
-              <Stripe tone={machine.expired ? "quiet" : "waiting"} />
-              <span className="flex-1 text-sm font-medium">
-                {machine.hostname}
-                {/* A machine that asked more than once is restarting. Worth
-                    saying, because the operator still approves it only once. */}
-                {machine.requests > 1 ? (
-                  <span className="text-signal ml-2 text-xs font-normal">
-                    asked <span className="measure">{machine.requests}</span> times
-                  </span>
-                ) : null}
-              </span>
-              <span className="measure text-muted-foreground text-xs">
-                {machine.operatingSystem}/{machine.architecture}
-              </span>
-              <span className="text-muted-foreground text-xs">
-                {machine.capabilities.join(", ") || "declares nothing"}
-              </span>
-              <span
-                className={`measure w-20 text-right text-xs ${
-                  machine.expired ? "text-signal" : "text-muted-foreground"
-                }`}
-              >
-                {machine.expired ? "expired" : since(machine.since)}
-              </span>
-            </Row>
-          ))}
-        </div>
-
-        {organizationId ? (
-          <form
-            className="bg-muted/50 flex items-end gap-3 border-t p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void run(
-                () => api.enrolments.decide(organizationId, code.trim().toUpperCase(), true),
-                () => {
-                  setCode("");
-                  onDone();
-                },
-              );
-            }}
-          >
-            <Field
-              label="Code printed on that machine"
-              value={code}
-              onChange={setCode}
-              placeholder="Q6YWCJ19"
-              className="max-w-xs flex-1"
-            />
-            <Button type="submit" size="sm" disabled={pending || code.trim().length < 4}>
-              <KeyRound />
-              {pending ? "Pairing…" : "Pair"}
-            </Button>
-          </form>
-        ) : (
-          <div className="border-t p-4">
-            <Note>Only an organization owner can pair a machine.</Note>
-          </div>
-        )}
-      </Card>
-      {error ? (
-        <div className="mt-3 max-w-md">
-          <Note>{error}</Note>
-        </div>
-      ) : null}
-    </Section>
   );
 }
 
@@ -483,7 +320,7 @@ function Attach({
             <span className="text-muted-foreground text-xs">
               {machine.capabilities.join(", ") || "declares nothing"}
             </span>
-            <span className="text-muted-foreground w-32 text-right text-xs">
+            <span className="text-muted-foreground shrink-0 text-right text-xs whitespace-nowrap">
               {machine.serves.length === 0
                 ? "serves no workspace"
                 : `serves ${machine.serves.length} other${machine.serves.length === 1 ? "" : "s"}`}

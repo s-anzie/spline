@@ -126,6 +126,16 @@ interface PreferenceState {
   /** How many rows a list shows before it pages. One setting, every screen. */
   pageSize: number;
   setPageSize(size: number): void;
+  /**
+   * Whether the organization's own entries also sit in the workspace rail.
+   *
+   * Off by default: the organization is a place you visit — to pair a machine,
+   * to issue an agent — not something you consult twenty times a day, and a
+   * rail that shows everything shows nothing. On, for whoever runs the fleet
+   * and wants both levels in one glance.
+   */
+  organizationInRail: boolean;
+  setOrganizationInRail(shown: boolean): void;
 }
 
 /**
@@ -137,6 +147,8 @@ interface PreferenceState {
 export const usePreferences = create<PreferenceState>((set) => ({
   pageSize: 25,
   setPageSize: (pageSize) => set({ pageSize }),
+  organizationInRail: false,
+  setOrganizationInRail: (organizationInRail) => set({ organizationInRail }),
 }));
 
 /** The organization the console acts on behalf of. One, in practice. */

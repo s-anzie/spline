@@ -22,7 +22,9 @@ import {
   ORGANIZATION_FLEET,
   OrganizationFleet,
 } from "../domain/ports/organization-fleet.port";
+import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
 import { WORKER_STORE, WorkerStore } from "../domain/ports/runtime.repository.port";
+import { DEFAULT_WORKER_STALE_MS } from "./runtime.controller";
 
 export class ListFleetQueryDto {
   @IsOptional()
@@ -41,6 +43,12 @@ interface FleetView {
   capabilities: string[];
   labels: string[];
   status: string;
+  /**
+   * §17.7 — judged at read against the heartbeat, not by a sweep that could
+   * itself be late. A machine whose last word was "ONLINE" an hour ago is not
+   * online, whatever its stored status says.
+   */
+  stale: boolean;
   lastHeartbeatAt: string | null;
   /** §17.8 — never a bare count: which workspaces it serves, named. */
   serves: string[];
@@ -68,6 +76,7 @@ export class OrganizationFleetController {
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(ORGANIZATION_REPOSITORY)
     private readonly organizations: OrganizationRepository,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   @Get()
@@ -86,6 +95,7 @@ export class OrganizationFleetController {
 
     const actorIds = await this.fleet.machineActorIdsOf(organizationId);
     const machines = await this.workers.listRegisteredBy(actorIds, query.limit);
+    const now = this.clock.now();
     return machines.map((machine) => ({
       id: machine.id.value,
       hostname: machine.hostname,
@@ -94,6 +104,7 @@ export class OrganizationFleetController {
       capabilities: [...machine.capabilities],
       labels: [...machine.labels],
       status: machine.status,
+      stale: machine.isStaleAt(now, DEFAULT_WORKER_STALE_MS),
       lastHeartbeatAt: machine.lastHeartbeatAt?.toISOString() ?? null,
       serves: [...machine.workspaceIds],
     }));

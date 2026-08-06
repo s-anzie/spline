@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Building2,
   Check,
+  ChevronLeft,
   ChevronsUpDown,
   LogOut,
   Monitor,
@@ -20,8 +21,17 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { since } from "@/lib/format";
 import { usePulse } from "@/lib/pulse";
-import { isCurrent, NAV, routes, titleFor, type NavItem } from "@/lib/routes";
-import { useOrganizationId, useSession } from "@/lib/store";
+import {
+  isCurrent,
+  isOrganizationLevel,
+  NAV,
+  ORGANIZATION_NAV,
+  organizationRailItems,
+  routes,
+  titleFor,
+  type NavItem,
+} from "@/lib/routes";
+import { useOrganizationId, usePreferences, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { TONE_TEXT } from "@/components/kit";
 import { CommandMenu } from "@/components/command-menu";
@@ -40,8 +50,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function Shell({ children }: { children: React.ReactNode }) {
   const { email, displayName, workspaceId, workspaces, chooseWorkspace, logOut } =
     useSession();
+  const organization = useSession((state) => state.organizations[0]);
+  const inRail = usePreferences((state) => state.organizationInRail);
   const pathname = usePathname();
   const router = useRouter();
+  // Above a workspace, the rail is the organization's. Showing a workspace's
+  // queue beside the fleet would put two scopes in one column and leave the
+  // reader to work out which one each row belongs to.
+  const aboveWorkspace = isOrganizationLevel(pathname);
   const organizationId = useOrganizationId();
   const pulse = usePulse(workspaceId, organizationId);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -79,7 +95,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
 
-        {current ? (
+        {current && !aboveWorkspace ? (
           <div className="px-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -157,49 +173,60 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <ScrollArea className="flex-1">
           <div className="px-3 py-3">
-            {NAV.map((group) => (
+            {aboveWorkspace ? (
+              <>
+                <Link
+                  href={workspaceId ? routes.queue : routes.organization}
+                  className="text-muted-foreground hover:text-foreground mb-4 flex items-center gap-1.5 px-2 text-xs transition-colors"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  {current ? `Back to ${current.name}` : "Back"}
+                </Link>
+                <p className="label mb-1.5 px-2">
+                  {organization?.name ?? "Organization"}
+                </p>
+                <ul className="mb-5 flex flex-col gap-px">
+                  {ORGANIZATION_NAV.map((item) => (
+                    <li key={item.href}>
+                      <RailLink
+                        item={item}
+                        active={isCurrent(pathname, item.href)}
+                        badge={badgeFor(item.badge)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+
+            {!aboveWorkspace && inRail ? (
+              <div className="mb-5">
+                <p className="label mb-1.5 px-2">
+                  {organization?.name ?? "Organization"}
+                </p>
+                <ul className="flex flex-col gap-px">
+                  {organizationRailItems().map((item) => (
+                    <li key={item.href}>
+                      <RailLink item={item} active={false} badge={badgeFor(item.badge)} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {aboveWorkspace ? null : NAV.map((group) => (
               <div key={group.heading} className="mb-5">
                 <p className="label mb-1.5 px-2">{group.heading}</p>
                 <ul className="flex flex-col gap-px">
-                  {group.items.map((item) => {
-                    const active = isCurrent(pathname, item.href);
-                    const badge = badgeFor(item.badge);
-                    return (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          aria-current={active ? "page" : undefined}
-                          className={cn(
-                            "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
-                            active
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                          )}
-                        >
-                          <item.icon
-                            className={cn(
-                              "size-4 shrink-0",
-                              active ? "text-signal" : "opacity-70",
-                            )}
-                            strokeWidth={1.75}
-                          />
-                          <span className="flex-1 text-left">{item.label}</span>
-                          {badge ? (
-                            <span
-                              className={cn(
-                                "measure rounded px-1.5 py-0.5 text-[0.625rem] leading-none",
-                                item.badge === "needsYou"
-                                  ? "bg-signal text-primary-foreground"
-                                  : "bg-muted text-muted-foreground",
-                              )}
-                            >
-                              {badge}
-                            </span>
-                          ) : null}
-                        </Link>
-                      </li>
-                    );
-                  })}
+                  {group.items.map((item) => (
+                    <li key={item.href}>
+                      <RailLink
+                        item={item}
+                        active={isCurrent(pathname, item.href)}
+                        badge={badgeFor(item.badge)}
+                      />
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}
@@ -243,6 +270,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <ThemeChoice />
 
               <DropdownMenuSeparator className="mx-0 my-1.5" />
+              <DropdownMenuItem asChild className="gap-2 px-2">
+                <Link href={routes.fleet}>
+                  <Building2 className="size-3.5" />
+                  Organization
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild className="gap-2 px-2">
                 <Link href={routes.settings}>
                   <SlidersHorizontal className="size-3.5" />
@@ -455,10 +488,17 @@ function Spool() {
   );
 }
 
-/** The id in a drill-down URL, shortened for the breadcrumb. */
+/**
+ * The id in a drill-down URL, shortened for the breadcrumb.
+ *
+ * Only an id: `/organization/machines` has a second segment too, and printing
+ * it gave "Machines / machines", which reads like a bug because it is one.
+ */
+const LOOKS_LIKE_AN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
 function detailOf(pathname: string): string | null {
-  const segments = pathname.split("/").filter(Boolean);
-  return segments.length > 1 ? (segments[1]?.slice(0, 8) ?? null) : null;
+  const last = pathname.split("/").filter(Boolean).at(-1);
+  return last && LOOKS_LIKE_AN_ID.test(last) ? last.slice(0, 8) : null;
 }
 
 /**
@@ -492,5 +532,47 @@ function OrganizationLine() {
         </span>
       </span>
     </div>
+  );
+}
+
+/** One entry of the rail, wherever the rail happens to be pointing. */
+function RailLink({
+  item,
+  active,
+  badge,
+}: {
+  item: NavItem;
+  active: boolean;
+  badge: string | null;
+}) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+      )}
+    >
+      <item.icon
+        className={cn("size-4 shrink-0", active ? "text-signal" : "opacity-70")}
+        strokeWidth={1.75}
+      />
+      <span className="flex-1 text-left">{item.label}</span>
+      {badge ? (
+        <span
+          className={cn(
+            "measure rounded px-1.5 py-0.5 text-[0.625rem] leading-none",
+            item.badge === "needsYou"
+              ? "bg-signal text-primary-foreground"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {badge}
+        </span>
+      ) : null}
+    </Link>
   );
 }

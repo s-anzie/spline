@@ -345,7 +345,7 @@ export class DecideEnrolmentDto {
 const GRANT_TTL_MS = 60 * 60 * 1000;
 
 /** §17.7 default, until a workspace policy tightens it. */
-const DEFAULT_WORKER_STALE_MS = 2 * 60 * 1000;
+export const DEFAULT_WORKER_STALE_MS = 2 * 60 * 1000;
 
 /**
  * 403 rather than 404: the machine exists, and answering "not found" would

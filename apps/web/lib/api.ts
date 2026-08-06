@@ -156,6 +156,8 @@ export interface FleetView {
   capabilities: string[];
   labels: string[];
   status: string;
+  /** Judged at read against the heartbeat, like the workspace's own list. */
+  stale: boolean;
   lastHeartbeatAt: string | null;
   serves: string[];
 }

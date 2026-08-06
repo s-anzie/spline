@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { useSession } from "@/lib/store";
+import { usePreferences, useSession } from "@/lib/store";
 import { useAction } from "@/lib/use-hub";
 import { Field, Id, Note, PageHeader, Section } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ export function Settings() {
       <Profile />
       <OrganizationSettings />
       <Appearance />
+      <Console />
       <SessionNote />
     </>
   );
@@ -253,6 +254,59 @@ function Appearance() {
                 </button>
               );
             })}
+          </div>
+        </Setting>
+      </Panel>
+    </Section>
+  );
+}
+
+/** How the console itself is laid out. Nothing here reaches the hub. */
+function Console() {
+  const { pageSize, setPageSize, organizationInRail, setOrganizationInRail } =
+    usePreferences();
+
+  return (
+    <Section title="Console">
+      <Panel>
+        <Setting
+          label="Organization in the sidebar"
+          hint="The organization has its own space, reached from your account menu. Turn this on to keep its machines and agents in the sidebar as well, above the workspace — for whoever runs the fleet and wants both levels at a glance. Workspaces and settings are not repeated there: the switcher and this menu already stand for them."
+        >
+          <div className="flex items-center gap-3 py-1">
+            <Button
+              variant={organizationInRail ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOrganizationInRail(true)}
+            >
+              Show it
+            </Button>
+            <Button
+              variant={organizationInRail ? "outline" : "default"}
+              size="sm"
+              onClick={() => setOrganizationInRail(false)}
+            >
+              Keep it separate
+            </Button>
+          </div>
+        </Setting>
+
+        <Setting
+          label="Rows per page"
+          hint="Every list uses this. Lists shorter than the smallest page show no pager at all."
+        >
+          <div className="flex flex-wrap gap-2 py-1">
+            {[10, 25, 50, 100, 250].map((size) => (
+              <Button
+                key={size}
+                variant={pageSize === size ? "default" : "outline"}
+                size="sm"
+                className="measure"
+                onClick={() => setPageSize(size)}
+              >
+                {size}
+              </Button>
+            ))}
           </div>
         </Setting>
       </Panel>

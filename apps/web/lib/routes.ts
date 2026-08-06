@@ -1,7 +1,10 @@
 import {
   Activity as ActivityIcon,
   BookMarked,
+  Bot,
   Cpu,
+  Layers,
+  SlidersHorizontal,
   Inbox as InboxIcon,
   ListChecks,
   MessagesSquare,
@@ -34,9 +37,42 @@ export const routes = {
   threads: "/threads",
   thread: (threadId: string) => `/threads/${threadId}`,
   workspace: "/workspace",
+
+  /**
+   * Above the workspace, not inside it.
+   *
+   * §6.3 and §18.2 — a machine is paired to an ORGANIZATION and then lent to
+   * workspaces; an agent's identity is issued by the organization and its
+   * powers are granted per workspace. Two levels, genuinely: mixing them on
+   * one screen made "your machines" mean two different sets depending on
+   * where the reader was standing.
+   */
+  organization: "/organization",
+  fleet: "/organization/machines",
+  agents: "/organization/agents",
+  organizationWorkspaces: "/organization/workspaces",
   /** Account-wide, not workspace-scoped: reached from the account menu. */
   settings: "/settings",
 } as const;
+
+/**
+ * What the organization contributes to the WORKSPACE rail, when somebody asks
+ * for it there.
+ *
+ * Not the whole list: the workspace switcher already stands for Workspaces
+ * and the account menu already stands for Settings. Repeating them would put
+ * three ways to the same place in one column, which reads as three places.
+ */
+export function organizationRailItems(): NavItem[] {
+  return ORGANIZATION_NAV.filter(
+    (item) => item.href !== routes.organizationWorkspaces && item.href !== routes.settings,
+  );
+}
+
+/** True for the screens that live above any workspace. */
+export function isOrganizationLevel(pathname: string): boolean {
+  return pathname.startsWith(routes.organization) || pathname.startsWith(routes.settings);
+}
 
 export interface NavItem {
   href: string;
@@ -121,7 +157,39 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
   },
 ];
 
-const ALL = NAV.flatMap((group) => group.items);
+/**
+ * The organization's own rail. Never changes when a workspace is switched,
+ * because none of it belongs to a workspace.
+ */
+export const ORGANIZATION_NAV: NavItem[] = [
+  {
+    href: routes.fleet,
+    label: "Machines",
+    icon: Cpu,
+    hint: "every computer you own, and what it serves",
+    badge: "machines",
+  },
+  {
+    href: routes.agents,
+    label: "Agents",
+    icon: Bot,
+    hint: "the identities you have issued",
+  },
+  {
+    href: routes.organizationWorkspaces,
+    label: "Workspaces",
+    icon: Layers,
+    hint: "everything below the organization",
+  },
+  {
+    href: routes.settings,
+    label: "Settings",
+    icon: SlidersHorizontal,
+    hint: "your account and your organization",
+  },
+];
+
+const ALL = [...NAV.flatMap((group) => group.items), ...ORGANIZATION_NAV];
 
 /**
  * Pages that are reachable but not in the rail. Without them the top bar
@@ -129,7 +197,7 @@ const ALL = NAV.flatMap((group) => group.items);
  * they are.
  */
 const ASIDE: { href: string; label: string }[] = [
-  { href: routes.settings, label: "Settings" },
+  { href: routes.organization, label: "Organization" },
 ];
 
 /** The heading shown in the top bar. Longest match wins, so `/runs/abc` is a run. */

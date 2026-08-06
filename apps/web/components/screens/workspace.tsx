@@ -257,7 +257,7 @@ function Schedule({ workspaceId }: { workspaceId: string }) {
                 <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
                 <span className="label w-16 text-right">{humanise(entry.priority)}</span>
                 <span
-                  className={`measure w-28 text-right text-xs ${
+                  className={`measure shrink-0 text-right text-xs whitespace-nowrap ${
                     entry.unblocks > 0 ? "text-foreground" : "text-muted-foreground"
                   }`}
                 >
@@ -472,7 +472,7 @@ function Locks({ workspaceId }: { workspaceId: string }) {
                   {lock.owner.type.toLowerCase()}{" "}
                   <span className="measure">{lock.owner.id.slice(0, 8)}</span>
                 </span>
-                <span className="measure text-muted-foreground w-32 text-right text-xs">
+                <span className="measure text-muted-foreground shrink-0 text-right text-xs whitespace-nowrap">
                   expires {since(lock.expiresAt)}
                 </span>
                 <Button

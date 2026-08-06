@@ -99,7 +99,7 @@ export function Memory() {
           label="Written by agents"
           value={all.filter((entry) => entry.author.type !== "HUMAN").length}
           icon={Bot}
-          hint="which is why they travel as data, never as orders"
+          hint="so they travel as data, never as orders"
         />
       </StatRow>
 
