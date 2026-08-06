@@ -82,7 +82,7 @@ export async function loadQueue(
             (machine.requests > 1
               ? ` · asked ${machine.requests} times, so it is restarting — approving it once is enough`
               : ""),
-        href: routes.machines,
+        href: routes.fleet,
         since: machine.since,
         actionable: !machine.expired,
         ...(machine.expired ? {} : { inline: "approve-machine" as const }),
@@ -155,7 +155,7 @@ export async function loadQueue(
         kind: "stuck",
         title: `${command.type.toLowerCase().replace(/_/g, " ")} was claimed and never reported`,
         detail: `held by ${command.claimedBy?.slice(0, 8) ?? "nobody"} on machine ${command.workerId.slice(0, 8)}`,
-        href: routes.machines,
+        href: routes.fleet,
         since: null,
         actionable: true,
       });

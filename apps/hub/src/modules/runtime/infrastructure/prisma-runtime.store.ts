@@ -362,6 +362,20 @@ export class PrismaEnrolmentStore implements EnrolmentStore {
    * every other operator's machines. Approval always needed the code, so
    * nothing could be taken; but the list itself was somebody else's business.
    */
+  async listForOrganization(
+    organizationId: string,
+    limit?: number,
+  ): Promise<WorkerEnrolment[]> {
+    const rows = await this.prisma.workerEnrolment.findMany({
+      where: {
+        OR: [{ requestedOrganizationId: organizationId }, { organizationId }],
+      },
+      orderBy: { requestedAt: "desc" },
+      take: pageSize(limit),
+    });
+    return rows.map(toEnrolment);
+  }
+
   async listPending(
     organizationId: string,
     limit?: number,

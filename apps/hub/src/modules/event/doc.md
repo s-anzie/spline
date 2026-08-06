@@ -220,3 +220,37 @@ Reports explicites :
   partage la transaction du dépôt.
 - **Purge / rétention** : un journal croît indéfiniment. Aucune politique n'est inventée ici — c'est au
   Policy Engine (§12) de la porter, et §18.7 interdit la suppression sans audit.
+
+## 7. Le journal au-dessus du workspace (`/organizations/:id/events`)
+
+**Le constat.** Un `workspaceId` nullable existait depuis §4.20, et rien ne lisait jamais les faits qui
+s'en servent. En base de développement, **1 196 événements** sans workspace attendaient un lecteur :
+appairages demandés et décidés, comptes enregistrés, organisations créées et renommées, identités
+émises. Les actes qui *créent* les workspaces étaient précisément ceux qu'aucun écran ne pouvait montrer.
+
+**Ce que cette route n'est pas.** Pas une agrégation des workspaces du dessous. §4.2 n'a pas
+d'exception, et un premier écran qui la franchirait servirait de précédent à tous les suivants. Ce qui
+s'est passé dans un workspace se lit dans ce workspace : les deux listes ne partagent **aucune ligne**.
+
+**Deux filtres, tous deux porteurs.** `workspaceId: null` dit « au-dessus du workspace ».
+`concerning` dit « chez vous » — et c'est celui sans lequel la route serait une fuite. Les faits sans
+workspace sont ceux de **toutes** les organisations du hub ; filtrer sur le seul workspace absent
+donnerait à un opérateur les noms d'hôte et les capacités des machines de tous les autres. C'est
+exactement la fuite déjà refermée une fois sur la liste des appairages en attente, et la refaire ici
+aurait été la refaire au su de la première.
+
+**Qui répond « chez vous ».** Le port `ORGANIZATION_SUBJECTS`, déclaré par event et fourni par runtime
+(`OrganizationSubjectsAdapter`) : l'organisation elle-même, son propriétaire, les identités qu'elle a
+émises et les acteurs derrière, les machines que ces acteurs ont enregistrées, et toutes les demandes
+d'appairage qu'on lui a adressées. Une liste d'identifiants, pas une requête maligne — un événement n'a
+jamais appris à porter une organisation, et le lui apprendre obligerait **chaque** publieur du système à
+y penser : une règle fausse dès le premier oubli, silencieusement.
+
+**`newestFirst`.** Le tri ascendant reste le défaut, parce que le replay (§14.5) lit *en avant* depuis
+une position. Mais un écran qui demande « ce qui s'est passé récemment » avec une page ascendante reçoit
+les cent faits les **plus vieux**, et n'en bouge plus jamais. L'option est explicite et n'est prise que
+par cette route.
+
+**Reste ouvert** : l'Activité *du workspace* lit toujours la tête du journal (les 150 premiers faits,
+ordre ascendant garanti par un test qui encode ce contrat). Sur un workspace de longue vie c'est le même
+défaut, et il n'a pas été touché ici parce que ce n'était pas ce qui était demandé.

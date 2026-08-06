@@ -30,7 +30,6 @@ export const routes = {
   task: (taskId: string) => `/tasks/${taskId}`,
   runs: "/runs",
   run: (runId: string) => `/runs/${runId}`,
-  machines: "/machines",
   activity: "/activity",
   memory: "/memory",
   inbox: "/inbox",
@@ -50,6 +49,7 @@ export const routes = {
   organization: "/organization",
   fleet: "/organization/machines",
   agents: "/organization/agents",
+  organizationActivity: "/organization/activity",
   organizationWorkspaces: "/organization/workspaces",
   /** Account-wide, not workspace-scoped: reached from the account menu. */
   settings: "/settings",
@@ -128,13 +128,9 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "What runs it",
     items: [
-      {
-        href: routes.machines,
-        label: "Machines",
-        icon: Cpu,
-        hint: "the computers that run agents",
-        badge: "machines",
-      },
+      // Machines are NOT here: they belong to the organization and are lent
+      // to workspaces, so one screen above serves every workspace rather than
+      // one copy per workspace pretending each owns its own fleet.
       {
         href: routes.memory,
         label: "Memory",
@@ -174,6 +170,12 @@ export const ORGANIZATION_NAV: NavItem[] = [
     label: "Agents",
     icon: Bot,
     hint: "the identities you have issued",
+  },
+  {
+    href: routes.organizationActivity,
+    label: "Activity",
+    icon: ActivityIcon,
+    hint: "pairings, identities — what the organization itself did",
   },
   {
     href: routes.organizationWorkspaces,

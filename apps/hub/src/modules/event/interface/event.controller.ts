@@ -35,7 +35,7 @@ import {
   RequireReceiptsDto,
 } from "./dto/event.dtos";
 
-interface EventView {
+export interface EventView {
   id: string;
   workspaceId: string | null;
   type: string;
@@ -48,7 +48,7 @@ interface EventView {
   createdAt: string;
 }
 
-function toView(event: Event): EventView {
+export function toView(event: Event): EventView {
   return {
     id: event.id.value,
     workspaceId: event.workspaceId,

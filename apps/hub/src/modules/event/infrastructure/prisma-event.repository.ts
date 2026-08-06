@@ -90,9 +90,17 @@ export class PrismaEventRepository implements EventRepository {
         ...(filter.afterSequence !== undefined && {
           sequence: { gt: filter.afterSequence },
         }),
+        // An empty set matches nothing, deliberately: "concerning nobody" must
+        // return nothing rather than quietly widening to everything.
+        ...(filter.concerning !== undefined && {
+          OR: [
+            { actorId: { in: [...filter.concerning] } },
+            { targetId: { in: [...filter.concerning] } },
+          ],
+        }),
       },
       // Sequence, never createdAt: two facts can share a millisecond.
-      orderBy: { sequence: "asc" },
+      orderBy: { sequence: filter.newestFirst ? "desc" : "asc" },
       // Always bounded: an absent limit is a page, never the whole journal.
       take: Math.min(filter.limit ?? DEFAULT_EVENT_PAGE, MAX_EVENT_PAGE),
     });

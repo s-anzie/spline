@@ -7,6 +7,7 @@ import {
   GetEventUseCase,
   ListEventsUseCase,
 } from "./application/list-events.use-case";
+import { ListOrganizationActivityUseCase } from "./application/list-organization-activity.use-case";
 import { ListPendingReceiptsUseCase } from "./application/list-pending-receipts.use-case";
 import { RecordEventUseCase } from "./application/record-event.use-case";
 import { RequireEventReceiptsUseCase } from "./application/require-event-receipts.use-case";
@@ -21,6 +22,7 @@ import {
 import { ReactionDepth } from "../../kernel/application/reaction-depth";
 import { PersistentEventPublisher } from "./infrastructure/persistent-event-publisher";
 import { EventController } from "./interface/event.controller";
+import { OrganizationActivityController } from "./interface/organization-activity.controller";
 
 /**
  * Global because it REPLACES the kernel's default EVENT_PUBLISHER for the
@@ -31,7 +33,7 @@ import { EventController } from "./interface/event.controller";
 @Global()
 @Module({
   imports: [IdentityModule],
-  controllers: [EventController],
+  controllers: [EventController, OrganizationActivityController],
   providers: [
     // A factory, not a class binding: the ceiling is a constructor argument
     // with a default, and Nest would try to inject a Number for it.
@@ -45,6 +47,7 @@ import { EventController } from "./interface/event.controller";
     RequireEventReceiptsUseCase,
     AdvanceEventReceiptUseCase,
     ListPendingReceiptsUseCase,
+    ListOrganizationActivityUseCase,
   ],
   exports: [EVENT_REPOSITORY, EVENT_RECEIPT_REPOSITORY, EVENT_PUBLISHER, RecordEventUseCase],
 })

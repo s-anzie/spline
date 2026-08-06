@@ -1,7 +1,7 @@
-import { Machines } from "@/components/screens/machines";
+import { Fleet } from "@/components/screens/fleet";
 
 export const metadata = { title: "Machines · Spline" };
 
-export default function MachinesPage() {
-  return <Machines />;
+export default function FleetPage() {
+  return <Fleet />;
 }

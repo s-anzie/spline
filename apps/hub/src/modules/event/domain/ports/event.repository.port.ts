@@ -10,6 +10,24 @@ export interface ListEventsFilter {
   targetType?: string;
   targetId?: string;
   actor?: ActorRef;
+  /**
+   * §14 — facts about a named set of things, whoever wrote them.
+   *
+   * An organization's own activity is not a workspace's, and it is not "every
+   * event with no workspace" either: that would hand one operator the pairing
+   * requests of every other. It is the events whose actor or target is one of
+   * the ids this organization owns.
+   */
+  concerning?: readonly string[];
+  /**
+   * Read the END of the journal rather than its beginning.
+   *
+   * The default is ascending, and replay depends on it (§14.5: read forward
+   * from a position). But a screen asking "what happened lately" with an
+   * ascending page gets the OLDEST hundred facts and never moves off them,
+   * however long the journal grows.
+   */
+  newestFirst?: boolean;
   /** Replay (§14.5) reads forward from a known position. */
   afterSequence?: bigint;
   /** Omitted means DEFAULT_EVENT_PAGE, never "everything" — see below. */

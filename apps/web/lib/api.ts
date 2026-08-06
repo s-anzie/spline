@@ -642,6 +642,13 @@ export const api = {
   events: {
     list: (workspace: string, limit = 100) =>
       hub.get<EventView[]>(`/workspaces/${workspace}/events${q({ limit })}`),
+    /**
+     * The journal above every workspace, newest first — pairings, identities,
+     * the organization itself. Not a roll-up of the workspaces below: their
+     * facts are read in them (§4.2), and the two lists share no row.
+     */
+    organization: (organization: string, limit = 100) =>
+      hub.get<EventView[]>(`/organizations/${organization}/events${q({ limit })}`),
   },
 
   notifications: {

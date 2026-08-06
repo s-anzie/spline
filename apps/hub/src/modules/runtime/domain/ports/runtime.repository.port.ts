@@ -73,5 +73,11 @@ export interface EnrolmentStore {
    * A request nobody can see is a request nobody can reject.
    */
   listPending(organizationId: string, limit?: number): Promise<WorkerEnrolment[]>;
+  /**
+   * Every request this organization has ever been knocked on with, decided or
+   * not. §14 reads it to say what the organization did, which includes the
+   * ones it refused.
+   */
+  listForOrganization(organizationId: string, limit?: number): Promise<WorkerEnrolment[]>;
 }
 export const ENROLMENT_STORE = "runtime/EnrolmentStore";

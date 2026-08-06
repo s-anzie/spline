@@ -94,6 +94,15 @@ import {
     SessionHealthProbe,
     CommandHealthProbe,
   ],
-  exports: [WorkerHealthProbe, SessionHealthProbe, CommandHealthProbe],
+  exports: [
+    WorkerHealthProbe,
+    SessionHealthProbe,
+    CommandHealthProbe,
+    // For `OrganizationSubjectsAdapter` (§14): the machines an organization
+    // registered and the requests it was knocked on with are two thirds of
+    // what its journal is about.
+    WORKER_STORE,
+    ENROLMENT_STORE,
+  ],
 })
 export class RuntimeModule {}
