@@ -12,6 +12,11 @@ import {
 } from "./application/task-grant.use-cases";
 import { PrismaTaskGrantRepository } from "./infrastructure/prisma-task-grant.repository";
 import { LoginUseCase } from "./application/login.use-case";
+import {
+  CloseSessionUseCase,
+  OpenSessionUseCase,
+  RefreshSessionUseCase,
+} from "./application/session.use-cases";
 import { PermissionsService } from "./application/permissions.service";
 import { WORKSPACE_AUDIENCE_PROVIDER } from "./infrastructure/identity-workspace-audience.adapter";
 import { RegisterUserUseCase } from "./application/register-user.use-case";
@@ -20,6 +25,7 @@ import { RevokeWorkspaceMembershipUseCase } from "./application/revoke-workspace
 import { VerifyActorTokenUseCase } from "./application/verify-actor-token.use-case";
 import {
   ACTOR_CREDENTIAL_REPOSITORY,
+  REFRESH_SESSION_REPOSITORY,
   TASK_GRANT_REPOSITORY,
   ORGANIZATION_REPOSITORY,
   USER_REPOSITORY,
@@ -38,12 +44,14 @@ import {
 import {
   PrismaActorCredentialRepository,
   PrismaOrganizationRepository,
+  PrismaRefreshSessionRepository,
   PrismaUserRepository,
   PrismaWorkspaceMembershipRepository,
 } from "./infrastructure/prisma-identity.repositories";
 import { ActorAuthGuard } from "./interface/actor-auth.guard";
 import { ActorRegistryController } from "./interface/actor-registry.controller";
 import { AuthController } from "./interface/auth.controller";
+import { BrowserOriginGuard, ForeignOriginGuard } from "./interface/browser-origin.guard";
 import { OrganizationController } from "./interface/organization.controller";
 import { PermissionsGuard } from "./interface/permissions.guard";
 import { WorkspaceMemberController } from "./interface/workspace-member.controller";
@@ -76,11 +84,15 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
     },
     { provide: ACTOR_CREDENTIAL_REPOSITORY, useClass: PrismaActorCredentialRepository },
     { provide: TASK_GRANT_REPOSITORY, useClass: PrismaTaskGrantRepository },
+    { provide: REFRESH_SESSION_REPOSITORY, useClass: PrismaRefreshSessionRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SIGNER, useClass: JwtTokenSigner },
     { provide: SECRET_GENERATOR, useClass: CryptoSecretGenerator },
     RegisterUserUseCase,
     LoginUseCase,
+    OpenSessionUseCase,
+    RefreshSessionUseCase,
+    CloseSessionUseCase,
     IssueActorCredentialUseCase,
     RevokeActorCredentialUseCase,
     IssueTaskGrantUseCase,
@@ -93,6 +105,8 @@ import { WorkspaceMemberController } from "./interface/workspace-member.controll
     PermissionsService,
     ActorAuthGuard,
     PermissionsGuard,
+    BrowserOriginGuard,
+    ForeignOriginGuard,
     WORKSPACE_AUDIENCE_PROVIDER,
   ],
   exports: [

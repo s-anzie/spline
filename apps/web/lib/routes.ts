@@ -23,6 +23,17 @@ import {
  * palette and every row that opens something all read from this.
  */
 export const routes = {
+  /**
+   * The three addresses that exist before a session does.
+   *
+   * Separate pages, not a gate rendered in place. A gate could not be linked
+   * to, could not be indexed, and gave somebody arriving at a hub they were
+   * sent a link to nothing to read before typing a password into it.
+   */
+  home: "/",
+  signIn: "/sign-in",
+  signUp: "/sign-up",
+
   queue: "/queue",
   goals: "/goals",
   goal: (goalId: string) => `/goals/${goalId}`,

@@ -36,7 +36,37 @@ model User {
   displayName  String
   createdAt    DateTime @default(now())
 
+  refreshSessions RefreshSession[]
+
   @@map("users")
+}
+
+/// §18 — one link in a browser's chain of session credentials.
+///
+/// Long-lived and held in an httpOnly cookie, it buys a fresh access token
+/// and nothing else. Single use: every refresh spends one link and mints the
+/// next in the same `familyId`, so a copied cookie and the real one race, and
+/// the loser presenting a spent link is the alarm that a copy exists.
+model RefreshSession {
+  id        String   @id @default(uuid())
+  userId    String
+  /// The chain, named after its first link. Revoking a chain on a replay is
+  /// one indexed write rather than a walk — which matters, because the walk
+  /// would leave the thief's successor alive for as long as it took.
+  familyId  String
+  tokenHash String
+  issuedAt  DateTime  @default(now())
+  expiresAt DateTime
+  /// When this link was exchanged for its successor. Set once, never moved.
+  usedAt    DateTime?
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
 }
 
 /// Top of the v3 hierarchy (§4.1). Slugs are display conveniences, not

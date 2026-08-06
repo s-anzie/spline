@@ -58,6 +58,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      */
     return new Proxy(this, {
       get(target, property, receiver) {
+        /**
+         * Checked FIRST, and that ordering is the whole fix.
+         *
+         * Prisma's transaction client is itself a proxy that answers `in` for
+         * ANY name, so the model-delegate branch below claimed this method and
+         * handed back the transaction — the escape hatch quietly returned the
+         * very thing it exists to avoid, and the write it guarded rolled back
+         * with the request. Anything added to this class that is not a `$`
+         * method needs the same treatment.
+         */
+        if (property === "outsideTransaction") {
+          return () => target;
+        }
         const transaction = currentTransaction();
         if (transaction) {
           if (isModelDelegate(property) && property in transaction) {
@@ -86,6 +99,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return Reflect.get(target, property, receiver) as unknown;
       },
     });
+  }
+
+  /**
+   * The client that deliberately does NOT join the request's transaction.
+   *
+   * Exists for one situation, and should stay that way: a write that must
+   * survive the refusal that triggered it. Revoking a session chain after a
+   * replayed cookie is the case — the request ends in a 401, the interceptor
+   * rolls the transaction back, and the theft response would roll back with
+   * it, leaving the stolen credential's successor alive. The security
+   * response is not part of the failed operation; it is the answer to it.
+   *
+   * The hazard to check before reaching for this again: a statement on a
+   * second connection can block on locks the open transaction holds, which is
+   * a hang, not an error. Safe here because nothing in the failing path has
+   * written to that table.
+   */
+  outsideTransaction(): PrismaClient {
+    return this;
   }
 
   async onModuleInit(): Promise<void> {

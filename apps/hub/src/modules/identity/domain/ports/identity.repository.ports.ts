@@ -1,5 +1,6 @@
 import { ActorRef } from "../actor";
 import { ActorCredential } from "../actor-credential";
+import { RefreshSession } from "../refresh-session";
 import { TaskGrant } from "../task-grant";
 import { Organization } from "../organization";
 import { WorkspaceRole } from "../permission-matrix";
@@ -56,3 +57,20 @@ export interface TaskGrantRepository {
   listForTask(workspaceId: string, taskId: string): Promise<TaskGrant[]>;
 }
 export const TASK_GRANT_REPOSITORY = "identity/TaskGrantRepository";
+
+/**
+ * §18 — where a browser's long-lived session credentials live.
+ *
+ * `revokeFamily` is the one operation that justifies the whole shape: the
+ * answer to a replayed credential is to kill every link in its chain at once,
+ * and doing that link by link would leave the thief's successor alive for as
+ * long as the walk takes.
+ */
+export interface RefreshSessionRepository {
+  save(session: RefreshSession): Promise<void>;
+  findById(id: string): Promise<RefreshSession | null>;
+  revokeFamily(familyId: string, now: Date): Promise<number>;
+  /** Housekeeping: a spent or expired link proves nothing after its window. */
+  deleteExpiredBefore(cutoff: Date): Promise<number>;
+}
+export const REFRESH_SESSION_REPOSITORY = "identity/RefreshSessionRepository";

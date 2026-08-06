@@ -39,6 +39,16 @@ export const Guard = {
     return Result.ok(value);
   },
 
+  /** Strictly positive: for the things where zero is not a small value but an absent one — a lifetime, a page size, a budget. */
+  againstNonPositive(value: number, argumentName: string): Result<number, GuardViolation> {
+    if (!Number.isFinite(value) || value <= 0) {
+      return Result.fail(
+        new GuardViolation(argumentName, "must be a positive finite number"),
+      );
+    }
+    return Result.ok(value);
+  },
+
   /** Accepts zero and positive finite numbers only. */
   againstNegative(value: number, argumentName: string): Result<number, GuardViolation> {
     if (!Number.isFinite(value) || value < 0) {

@@ -282,7 +282,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   Settings
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={logOut} className="gap-2 px-2">
+              <DropdownMenuItem onSelect={() => void logOut()} className="gap-2 px-2">
                 <LogOut className="size-3.5" />
                 Sign out
               </DropdownMenuItem>

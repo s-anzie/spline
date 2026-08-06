@@ -100,3 +100,33 @@ export class CredentialNotFoundError extends EntityNotFoundError {
     super("ActorCredential", id);
   }
 }
+
+/**
+ * §18 — the three ways a browser's session credential can fail.
+ *
+ * Kept apart rather than collapsed into one "invalid session", because the
+ * caller must act differently on each: an expired or revoked one means sign
+ * in again, a REPLAYED one means somebody holds a copy and the whole chain
+ * has to die.
+ */
+export class SessionExpiredError extends DomainError {
+  constructor() {
+    super("This session has expired — sign in again");
+  }
+}
+
+export class SessionRevokedError extends DomainError {
+  constructor() {
+    super("This session is no longer valid — sign in again");
+  }
+}
+
+export class SessionReplayedError extends DomainError {
+  constructor() {
+    super(
+      "This session credential has already been used. It was rotated, so a " +
+        "second use means a copy exists: every session in this chain has been " +
+        "revoked",
+    );
+  }
+}

@@ -299,3 +299,53 @@ propre** (membership). Aucune entité n'a de `DELETE` qui détruirait une trace.
 module agent. Émettre un jeton pour un agent qui n'existe dans aucun registre créerait des orphelins —
 c'est le module qui possède l'entité Agent qui doit exposer son onboarding. En attendant, les acteurs
 non humains restent rattachables à un workspace par référence explicite.
+
+## Rester connecté (§18) — `/auth/refresh`, `/auth/logout`
+
+**Le constat.** Le jeton d'accès vit en mémoire de l'onglet, délibérément : un jeton que
+`localStorage` expose est un jeton que n'importe quel script de l'origine peut lire, et une seule XSS
+devient alors une prise de contrôle complète d'une console qui approuve des machines. Le prix était
+qu'un F5 déconnectait — ce qui n'est pas un inconvénient mineur, c'est la console inutilisable.
+
+**Ce qui est ajouté.** Une seconde chaîne de justificatifs, dans un cookie `httpOnly` que la console
+elle-même ne peut pas lire, et qui ne sait faire qu'**une** chose : acheter un nouveau jeton d'accès.
+Il ne porte aucune permission et n'ouvre aucune route. Le jeton qui agit meurt toujours avec l'onglet ;
+ce qui lui survit ne peut rien seul.
+
+**Rotation à chaque usage, usage unique, et le rejeu tue la chaîne.** Sans rotation, un cookie copié
+fonctionne toute sa durée de vie et personne n'apprend jamais qu'il a été copié. Avec, la copie et
+l'original courent l'un contre l'autre : le perdant présente un justificatif déjà dépensé, et **c'est
+l'alarme**. La réponse révoque toute la `familyId`, pas seulement le lien présenté — depuis ici, la
+copie et l'original sont indiscernables, la seule lecture sûre de « deux porteurs » est que l'un des
+deux n'est pas le propriétaire, et le voleur détient déjà le successeur.
+
+**Le piège qui a coûté le plus de temps.** `TransactionInterceptor` ouvre une transaction par requête
+écrivante et la **rejette** quand le handler lève. La révocation de la chaîne repartait donc avec le
+401 qu'elle accompagnait : `updateMany` annonçait 2 lignes, la base en montrait 0. La réponse à un vol
+n'est pas une partie de l'opération qui a échoué, c'est la réponse à celle-ci — d'où
+`PrismaService.outsideTransaction()`, une sortie nommée, documentée et réservée à ce cas.
+
+**Et le piège dans le piège.** Cette sortie ne marchait pas non plus : le client de transaction de
+Prisma est lui-même un proxy qui répond `true` à `in` pour **n'importe quel** nom, donc la branche
+« délégué de modèle » l'attrapait et renvoyait la transaction. L'échappatoire retournait exactement ce
+qu'elle existe pour éviter, silencieusement. Elle est testée en premier dans le proxy maintenant ;
+toute méthode ajoutée à `PrismaService` qui ne commence pas par `$` demande le même traitement.
+
+**Deux gardes, pas un.** `/auth/refresh` et `/auth/logout` s'authentifient par un **cookie**, que le
+navigateur attache tout seul : n'importe quelle page du web peut donc les déclencher. CORS empêche de
+**lire** la réponse — ce n'est pas une fuite de jeton — mais la rotation, elle, a bien lieu, et la
+session réelle meurt. Un déni de service d'une requête, déclenchable depuis une iframe publicitaire.
+Ces deux routes n'acceptent donc qu'une origine listée (`BrowserOriginGuard`). `/auth/login` est
+différente : elle est prouvée par un mot de passe et doit rester appelable par un script, une CLI, un
+test. `ForeignOriginGuard` y refuse une origine **présente et étrangère** et laisse passer l'absence —
+ce qui bloque le login-CSRF (la page attaquante connecte le visiteur au compte de l'attaquant, et le
+cookie qui revient devient la session du visiteur) sans casser les clients légitimes.
+
+**Reports explicites :**
+
+- **Âge maximal absolu.** La durée de vie repart à chaque usage, donc une session en usage quotidien
+  ne meurt jamais. Un plafond dur est une question de politique (§12), pas une constante à inventer ici.
+- **Purge.** `deleteExpiredBefore` existe et rien ne l'appelle : le hub n'a pas d'ordonnanceur de
+  maintenance. La table croît d'une ligne par rafraîchissement.
+- **Liste des sessions ouvertes / « déconnecter partout ».** Le modèle le permet (`userId`), aucune
+  route ne l'expose. À faire quand quelqu'un en aura besoin.

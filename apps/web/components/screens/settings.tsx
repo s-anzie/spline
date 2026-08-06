@@ -322,10 +322,10 @@ function SessionNote() {
       <Panel>
         <Setting
           label="How this session works"
-          hint="The token lives in this tab's memory and never touches local storage — a token any script on this origin could read turns one XSS into a full takeover. Closing the tab signs you out; so does reloading. The console settings above are kept, because none of them is a secret."
+          hint="Two credentials, and the split is the point. The token that can actually do things lives in this tab's memory and never touches local storage — one any script on this origin could read turns a single XSS into a full takeover. What survives a reload is a cookie this console cannot read either, good for one thing: asking the hub for a new token. The hub replaces it on every use, so a copy of it stops working the moment you come back."
         >
           <div className="py-1">
-            <Button variant="outline" size="sm" onClick={logOut}>
+            <Button variant="outline" size="sm" onClick={() => void logOut()}>
               <LogOut />
               Sign out
             </Button>

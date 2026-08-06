@@ -1,6 +1,7 @@
 import {
   ActorCredential as ActorCredentialRow,
   Organization as OrganizationRow,
+  RefreshSession as RefreshSessionRow,
   User as UserRow,
   WorkspaceMembership as MembershipRow,
 } from "@repo/db";
@@ -9,6 +10,7 @@ import { ActorRef, ActorType } from "../domain/actor";
 import { ActorCredential } from "../domain/actor-credential";
 import { Email } from "../domain/email";
 import { Organization } from "../domain/organization";
+import { RefreshSession } from "../domain/refresh-session";
 import { WorkspaceRole } from "../domain/permission-matrix";
 import { User } from "../domain/user";
 import { WorkspaceMembership } from "../domain/workspace-membership";
@@ -120,6 +122,36 @@ export const ActorCredentialMapper = {
       createdAt: credential.createdAt,
       revokedAt: credential.revokedAt,
       lastUsedAt: credential.lastUsedAt,
+    };
+  },
+};
+
+export const RefreshSessionMapper = {
+  toDomain(row: RefreshSessionRow): RefreshSession {
+    return RefreshSession.reconstitute(
+      {
+        userId: row.userId,
+        familyId: row.familyId,
+        tokenHash: row.tokenHash,
+        issuedAt: row.issuedAt,
+        expiresAt: row.expiresAt,
+        usedAt: row.usedAt,
+        revokedAt: row.revokedAt,
+      },
+      row.id,
+    );
+  },
+
+  toPersistence(session: RefreshSession): RefreshSessionRow {
+    return {
+      id: session.id.value,
+      userId: session.userId,
+      familyId: session.familyId,
+      tokenHash: session.tokenHash,
+      issuedAt: session.issuedAt,
+      expiresAt: session.expiresAt,
+      usedAt: session.usedAt,
+      revokedAt: session.revokedAt,
     };
   },
 };

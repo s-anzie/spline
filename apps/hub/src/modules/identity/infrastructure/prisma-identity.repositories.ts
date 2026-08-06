@@ -5,10 +5,12 @@ import { PrismaService } from "../../../prisma/prisma.service";
 import { ActorRef } from "../domain/actor";
 import { ActorCredential } from "../domain/actor-credential";
 import { Organization } from "../domain/organization";
+import { RefreshSession } from "../domain/refresh-session";
 import { WorkspaceRole } from "../domain/permission-matrix";
 import {
   ActorCredentialRepository,
   OrganizationRepository,
+  RefreshSessionRepository,
   UserRepository,
   WorkspaceMembershipRepository,
 } from "../domain/ports/identity.repository.ports";
@@ -17,6 +19,7 @@ import { WorkspaceMembership } from "../domain/workspace-membership";
 import {
   ActorCredentialMapper,
   OrganizationMapper,
+  RefreshSessionMapper,
   UserMapper,
   WorkspaceMembershipMapper,
 } from "./identity.mappers";
@@ -175,5 +178,58 @@ export class PrismaActorCredentialRepository implements ActorCredentialRepositor
       take: pageSize(limit),
     });
     return rows.map((row) => ActorCredentialMapper.toDomain(row));
+  }
+}
+
+/**
+ * §18 — the browser's session chain.
+ *
+ * `revokeFamily` is a single `updateMany` on purpose: the theft response has
+ * to be atomic from the caller's point of view, and reading the chain then
+ * writing it back link by link would leave a window in which the successor
+ * the thief holds is still redeemable.
+ */
+@Injectable()
+export class PrismaRefreshSessionRepository implements RefreshSessionRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async save(session: RefreshSession): Promise<void> {
+    const data = RefreshSessionMapper.toPersistence(session);
+    await this.prisma.refreshSession.upsert({
+      where: { id: data.id },
+      create: data,
+      update: data,
+    });
+  }
+
+  async findById(id: string): Promise<RefreshSession | null> {
+    const row = await this.prisma.refreshSession.findUnique({ where: { id } });
+    return row ? RefreshSessionMapper.toDomain(row) : null;
+  }
+
+  /**
+   * Outside the request's transaction, on purpose.
+   *
+   * Every caller of this either refuses the request afterwards (a replayed
+   * cookie ends in a 401) or is a sign-out. In the first case the
+   * interceptor rolls the request back, and a revocation rolled back with it
+   * would leave the thief's successor alive — the response to the theft is
+   * not part of the operation that failed. In the second, a sign-out that
+   * survives whatever else goes wrong is the answer anybody would want.
+   */
+  async revokeFamily(familyId: string, now: Date): Promise<number> {
+    const { count } = await this.prisma.outsideTransaction().refreshSession.updateMany({
+      // Already-revoked links keep their original stamp: when is evidence.
+      where: { familyId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return count;
+  }
+
+  async deleteExpiredBefore(cutoff: Date): Promise<number> {
+    const { count } = await this.prisma.refreshSession.deleteMany({
+      where: { expiresAt: { lt: cutoff } },
+    });
+    return count;
   }
 }
