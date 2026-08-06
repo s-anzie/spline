@@ -410,6 +410,13 @@ const q = (params: Record<string, string | number | undefined>): string => {
  * value the hub did not give us, and nothing takes a base URL — both are how
  * a console ends up talking to somebody else's hub.
  */
+export interface WorkspaceDetail {
+  id: string;
+  name: string;
+  status: string;
+  settings: Record<string, unknown>;
+}
+
 export const api = {
   /** The two routes a stranger may call: they create the account and the org. */
   auth: {
@@ -435,6 +442,14 @@ export const api = {
   workspaces: {
     create: (body: { organizationId: string; name: string; description?: string }) =>
       hub.post<{ workspaceId: string; slug: string }>("/workspaces", body),
+    get: (workspace: string) => hub.get<WorkspaceDetail>(`/workspaces/${workspace}`),
+    /**
+     * §9 — the settings bag, which until automation nothing read. Sent whole
+     * because it is a bag: merging on the client and posting the result is
+     * what keeps a key nobody knows about from being dropped.
+     */
+    update: (workspace: string, body: { settings?: Record<string, unknown> }) =>
+      hub.patch(`/workspaces/${workspace}`, body),
   },
 
   /** §18.2 — the registry of non-human actors: agents and services. */
@@ -629,8 +644,13 @@ export const api = {
         participantId: string;
         subject: string;
         taskId?: string;
+        /** §4.5 — hand it over as work rather than asking a question about it. */
+        handOver?: boolean;
       },
-    ) => hub.post<{ threadId: string }>(`/workspaces/${workspace}/threads`, body),
+    ) => hub.post<{ threadId: string; taskId?: string }>(
+      `/workspaces/${workspace}/threads`,
+      body,
+    ),
     /** A message is a turn; no message is "I have nothing to add", which ends it. */
     speak: (workspace: string, threadId: string, message?: string) =>
       hub.post(

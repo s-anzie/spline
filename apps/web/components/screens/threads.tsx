@@ -33,6 +33,7 @@ import {
   Payload,
   Row,
   Section,
+  Segmented,
   Stat,
   StatRow,
   Status,
@@ -329,12 +330,21 @@ function OpenThread({
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [participant, setParticipant] = useState("");
+  const [handOver, setHandOver] = useState(false);
   const { run, pending, error } = useAction();
 
   const others = members.filter((member) => member.actorId !== userId);
   const chosen = others.find(
     (member) => `${member.actorType}:${member.actorId}` === participant,
   );
+  /**
+   * §4.6 — only somebody who organises can be handed a need.
+   *
+   * The choice appears when it applies rather than being offered and then
+   * refused: a control that is always there and usually fails teaches people
+   * to distrust the form.
+   */
+  const canOrganise = chosen?.role === "AGENT_MANAGER" || chosen?.role === "OWNER";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -359,22 +369,37 @@ function OpenThread({
                   participantType: chosen!.actorType,
                   participantId: chosen!.actorId,
                   subject: subject.trim(),
+                  ...(canOrganise && handOver ? { handOver: true } : {}),
                 }),
               () => {
                 setOpen(false);
                 setSubject("");
+                setHandOver(false);
                 onDone();
               },
             );
           }}
         >
-          <Field
-            label="What you need"
-            value={subject}
-            onChange={setSubject}
-            placeholder="Can you check whether the OIDC provider rotates its JWKS?"
-            autoFocus
-          />
+          {/* A question fits on a line; a need does not. The box grows once
+              the answer is going to be work rather than a reply. */}
+          {canOrganise && handOver ? (
+            <Area
+              label="What you need"
+              value={subject}
+              onChange={setSubject}
+              rows={5}
+              placeholder="Improve the document creation flow, and take every piece of information it needs into account."
+              hint="In your own words. They work out what it means, state the goal, and cut it into tasks."
+            />
+          ) : (
+            <Field
+              label="What you need"
+              value={subject}
+              onChange={setSubject}
+              placeholder="Can you check whether the OIDC provider rotates its JWKS?"
+              autoFocus
+            />
+          )}
           <div>
             <p className="label mb-1.5">Ask</p>
             {others.length === 0 ? (
@@ -398,6 +423,27 @@ function OpenThread({
               />
             )}
           </div>
+
+          {canOrganise ? (
+            <div className="border-border bg-muted/40 rounded-lg border p-3">
+              <p className="label mb-2">
+                {chosen?.displayName ?? "They"} can organise work
+              </p>
+              <Segmented
+                value={handOver ? "work" : "question"}
+                onChange={(next) => setHandOver(next === "work")}
+                options={[
+                  { value: "question", label: "Ask a question" },
+                  { value: "work", label: "Hand it over" },
+                ]}
+              />
+              <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">
+                {handOver
+                  ? "They work out what it means, state the goal with what would prove it reached, and cut it into tasks for whoever should do them. You are told here when it is done."
+                  : "They read it and answer you. Nothing is created and nobody is put to work."}
+              </p>
+            </div>
+          ) : null}
           {chosen ? (
             <p className="text-muted-foreground text-xs leading-relaxed">
               {humanise(chosen.role)} — {chosen.actorType === "AGENT"

@@ -292,3 +292,45 @@ pour agir. `list()` accepte les trois, et ne coupe pas « 1,5 s » en deux.
   son plafond.
 - **Créer des agents.** Émettre une identité reste un acte de personne (§18). Un agent qui fabriquerait
   des agents pourrait se multiplier hors de vue, et la facture est celle de l'opérateur.
+
+## Le travail part tout seul, et s'arrête tout seul (§9, §9.13)
+
+**Trois pièces, et deux d'entre elles ne servent qu'à refuser.**
+
+`AutoDispatchListener` distribue les tâches assignées sans que personne appuie. C'est ce qui sépare
+« le manager découpe » de « l'équipe travaille pendant que je dors ». Il est écrit autour de ses refus :
+éteint sauf demande, jamais plus de N runs en vol, jamais plus de N par jour, et **il ne réessaie
+jamais** — une tâche déclinée reste dispatchable à la main et la prochaine assignation la ramènera
+devant les mêmes contrôles. Réessayer en boucle transforme un plafond en attente active.
+
+`AbandonSilentRunsUseCase` enterre les morts **avant** qu'on compte les vivants, et l'ordre est tout.
+Un run reste RUNNING jusqu'à ce qu'une machine rapporte ; une machine qui meurt ne rapporte rien. Seul,
+c'est une ligne périmée. Sous un plafond de trois, c'est un tiers de la capacité du workspace, à vie —
+et au troisième mort la chaîne s'arrête **sans erreur nulle part** : tous les écrans ont l'air normaux
+et rien ne bouge. Il y en avait sept dans la base de développement au moment d'écrire ceci.
+
+Balayé au moment où l'on demande s'il y a de la place, et non sur une minuterie : une minuterie toutes
+les dix minutes laisse un workspace bloqué dix minutes.
+
+`RetryOnOtherProviderListener` rejoue une tâche échouée sur un **autre** fournisseur. Le cas est
+ennuyeux et constant : un fournisseur hors quota, une CLI cassée sur cette machine, et le travail ne
+peut pas avancer tant que personne n'est réveillé. Trois choses l'empêchent de devenir une boucle : un
+fournisseur différent à chaque fois (rejouer sur le même, c'est payer deux fois le même échec), un
+plafond dur de runs par tâche, et les plafonds du workspace qui s'appliquent en dessous puisque tout
+passe par le même dispatch. Il se tait quand l'automatique est éteint : quelqu'un qui dispatche à la
+main choisit son fournisseur, et le rechoisir pour lui serait prendre une décision qu'il était en train
+de prendre.
+
+**Le plafond est lu, jamais cru.** Le sac `settings` est du JSON libre qu'un porteur de
+`manage_workspace` écrit, et ce qu'il gouverne dépense de l'argent. Chaîne, négatif, fraction, `1e9` :
+chacun retombe sur une valeur saine. Le cas qui compte est `NaN`, qui compare faux contre tout et
+n'arrête donc **rien** — le seul mode de défaillance qui ne doit pas être atteignable depuis une faute
+de frappe. Et seul `true` allume.
+
+**Éteint par défaut**, par workspace. Allumer pour tous les workspaces existants ferait démarrer des
+agents chez des gens qui n'ont jamais entendu parler de la fonctionnalité.
+
+**Reste ouvert.** L'instruction n'a pas de lien vers les buts qu'elle a produits : la tâche
+d'orchestration vit dans un but d'accueil, le manager crée les vrais buts à côté, et rien n'enregistre
+la filiation. Le plafond journalier n'en a pas besoin ; répondre à « qu'est-ce que cette demande a
+coûté » si.

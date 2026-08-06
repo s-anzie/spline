@@ -71,6 +71,22 @@ export class AutoDispatchListener {
       return;
     }
 
+    /**
+     * The dead are buried before the living are counted.
+     *
+     * A run whose machine died stays RUNNING forever and holds a ceiling
+     * slot. Under a ceiling of three, three such deaths stop the workspace
+     * with no error anywhere — every screen looks fine and nothing moves.
+     * Sweeping here rather than on a timer means the slot is free at the
+     * exact moment somebody asks whether there is room.
+     */
+    const buried = await this.runs.abandonSilent(workspaceId);
+    if (buried > 0) {
+      this.logger.warn(
+        `${buried} silent run(s) ended in workspace ${workspaceId}; their slots are free.`,
+      );
+    }
+
     const live = await this.runs.countLive(workspaceId);
     if (live >= limits.concurrentRuns) {
       // Not an error and not a failure: the work is assigned and waiting, and

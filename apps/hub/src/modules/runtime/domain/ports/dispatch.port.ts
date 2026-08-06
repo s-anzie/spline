@@ -80,6 +80,18 @@ export interface RunLedger {
   countLive(workspaceId: string): Promise<number>;
   countSince(workspaceId: string, since: Date): Promise<number>;
   /**
+   * §9.13 — ends the runs whose machine stopped talking, and answers how many.
+   *
+   * Called before the ceiling is measured rather than on a timer, which is
+   * the whole reason it belongs here: a dead run holds a slot, and the moment
+   * that matters is the moment somebody asks whether there is room. A sweep
+   * that ran every ten minutes would leave a workspace stalled for ten
+   * minutes; this one has already run by the time the question is asked.
+   */
+  abandonSilent(workspaceId: string): Promise<number>;
+  /** §4.8 — how many times this task has already been run, whatever became of them. */
+  countForTask(taskId: string): Promise<number>;
+  /**
    * §4.8 — closes the attempt with what the worker reported, including the
    * provider session it left behind. Best-effort: an order that finished is
    * finished, and bookkeeping must not un-finish it.

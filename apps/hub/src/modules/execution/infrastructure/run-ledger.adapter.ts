@@ -13,6 +13,7 @@ import {
   RUN_LEDGER,
   RunLedger,
 } from "../../runtime/domain/ports/dispatch.port";
+import { AbandonSilentRunsUseCase } from "../application/abandon-silent-runs.use-case";
 import { StartRunUseCase } from "../application/run.use-cases";
 import { ExecutionModule } from "../execution.module";
 import { Inject } from "@nestjs/common";
@@ -29,6 +30,7 @@ import {
 export class RunLedgerAdapter implements RunLedger {
   constructor(
     private readonly startRun: StartRunUseCase,
+    private readonly abandon: AbandonSilentRunsUseCase,
     @Inject(RUN_REPOSITORY) private readonly runs: RunRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
@@ -147,12 +149,24 @@ export class RunLedgerAdapter implements RunLedger {
   async countSince(workspaceId: string, since: Date): Promise<number> {
     return this.runs.countSince(workspaceId, since);
   }
+
+  async countForTask(taskId: string): Promise<number> {
+    return this.runs.countForTask(taskId);
+  }
+
+  async abandonSilent(workspaceId: string): Promise<number> {
+    const abandoned = await this.abandon.execute({ workspaceId });
+    return abandoned.value.length;
+  }
 }
 
 @Global()
 @Module({
   imports: [ExecutionModule],
-  providers: [{ provide: RUN_LEDGER, useClass: RunLedgerAdapter }],
+  providers: [
+    AbandonSilentRunsUseCase,
+    { provide: RUN_LEDGER, useClass: RunLedgerAdapter },
+  ],
   exports: [RUN_LEDGER],
 })
 export class RunLedgerModule {}
