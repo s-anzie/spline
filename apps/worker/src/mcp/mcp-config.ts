@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 
 import { ToolSurface } from "../providers/provider-spec";
 import { allowedToolNames } from "./protocol-tools";
+import { workTools } from "./work-tools";
 
 /** The server's name, which becomes part of every tool name the agent sees. */
 export const SERVER_NAME = "spline";
@@ -73,6 +74,15 @@ export function writeMcpBridge(input: McpBridgeInput): ToolSurface {
     // The PATH, never the JSON: see above. `ToolSurface` has no field that
     // could carry the config inline, which is what makes this unforgettable.
     mcpConfigPath: path,
-    allowedTools: allowedToolNames(SERVER_NAME, input.grantScopes),
+    /**
+     * Both halves, and the second one is the one that was missing: how the
+     * agent SAYS what it is doing, and how it actually does it. See
+     * `work-tools.ts` for the run that proved a surface with only the first
+     * half is a surface that changes nothing.
+     */
+    allowedTools: [
+      ...allowedToolNames(SERVER_NAME, input.grantScopes),
+      ...workTools(input.grantScopes),
+    ],
   };
 }

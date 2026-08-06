@@ -394,15 +394,33 @@ main().catch((error: unknown) => {
  * Null when the order names no repository. Plenty of work touches no code.
  */
 function repositoryPathOf(command: ClaimedCommand, config: WorkerConfig): string | null {
-  const repository = command.payload.repository as { name?: string } | undefined;
-  const name = typeof repository?.name === "string" ? repository.name.trim() : "";
-  if (name === "") {
+  const repository = command.payload.repository as
+    | { name?: string; localPath?: string | null }
+    | undefined;
+  if (!repository) {
     return null;
   }
+
   /**
-   * The name, and only the name: a repository called `../../etc` would
-   * otherwise choose where this machine writes. `basename` is what makes the
-   * project root actually a root.
+   * The path an operator gave, when they gave one.
+   *
+   * This was missing and the whole feature was quietly wrong because of it:
+   * the hub carried `localPath` all the way here and this function ignored
+   * it, deriving a path from the NAME instead. An operator who pointed Spline
+   * at `/home/them/projects/app` got an empty directory created beside it, an
+   * agent that found nothing there, and a run that reported success having
+   * done nothing — the worst shape a failure can take. Found by running one.
    */
-  return resolve(config.projectRoot, basename(name));
+  const given = typeof repository.localPath === "string" ? repository.localPath.trim() : "";
+  if (given !== "") {
+    return given;
+  }
+
+  /**
+   * Otherwise a place of this machine's own, under its project root. The
+   * name, and only the name: a repository called `../../etc` would otherwise
+   * choose where this machine writes.
+   */
+  const name = typeof repository.name === "string" ? repository.name.trim() : "";
+  return name === "" ? null : resolve(config.projectRoot, basename(name));
 }

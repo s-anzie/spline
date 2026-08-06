@@ -6,7 +6,6 @@ import {
   Layers,
   SlidersHorizontal,
   Inbox as InboxIcon,
-  ListChecks,
   MessagesSquare,
   Play,
   Settings2,
@@ -35,6 +34,11 @@ export const routes = {
   signUp: "/sign-up",
 
   queue: "/queue",
+  /**
+   * Goals, tasks and runs in one reading. The three separate pages remain
+   * for the questions that genuinely need one of them alone.
+   */
+  work: "/work",
   goals: "/goals",
   goal: (goalId: string) => `/goals/${goalId}`,
   tasks: "/tasks",
@@ -131,8 +135,21 @@ export const NAV: { heading: string; items: NavItem[] }[] = [
   {
     heading: "The work",
     items: [
-      { href: routes.goals, label: "Goals", icon: Target, hint: "what this is all for" },
-      { href: routes.tasks, label: "Tasks", icon: ListChecks, hint: "the unit of work" },
+      /**
+       * One entry where there were three.
+       *
+       * Goals, Tasks and Runs are one thing at three depths — why, what, and
+       * the attempt — and splitting them across three pages made the ordinary
+       * question ("did anything happen after I asked?") a six-click join the
+       * reader had to perform in their head. `Work` answers it in one screen;
+       * the deeper pages are still reachable from every row that needs them.
+       */
+      {
+        href: routes.work,
+        label: "Work",
+        icon: Target,
+        hint: "goals, their tasks, and what is running",
+      },
       { href: routes.runs, label: "Runs", icon: Play, hint: "what executed, and what it cost" },
     ],
   },

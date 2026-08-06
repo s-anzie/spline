@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { isOrganizationLevel, routes } from "@/lib/routes";
@@ -28,7 +28,25 @@ import { WorkspacePicker } from "@/components/workspace-picker";
  * would strand a brand-new account on a picker with nothing to pick — unable
  * to reach the very screen that pairs its first machine.
  */
+/**
+ * The Suspense boundary is not decoration: `useSearchParams` reads something
+ * only a browser knows, and Next refuses to prerender a page that calls it
+ * without one. Without this the production build of the whole console failed
+ * — on whichever console page happened to be prerendered first, which made it
+ * look like a different bug every time.
+ *
+ * The fallback is deliberately empty: it stands in for the moment before the
+ * session is known, which is exactly what the gate below renders anyway.
+ */
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={null}>
+      <GatedConsole>{children}</GatedConsole>
+    </Suspense>
+  );
+}
+
+function GatedConsole({ children }: { children: React.ReactNode }) {
   const { email, workspaceId, restored, restore } = useSession();
   const pathname = usePathname();
   const search = useSearchParams();

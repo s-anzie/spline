@@ -89,7 +89,17 @@ export async function callHub(
 function shapeOf(tool: (typeof PROTOCOL_TOOLS)[number]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [name, spec] of Object.entries(tool.parameters)) {
-    const base = spec.type === "number" ? z.number() : z.string();
+    /**
+     * A declared type that fell through to `z.string()` would let a tool
+     * advertise a boolean and receive the word "true" — which is truthy for
+     * every string, including "false". Named rather than defaulted.
+     */
+    const base =
+      spec.type === "number"
+        ? z.number()
+        : spec.type === "boolean"
+          ? z.boolean()
+          : z.string();
     shape[name] = spec.required
       ? base.describe(spec.description)
       : base.optional().describe(spec.description);

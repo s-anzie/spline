@@ -149,7 +149,11 @@ describe("the protocol tools", () => {
       const given = tool("release_lock").request(context, { lockId: "lock-9" });
 
       expect(taken.body).toMatchObject({ resourceType: "TASK", reason: "editing" });
-      expect(given.path).toBe("/workspaces/w-1/locks/lock-9/release");
+      // The action is a body field; the hub serves one route for both
+      // renewing and releasing. This asserted a `/release` path that never
+      // existed — see "the paths the hub actually serves" below.
+      expect(given.path).toBe("/workspaces/w-1/locks/lock-9");
+      expect(given.body).toEqual({ action: "RELEASE" });
     });
 
     /** §10.9 — the agent submits; something else decides it passed. */
@@ -159,8 +163,10 @@ describe("the protocol tools", () => {
         summary: "tests pass",
       });
 
-      expect(call.path).toBe("/workspaces/w-1/validations");
-      expect(call.body).toMatchObject({ taskId: "t-1", validationType: "unit_test" });
+      expect(call.path).toBe("/workspaces/w-1/tasks/t-1/validations");
+      expect(call.body).toMatchObject({
+        validations: [{ type: "unit_test" }],
+      });
     });
 
     /**
@@ -342,5 +348,68 @@ describe("the protocol tools", () => {
     expect(names).toHaveLength(PROTOCOL_TOOLS.length);
     expect(names).toContain("mcp__spline__synchronize");
     expect(names.every((name) => name.startsWith("mcp__spline__"))).toBe(true);
+  });
+});
+
+/**
+ * §10.10, §10.9 — the two tools that called routes the hub does not serve.
+ *
+ * Both were wrong from the day they were written and nothing noticed, because
+ * a 404 comes back as an ordinary tool answer: the agent reads it, reasons
+ * politely about it ("the endpoint returned 404 — it may have already
+ * expired"), and carries on. The work looked done. The lock was never given
+ * back and the validation was never asked for.
+ *
+ * Found on the first real run, at the two last steps of the protocol — the
+ * ones that only matter after everything else went right, which is why no
+ * amount of unit testing the happy path was ever going to reach them.
+ *
+ * These assertions pin the SHAPE against the hub's controllers. They are
+ * deliberately literal: a path spelled out here disagrees loudly with a route
+ * that moves, which is the whole point.
+ */
+describe("the paths the hub actually serves", () => {
+  const context = { workspaceId: "w1", taskId: "t1", hubUrl: "http://hub" };
+  const find = (name: string) => {
+    const tool = PROTOCOL_TOOLS.find((candidate) => candidate.name === name);
+    if (!tool) throw new Error(`no tool named ${name}`);
+    return tool;
+  };
+
+  /** `POST /locks/:id`, with the action in the body — there is no `/release`. */
+  it("gives a lock back the way the lock controller takes it", () => {
+    const request = find("release_lock").request(context, { lockId: "l1" });
+
+    expect(request.method).toBe("POST");
+    expect(request.path).toBe("/workspaces/w1/locks/l1");
+    expect(request.body).toEqual({ action: "RELEASE" });
+  });
+
+  /**
+   * The task is in the PATH, validations arrive as a LIST, and the body
+   * carries nothing the controller does not declare. `forbidNonWhitelisted`
+   * is on, so a single extra field refuses the whole call — which is how a
+   * `summary` nobody asked for made every submission fail with
+   * "validations.0.property output should not exist".
+   */
+  it("asks for validation the way the validation controller takes it", () => {
+    const request = find("request_validation").request(context, {
+      type: "unit_test",
+    });
+
+    expect(request.method).toBe("POST");
+    expect(request.path).toBe("/workspaces/w1/tasks/t1/validations");
+    expect(request.body).toEqual({ validations: [{ type: "unit_test" }] });
+  });
+
+  it("carries mandatory only when it was actually asked for", () => {
+    const asked = find("request_validation").request(context, {
+      type: "human_review",
+      mandatory: true,
+    });
+
+    expect(asked.body).toEqual({
+      validations: [{ type: "human_review", mandatory: true }],
+    });
   });
 });

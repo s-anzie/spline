@@ -37,13 +37,23 @@ describe("writeMcpBridge", () => {
     expect(config.mcpServers[SERVER_NAME].args).toEqual(["dist/mcp/server.js"]);
   });
 
-  it("allows exactly the protocol's tools and nothing else", () => {
+  /**
+   * This assertion used to read "the protocol's tools and NOTHING else", and
+   * that word is what shipped an agent which could not write a file. Saying
+   * what a run needs is only half a run; being able to do it is the other.
+   * See `work-tools.ts` for the run that proved it.
+   */
+  it("allows the protocol's tools and the work's, and nothing beyond", () => {
     const surface = written();
 
-    expect(surface.allowedTools.length).toBeGreaterThan(0);
-    expect(surface.allowedTools.every((name) => name.startsWith("mcp__spline__"))).toBe(
-      true,
+    expect(surface.allowedTools).toEqual(
+      expect.arrayContaining(["mcp__spline__synchronize", "Write", "Bash", "Read"]),
     );
+    // Nothing arrives that neither half named.
+    const known = new Set(["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "Bash"]);
+    for (const name of surface.allowedTools) {
+      expect(name.startsWith("mcp__spline__") || known.has(name)).toBe(true);
+    }
   });
 
   /**

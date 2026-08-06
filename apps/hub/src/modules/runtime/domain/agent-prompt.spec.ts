@@ -327,3 +327,40 @@ describe("working in a shared project", () => {
     expect(prompt).not.toMatch(/other agents are in it/i);
   });
 });
+
+/**
+ * The briefing described the protocol and never mentioned the hands.
+ *
+ * An agent read a page about synchronizing, locking, publishing and releasing,
+ * concluded that the Spline verbs WERE its capabilities, and on the first
+ * transient tool error decided it had no permission to write at all:
+ *
+ *   "Both Write and Bash tools are denied. I cannot create the file."
+ *
+ * It then reported a blocker and stopped — correct behaviour for an agent
+ * that believed what it had been told. It could write the whole time. One
+ * sentence closes that, and it is worth more than any retry.
+ */
+describe("what the agent is told it can do", () => {
+  const inRepository = briefing({
+    repository: { name: "app", branch: "task/t-1" },
+  });
+
+  it("says outright that it can read, change and run things", () => {
+    const prompt = buildAgentPrompt(inRepository);
+
+    expect(prompt).toContain("Read");
+    expect(prompt).toContain("Write");
+    expect(prompt).toContain("Bash");
+  });
+
+  /**
+   * And what to do when a tool answers with an error, because concluding
+   * "denied, therefore blocked" was the expensive half of the mistake.
+   */
+  it("tells it a tool error is not a wall", () => {
+    const prompt = buildAgentPrompt(inRepository);
+
+    expect(prompt.toLowerCase()).toContain("try again");
+  });
+});

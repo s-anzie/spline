@@ -41,7 +41,7 @@ export interface ProtocolTool {
   /** Named arguments, with what each means. */
   parameters: Record<
     string,
-    { type: "string" | "number" | "list"; description: string; required?: boolean }
+    { type: "string" | "number" | "boolean" | "list"; description: string; required?: boolean }
   >;
   request(context: ToolContext, args: Record<string, unknown>): HubCall;
 }
@@ -200,9 +200,17 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
     parameters: {
       lockId: { type: "string", description: "The lock you were given.", required: true },
     },
+    /**
+     * The action goes in the BODY: the hub serves `POST /locks/:id` for both
+     * renewing and releasing. This said `/release` and 404'd on every run —
+     * silently, because a 404 reads as an ordinary answer and the agent
+     * concluded the lock "may have already expired" and moved on. Every lock
+     * taken was held until it timed out.
+     */
     request: (context, args) => ({
       method: "POST",
-      path: `/workspaces/${context.workspaceId}/locks/${text(args, "lockId")}/release`,
+      path: `/workspaces/${context.workspaceId}/locks/${text(args, "lockId")}`,
+      body: { action: "RELEASE" },
     }),
   },
   {
@@ -217,15 +225,39 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
         description: "The kind of proof (for example unit_test, human_review).",
         required: true,
       },
-      summary: { type: "string", description: "What you produced.", required: true },
+      /**
+       * There is no `summary` here, and that absence is deliberate.
+       *
+       * It used to be a required parameter sent as `output`, a field the
+       * controller does not accept — `forbidNonWhitelisted` refused every
+       * call, so no agent ever managed to submit its work. What an agent
+       * produced belongs in `publish_progress`, which exists for exactly
+       * that; a validation is a REQUEST FOR PROOF, and its shape is the kind
+       * of proof, nothing else.
+       */
+      mandatory: {
+        type: "boolean",
+        description: "Whether the work cannot be accepted without this proof.",
+        required: false,
+      },
     },
+    /**
+     * The task is in the PATH and validations arrive as a LIST — §11.2 lets a
+     * task carry several, and the controller takes them together. The old
+     * shape (a flat body on a route that does not exist) meant no agent has
+     * ever managed to submit its work: the last step of the protocol 404'd,
+     * and the run ended looking successful with nothing awaiting proof.
+     */
     request: (context, args) => ({
       method: "POST",
-      path: `/workspaces/${context.workspaceId}/validations`,
+      path: `/workspaces/${context.workspaceId}/tasks/${context.taskId}/validations`,
       body: {
-        taskId: context.taskId,
-        validationType: text(args, "type"),
-        output: { summary: text(args, "summary") },
+        validations: [
+          {
+            type: text(args, "type"),
+            ...(args.mandatory === undefined ? {} : { mandatory: args.mandatory === true }),
+          },
+        ],
       },
     }),
   },

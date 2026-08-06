@@ -131,6 +131,7 @@ export function buildAgentPrompt(briefing: AgentBriefing): string {
     "  - Release what you acquired, including on failure.",
     "",
     ...sharedProject(briefing),
+    ...hands(),
     "## Where to report",
     "",
     `  Hub:       ${briefing.hubUrl}`,
@@ -264,6 +265,41 @@ function organisingPrompt(briefing: AgentBriefing, criteria: string): string {
 }
 
 /**
+ * What the agent can actually do, said out loud.
+ *
+ * This section exists because of a run that went perfectly and produced
+ * nothing. The briefing described the protocol at length and never once
+ * mentioned that the agent could open a file. The agent drew the reasonable
+ * conclusion — that the Spline verbs were its whole capability surface — and
+ * when a tool call came back with an error it decided the answer was
+ * permission:
+ *
+ *   "Both Write and Bash tools are denied. I cannot create the file
+ *    hello.txt without permission to write files or run shell commands."
+ *
+ * It reported a blocker and stopped, which is exactly right for an agent that
+ * believes that. It had held Write, Edit and Bash the entire time. Naming
+ * them costs six lines and removes a whole class of run that ends in a
+ * courteous refusal to do the work.
+ */
+function hands(): string[] {
+  return [
+    "## What you work with",
+    "",
+    "  Beyond the Spline verbs above, you have your ordinary tools: Read,",
+    "  Glob and Grep to look, Write and Edit to change, Bash to run things —",
+    "  the tests, the build, git. The Spline verbs are how you COORDINATE",
+    "  with the others; these are how you do the work itself.",
+    "",
+    "  If one of them answers with an error, that is an error, not a refusal.",
+    "  Read it, fix what it names, and try again. Do not conclude you lack",
+    "  permission and stop — a task abandoned over a transient error is worse",
+    "  than one that failed loudly.",
+    "",
+  ];
+}
+
+/**
  * §5, §8.3, §11 — how to behave in a project other agents are also in.
  *
  * Printed only when there is a repository, and it is the part that decides
@@ -277,6 +313,7 @@ function organisingPrompt(briefing: AgentBriefing, criteria: string): string {
  * left to its own judgement will hold one for the length of its reasoning.
  */
 function sharedProject(briefing: AgentBriefing): string[] {
+
   if (!briefing.repository) {
     return [];
   }
