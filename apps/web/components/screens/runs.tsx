@@ -210,7 +210,19 @@ export function RunDetail({ runId }: { runId: string }) {
   const latest = view.attempts.at(-1);
 
   return (
-    <>
+    /**
+     * A frame the height of the console's content area, with only the story
+     * scrolling inside it. The page used to scroll as a whole, so reading
+     * what an agent did took the header, the numbers and the breadcrumb off
+     * the screen — and a run of thirty steps left nothing on screen saying
+     * which run it was.
+     *
+     * `min-h-0` on the scrolling child is what makes that true in a flex
+     * column: without it the child grows to fit its content and the page
+     * scrolls after all.
+     */
+    <div className="flex h-[calc(100vh-7rem)] flex-col">
+      <div className="shrink-0">
       <BackTo label="Runs" href={routes.runs} />
       <PageHeader
         title={`Run #${view.attemptNumber}`}
@@ -293,23 +305,26 @@ export function RunDetail({ runId }: { runId: string }) {
           hint="every attempt together"
         />
       </StatRow>
+      </div>
 
       {/**
-       * The story, full width, first.
+       * The story on the left, where it scrolls; what this run came from on
+       * the right, where it does not.
        *
-       * It used to live in an 18rem column beside a table of one row, and the
-       * grid it was in had three children in two columns — so the narrative
-       * got a fixed narrow strip it did not fit (timestamps overlapped the
-       * text), the table got a whole `1fr` for a single line, and the facts
-       * card landed in a second row leaving half the screen empty. What this
-       * page is ABOUT is what the agent did.
+       * The narrative used to sit in the 18rem column and the facts in the
+       * wide one — the wrong way round, and with a third child in a
+       * two-column grid the facts landed in a second row leaving half the
+       * screen empty. The tall thing takes the wide column; the short one
+       * takes the narrow, and stays put while the story moves.
        */}
-      <Trace attempts={view.attempts} />
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1fr_18rem]">
+        <div className="min-h-0 overflow-y-auto pr-1">
+          {view.attempts.length > 1 ? <Attempts attempts={view.attempts} /> : null}
+          <Trace attempts={view.attempts} />
+        </div>
 
-      {view.attempts.length > 1 ? <Attempts attempts={view.attempts} /> : null}
-
-      <Section title="Where this came from">
-        <Card className="gap-0 p-4 shadow-none">
+        <Card className="h-fit gap-0 p-4 shadow-none">
+          <p className="label mb-3">Where this came from</p>
           <Facts
             items={[
               ["run", <Id key="run" value={view.runId} />],
@@ -346,8 +361,8 @@ export function RunDetail({ runId }: { runId: string }) {
             ]}
           />
         </Card>
-      </Section>
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -423,9 +438,19 @@ function Trace({ attempts }: { attempts: RunView["attempts"] }) {
    * looking its own tools up should not spend three lines of its story
    * saying so. Falling back to the raw text let them straight back in.
    */
-  const trace = (latest?.trace ?? []).filter(
-    (entry) => entry.kind !== "used" || readable(entry.text) !== null,
-  );
+  const trace = (latest?.trace ?? [])
+    .filter((entry) => entry.kind !== "used" || readable(entry.text) !== null)
+    /**
+     * The closing envelope repeats the last thing said, word for word. Both
+     * printed meant every run ended by saying the same paragraph twice — the
+     * conversation drops it for the same reason, and a reader comparing the
+     * two accounts of one run should not find them disagreeing about how it
+     * ended.
+     */
+    .filter(
+      (entry, at, all) =>
+        entry.kind !== "result" || all[at - 1]?.text !== entry.text,
+    );
 
   if (trace.length === 0) {
     return (
