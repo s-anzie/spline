@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  ChevronDown,
   CornerDownLeft,
   Hand,
   MessagesSquare,
@@ -16,6 +17,7 @@ import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
+import { readable } from "@/lib/activity";
 import { useAction, useResource } from "@/lib/use-hub";
 import {
   Area,
@@ -316,29 +318,7 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
                 </div>
               </div>
             ) : (
-              /**
-               * What it was doing, in a quieter register than what it said.
-               * A tool call is not a turn: it is evidence that the silence is
-               * work rather than a hang.
-               */
-              <div key={entry.key} className="flex items-baseline gap-3 pl-5">
-                <span className="label text-muted-foreground/70 w-10 shrink-0">
-                  {entry.kind === "used" ? "tool" : entry.kind === "result" ? "end" : "…"}
-                </span>
-                <span
-                  className={
-                    entry.kind === "used"
-                      ? "measure text-muted-foreground min-w-0 flex-1 truncate text-xs"
-                      : "text-muted-foreground min-w-0 flex-1 text-xs leading-relaxed"
-                  }
-                  title={entry.text}
-                >
-                  {entry.text}
-                </span>
-                <span className="measure text-muted-foreground/50 shrink-0 text-[0.625rem]">
-                  {entry.at.slice(11, 19)}
-                </span>
-              </div>
+              <Work key={entry.key} entry={entry} />
             ),
           )}
 
@@ -406,12 +386,82 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
   );
 }
 
+/**
+ * A stretch of work between two things that were said.
+ *
+ * The version this replaces printed one full-width row per trace entry, in
+ * the same register as a turn. One ordinary run produced fourteen of them —
+ * `mcp__spline__release_lock`, `ToolSearch`, `Write —
+ * /tmp/claude-1000/-home-bradley-…/hello.txt` — and the two sentences anybody
+ * had actually said were lost among them. The conversation had become a log.
+ *
+ * A trace is evidence that the silence is work rather than a hang. That is a
+ * real need, and a quiet one: it earns one line, and the line only opens for
+ * somebody who asks. What the agent SAID stays in its own voice, indented
+ * with the work but at full size, because it is speech.
+ */
+function Work({ entry }: { entry: Entry }) {
+  const [open, setOpen] = useState(false);
+  const steps = entry.steps ?? [entry.text];
+
+  // Something it said out loud, not something it did.
+  if (!entry.quiet) {
+    return (
+      <div className="flex gap-3 pl-5">
+        <span className="bg-border mt-1 w-px shrink-0 self-stretch" />
+        <p className="text-muted-foreground min-w-0 flex-1 text-sm leading-relaxed">
+          {entry.text}
+        </p>
+      </div>
+    );
+  }
+
+  /**
+   * One step is a sentence; several are a summary with the rest behind a
+   * disclosure. The count is in the summary because "worked" without a size
+   * tells a reader nothing about whether to look.
+   */
+  return (
+    <div className="pl-5">
+      <button
+        type="button"
+        onClick={() => setOpen((was) => !was)}
+        className="text-muted-foreground/80 hover:text-foreground flex items-baseline gap-2 text-left text-xs transition-colors"
+      >
+        <span className="bg-muted-foreground/40 mt-1.5 size-1 shrink-0 rounded-full" />
+        <span>
+          {steps.length === 1
+            ? steps[0]
+            : `${steps[0]} and ${steps.length - 1} more ${steps.length === 2 ? "step" : "steps"}`}
+        </span>
+        {steps.length > 1 ? (
+          <ChevronDown
+            className={`size-3 shrink-0 self-center transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        ) : null}
+      </button>
+
+      {open && steps.length > 1 ? (
+        <ol className="text-muted-foreground/70 mt-1.5 space-y-1 pl-5 text-xs">
+          {steps.map((step, at) => (
+            <li key={`${entry.key}-${at}`}>{step}</li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 interface Entry {
   key: string;
-  kind: "turn" | "said" | "used" | "result";
+  kind: "turn" | "step";
   at: string;
   text: string;
   actor?: { type: string; id: string };
+  /** Every step in this stretch of work, oldest first. */
+  steps?: string[];
+  /** Machinery rather than speech: shown smaller, and foldable. */
+  quiet?: boolean;
 }
 
 /**
@@ -435,20 +485,77 @@ function timeline(
     actor: turn.actor,
   }));
 
-  const activity: Entry[] = runs.flatMap((run) =>
+  /**
+   * §17 — the steps, translated and stripped of the ones nobody needs.
+   *
+   * `readable` returns null for internal machinery, and a run that spent
+   * three calls looking its own tools up should not spend three lines of a
+   * conversation saying so.
+   */
+  const steps: Step[] = runs.flatMap((run) =>
     (run.attempts ?? []).flatMap((attempt) =>
-      (attempt.trace ?? []).map((entry, at) => ({
-        key: `${run.runId}-${attempt.number}-${at}`,
-        kind: entry.kind === "used" || entry.kind === "result" ? entry.kind : "said",
-        at: entry.at,
-        text: entry.text,
-      })),
+      (attempt.trace ?? []).flatMap((entry, at): Step[] => {
+        // `result` repeats the last thing said, word for word. Printing both
+        // made every run end by saying the same paragraph twice.
+        if (entry.kind === "result") return [];
+        if (entry.kind === "said") {
+          return [{ key: `${run.runId}-${attempt.number}-${at}`, at: entry.at, said: entry.text }];
+        }
+        const words = readable(entry.text);
+        return words
+          ? [{ key: `${run.runId}-${attempt.number}-${at}`, at: entry.at, did: words }]
+          : [];
+      }),
     ),
-  ) as Entry[];
+  );
 
-  return [...turns, ...activity].sort(
+  const activity: Entry[] = steps.map((step) => ({
+    key: step.key,
+    kind: "step",
+    at: step.at,
+    text: step.said ?? step.did ?? "",
+    ...(step.said ? {} : { quiet: true }),
+  }));
+
+  const ordered = [...turns, ...activity].sort(
     (left, right) => new Date(left.at).getTime() - new Date(right.at).getTime(),
   );
+
+  /**
+   * Consecutive steps become ONE entry.
+   *
+   * This is the whole point. Fourteen rows of machinery between two sentences
+   * is a log; one line saying "took a lock · wrote hello.txt · ran git
+   * commit · released the lock" is an account of what happened, and it sits
+   * inside the conversation instead of drowning it.
+   */
+  const merged: Entry[] = [];
+  for (const entry of ordered) {
+    const last = merged[merged.length - 1];
+    /**
+     * Only machinery merges. Speech never does: an agent saying "both Write
+     * and Bash are denied" is the most important line of its run, and the
+     * first version of this fold swallowed it into a step count — which
+     * traded fourteen rows of noise for the loss of the one sentence that
+     * explained everything.
+     */
+    if (entry.kind === "step" && entry.quiet && last?.kind === "step" && last.quiet) {
+      last.steps = [...(last.steps ?? [last.text]), entry.text];
+      last.at = entry.at;
+      continue;
+    }
+    merged.push({ ...entry, ...(entry.kind === "step" ? { steps: [entry.text] } : {}) });
+  }
+  return merged;
+}
+
+interface Step {
+  key: string;
+  at: string;
+  /** Something the agent said out loud, which stays in its own voice. */
+  said?: string;
+  /** Something it did, already in a person's words. */
+  did?: string;
 }
 
 /**
