@@ -558,6 +558,7 @@ function Automation({ workspaceId }: { workspaceId: string }) {
   const perDay = typeof current.runsPerDay === "number" ? current.runsPerDay : 20;
   const perAgent =
     typeof current.sessionsPerAgent === "number" ? current.sessionsPerAgent : 1;
+  const managerJudges = current.managerJudgesItsTeam === true;
 
   /**
    * The whole bag goes back, with only this key changed. A settings object is
@@ -646,6 +647,40 @@ function Automation({ workspaceId }: { workspaceId: string }) {
                 How many instances of the same agent may work at the same time.
                 Two of them in one project queue on each other&apos;s locks — they
                 spend more waiting than they gain by being two.
+              </p>
+            </div>
+
+            {/**
+             * §10.9, §18.3 — the one exception an owner can sign.
+             *
+             * The permission matrix says no agent role approves a validation,
+             * because an agent never decides its own work is complete. That
+             * rule is right, and applied to the whole role it also made every
+             * piece of proof a human errand — so nothing could finish
+             * overnight without waking somebody, which is the opposite of the
+             * point. What separates the two is the ACTOR: a manager judging a
+             * contributor is somebody else judging. So it is lent here,
+             * deliberately, and never reaches the manager's own tasks.
+             */}
+            <div className="sm:col-span-2">
+              <p className="label mb-1.5">Who says the work is good</p>
+              <Segmented
+                value={managerJudges ? "manager" : "you"}
+                onChange={(next: string) =>
+                  save({ managerJudgesItsTeam: next === "manager" })
+                }
+                options={[
+                  { value: "you", label: "You do" },
+                  { value: "manager", label: "The manager reviews its team" },
+                ]}
+              />
+              <p className="text-muted-foreground mt-2 max-w-prose text-xs leading-relaxed">
+                Every task waits for a verdict before it counts as done. While
+                that is yours, nothing finishes overnight without you. Handing
+                it to the manager lets the work close on its own — it reads
+                what its agents produced and sends back whatever misses the
+                criteria it wrote. It can never pronounce on a task assigned to
+                itself: the hub refuses that whatever this says.
               </p>
             </div>
           </div>

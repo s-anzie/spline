@@ -103,6 +103,23 @@ export class OrganisingActorAdapter implements OrganisingActor {
       workspaceId,
     );
   }
+
+  /**
+   * §10.9, §18.3 — the same question the bridge asks before serving the
+   * judging verbs, asked of the same authority.
+   *
+   * No agent role holds this in the matrix, so the answer is false unless a
+   * workspace's owner has lent it — and asking `can` rather than reading a
+   * setting is what makes the briefing and the tools agree by construction
+   * instead of by two people remembering.
+   */
+  async judges(actor: ActorRef, workspaceId: string): Promise<boolean> {
+    return this.permissions.can(
+      { actorType: actor.type, actorId: actor.actorId },
+      "approve_validation",
+      workspaceId,
+    );
+  }
 }
 
 /** Global, and importing IdentityModule: see the note in kernel/doc.md. */

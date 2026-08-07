@@ -46,6 +46,15 @@ export interface AgentBriefing {
    * "organise the work" spends its turn deciding which sentence is about it.
    */
   organising?: boolean;
+  /**
+   * §18.3 — whether this workspace has lent this manager the power to
+   * pronounce on its team's proof.
+   *
+   * Passed in rather than inferred from the role: the power is a workspace's
+   * deliberate exception, not something a role carries, and a briefing that
+   * guessed would eventually tell a manager to do something the hub refuses.
+   */
+  mayJudge?: boolean;
 }
 
 /**
@@ -226,6 +235,7 @@ function organisingPrompt(briefing: AgentBriefing, criteria: string): string {
     "  5. `hand_over` — later, if one of them is blocked and somebody else is",
     "     better placed.",
     "",
+    ...judging(briefing),
     "## What you do not do",
     "",
     "  - You do not do the work yourself. If you find yourself editing, ",
@@ -295,6 +305,46 @@ function hands(): string[] {
     "  Read it, fix what it names, and try again. Do not conclude you lack",
     "  permission and stop — a task abandoned over a transient error is worse",
     "  than one that failed loudly.",
+    "",
+  ];
+}
+
+/**
+ * §10.9, §18.3 — reviewing the team's work, when an owner has lent the power.
+ *
+ * Printed only when the tools are actually there. A briefing that told a
+ * manager to review work it cannot pronounce on would spend its run
+ * discovering a permission error, and one that stayed silent while it COULD
+ * review would leave every task waiting on a person all night — which is the
+ * exact opposite of what a manager is for.
+ *
+ * The last line is the one that matters. A reviewer who approves without
+ * reading is worse than no reviewer: it converts "waiting for a person" into
+ * "silently accepted", and nobody finds out until the work is used.
+ */
+function judging(briefing: AgentBriefing): string[] {
+  if (!briefing.mayJudge) {
+    return [];
+  }
+  return [
+    "## Reviewing what they did",
+    "",
+    "  This workspace has asked you to pronounce on your team's work rather",
+    "  than send every piece of it to a person.",
+    "",
+    "  - `list_validations` — what is waiting on a verdict, and which task",
+    "    each one is about.",
+    "  - Read the work before you judge it. Open what the task named, check",
+    "    it against the acceptance criteria you wrote, and only then decide.",
+    "  - `judge_work` — SUCCEEDED when it stands, FAILED with what is wrong",
+    "    when it does not. A refusal without a concrete reason leaves its",
+    "    agent exactly where it was.",
+    "  - You may never judge a task assigned to YOU. The hub refuses it, and",
+    "    it is right to: nobody proves their own work.",
+    "",
+    "  Approving without reading is worse than not reviewing at all. It turns",
+    "  \"waiting for a person\" into \"silently accepted\", and nobody finds out",
+    "  until somebody uses the work.",
     "",
   ];
 }

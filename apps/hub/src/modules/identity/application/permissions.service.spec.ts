@@ -23,8 +23,11 @@ async function makeService() {
     workspaceId: "w-1",
     role: "AGENT_CONTRIBUTOR",
   });
-  return new PermissionsService(memberships);
+  return new PermissionsService(memberships, nothingLent);
 }
+
+/** No workspace has lent anything: the ordinary case, and the matrix alone decides. */
+const nothingLent = { lentTo: async () => [] };
 
 describe("PermissionsService", () => {
   it("grants a permission the actor's role holds", async () => {

@@ -10,8 +10,12 @@ import {
   EventPublisher,
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
+import {
+  TASK_ASSIGNEE,
+  TaskAssignee,
+} from "../../task/domain/ports/task-assignee.port";
 import { ActorRef, ActorType } from "../../identity/domain/actor";
-import { ValidationNotFoundError } from "../domain/validation.errors";
+import { CannotJudgeOwnWorkError, ValidationNotFoundError } from "../domain/validation.errors";
 import {
   VALIDATION_REPOSITORY,
   ValidationRepository,
@@ -30,6 +34,7 @@ export interface SettleValidationInput {
 }
 
 export type SettleValidationError =
+  | CannotJudgeOwnWorkError
   | ValidationNotFoundError
   | GuardViolation
   | InvalidStateTransitionError;
@@ -48,6 +53,7 @@ export class SettleValidationUseCase
     private readonly validations: ValidationRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(TASK_ASSIGNEE) private readonly tasks: TaskAssignee,
   ) {}
 
   async execute(
@@ -60,6 +66,33 @@ export class SettleValidationUseCase
     const actor = ActorRef.create(input.actorType, input.actorId);
     if (actor.isFailure) {
       return Result.fail(actor.error);
+    }
+
+    /**
+     * §10.9, absolutely: an agent never pronounces on its own work.
+     *
+     * Checked here rather than in the permission matrix because it is not
+     * about a ROLE — a manager may judge its team's work once an owner lends
+     * it that power (§18.3), and the very next thing to make sure of is that
+     * the same power does not reach its own tasks. A rule about who you are
+     * cannot express a rule about whose work it is.
+     *
+     * Only agents. A person judging work assigned to them is an ordinary
+     * review, and forbidding it would stop an operator finishing their own
+     * task — which nothing in §10.9 is about.
+     */
+    if (actor.value.type === "AGENT") {
+      const assignee = await this.tasks.assigneeOf(
+        input.workspaceId,
+        validation.taskId,
+      );
+      if (
+        assignee &&
+        assignee.type === actor.value.type &&
+        assignee.actorId === actor.value.actorId
+      ) {
+        return Result.fail(new CannotJudgeOwnWorkError(validation.taskId));
+      }
     }
 
     const now = this.clock.now();

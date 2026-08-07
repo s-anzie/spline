@@ -4,6 +4,14 @@ import {
   AUTOMATION_POLICY,
   AutomationPolicy,
 } from "../../runtime/domain/ports/dispatch.port";
+import {
+  DELEGATED_POWERS,
+  DelegatedPowers,
+} from "../../identity/domain/ports/delegated-powers.port";
+import {
+  Permission,
+  WorkspaceRole,
+} from "../../identity/domain/permission-matrix";
 import { AutomationLimits, automationOf } from "../domain/automation";
 import {
   WORKSPACE_REPOSITORY,
@@ -32,6 +40,39 @@ export class AutomationPolicyAdapter implements AutomationPolicy {
   }
 }
 
+/**
+ * §18.3 — the exceptions this workspace's owner has signed.
+ *
+ * Identity declares the port and never learns to read a workspace's
+ * settings; this module holds them and answers. Today there is exactly one
+ * exception worth lending, and it is deliberately spelled out rather than
+ * driven by a table: a power that can be granted by writing its NAME into a
+ * settings bag is a power anybody with `manage_workspace` can grant
+ * themselves, whatever the matrix says.
+ */
+@Injectable()
+export class DelegatedPowersAdapter implements DelegatedPowers {
+  constructor(
+    @Inject(WORKSPACE_REPOSITORY) private readonly workspaces: WorkspaceRepository,
+  ) {}
+
+  async lentTo(
+    role: WorkspaceRole,
+    workspaceId: string,
+  ): Promise<readonly Permission[]> {
+    if (role !== "AGENT_MANAGER") {
+      return [];
+    }
+    const workspace = await this.workspaces.findById(workspaceId);
+    if (!workspace) {
+      return [];
+    }
+    return automationOf(workspace.settings).managerJudgesItsTeam
+      ? ["approve_validation"]
+      : [];
+  }
+}
+
 /** Global, and importing what it borrows: see the note in kernel/doc.md. */
 @Global()
 @Module({
@@ -39,7 +80,9 @@ export class AutomationPolicyAdapter implements AutomationPolicy {
   providers: [
     AutomationPolicyAdapter,
     { provide: AUTOMATION_POLICY, useExisting: AutomationPolicyAdapter },
+    DelegatedPowersAdapter,
+    { provide: DELEGATED_POWERS, useExisting: DelegatedPowersAdapter },
   ],
-  exports: [AUTOMATION_POLICY],
+  exports: [AUTOMATION_POLICY, DELEGATED_POWERS],
 })
 export class AutomationPolicyModule {}

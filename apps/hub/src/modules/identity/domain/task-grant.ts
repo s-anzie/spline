@@ -40,6 +40,20 @@ export const PROTOCOL_SCOPES: readonly Permission[] = [
   // assign them. A contributor is filtered out of both.
   "manage_goals",
   "manage_tasks",
+  /**
+   * §10.9, §18.3 — judging somebody ELSE's proof.
+   *
+   * Listed as reachable, granted to nobody by default: no agent role holds
+   * this in the matrix, so the intersection is empty unless a workspace's
+   * owner has deliberately lent it to the manager. Leaving it out of this
+   * list would mean the lending could never take effect at all — a switch
+   * with nothing behind it.
+   *
+   * What it can never reach, whatever is lent, is the holder's OWN tasks:
+   * that is enforced where the verdict is pronounced, because it is a rule
+   * about whose work it is rather than about who the actor is.
+   */
+  "approve_validation",
 ];
 
 export class TaskGrantIssued extends BaseDomainEvent {

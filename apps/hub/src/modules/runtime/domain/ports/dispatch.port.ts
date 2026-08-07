@@ -155,12 +155,12 @@ export const RUN_LEDGER = "runtime/RunLedger";
 /**
  * §18.10 — whose authority an order borrows. Read from the TASK, never named
  * by the machine: a worker that could choose would be able to borrow anyone's.
+ *
+ * Re-exported from the task module, where it now lives: a second consumer
+ * arrived (§10.9's rule that an agent never pronounces on its own work), and
+ * a contract two modules need does not belong inside one of them.
  */
-export interface TaskAssignee {
-  assigneeOf(workspaceId: string, taskId: string): Promise<ActorRef | null>;
-}
-
-export const TASK_ASSIGNEE = "runtime/TaskAssignee";
+export { TASK_ASSIGNEE, type TaskAssignee } from "../../../task/domain/ports/task-assignee.port";
 
 /**
  * §4.6 — whether the actor a task is assigned to organises work or does it.
@@ -174,6 +174,16 @@ export const TASK_ASSIGNEE = "runtime/TaskAssignee";
  */
 export interface OrganisingActor {
   organises(actor: ActorRef, workspaceId: string): Promise<boolean>;
+  /**
+   * §10.9, §18.3 — whether this actor may pronounce on somebody else's proof
+   * here.
+   *
+   * Asked of the same authority the bridge asks for its tools, so a briefing
+   * can never describe a verb the agent was not given. It is a workspace's
+   * deliberate exception rather than anything a role carries, which is why it
+   * is a question and not a lookup.
+   */
+  judges(actor: ActorRef, workspaceId: string): Promise<boolean>;
 }
 
 export const ORGANISING_ACTOR = "runtime/OrganisingActor";

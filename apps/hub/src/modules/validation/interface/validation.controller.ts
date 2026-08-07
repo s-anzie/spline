@@ -149,7 +149,9 @@ export class ValidationController {
       reportArtifactIds: dto.reportArtifactIds,
     });
     if (result.isFailure) {
-      throw toHttpException(result.error);
+      // §10.9 — refusing to judge your own work is about WHO you are relative
+      // to the task, which is a forbidding rather than a bad request.
+      throw toHttpException(result.error, { forbidden: ["CannotJudgeOwnWorkError"] });
     }
     return { ok: true };
   }

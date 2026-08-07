@@ -59,7 +59,7 @@ async function makeContext() {
     role: "OWNER",
   });
 
-  const permissions = new PermissionsService(memberships);
+  const permissions = new PermissionsService(memberships, nothingLent);
   // The formula lives in the goal module (§5.6); the task side only triggers.
   const goalSync = new GoalProgressSyncService(
     new RecomputeGoalProgressUseCase(
@@ -106,6 +106,9 @@ function baseInput(workspaceId: string, goalId: string) {
   };
 }
 
+/** No workspace has lent anything: the ordinary case, and the matrix alone decides. */
+const nothingLent = { lentTo: async () => [] };
+
 describe("task use-cases", () => {
   describe("CreateTaskUseCase", () => {
     it("creates a task already assigned (§4.6)", async () => {
@@ -151,7 +154,7 @@ describe("task use-cases", () => {
         ctx.tasks,
         ctx.goals,
         ctx.workspaces,
-        new PermissionsService(memberships),
+        new PermissionsService(memberships, nothingLent),
         new FakeClock(now),
         ctx.publisher,
       );

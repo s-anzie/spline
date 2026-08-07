@@ -399,6 +399,56 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
     }),
   },
   {
+    name: "judge_work",
+    scope: "approve_validation",
+    step: "Validate (§10.9, §11)",
+    description:
+      "Pronounce on a piece of proof somebody else's task is waiting on. Say it passes only when you have READ the work and it meets the acceptance criteria; send it back with what is wrong otherwise. You can never judge a task assigned to you — that is somebody else's job, always.",
+    parameters: {
+      validationId: {
+        type: "string",
+        description: "The proof, from the task you are reviewing.",
+        required: true,
+      },
+      verdict: {
+        type: "string",
+        description: "SUCCEEDED if the work stands, FAILED if it must go back.",
+        required: true,
+      },
+      reason: {
+        type: "string",
+        description: "What is wrong, when you send it back. Concrete enough to act on.",
+        required: false,
+      },
+    },
+    /**
+     * §11 — a validation has a life (PENDING → RUNNING → settled), and an
+     * agent should not have to know that to say yes. The hub takes the
+     * verdict; moving through RUNNING first is the caller's business, and the
+     * bridge does it in one call rather than teaching a model a state machine.
+     */
+    request: (context, args) => ({
+      method: "POST",
+      path: `/workspaces/${context.workspaceId}/validations/${text(args, "validationId")}/settle`,
+      body: {
+        action: text(args, "verdict") === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+        ...(text(args, "reason") ? { output: text(args, "reason") } : {}),
+      },
+    }),
+  },
+  {
+    name: "list_validations",
+    scope: "approve_validation",
+    step: "Validate (§10.9, §11)",
+    description:
+      "The proof this workspace is waiting on, with the task each one is about. Read it before judging anything — and remember you may not judge your own.",
+    parameters: {},
+    request: (context) => ({
+      method: "GET",
+      path: `/workspaces/${context.workspaceId}/validations`,
+    }),
+  },
+  {
     name: "list_team",
     step: "Organise (§4.6)",
     scope: "read_workspace_state",

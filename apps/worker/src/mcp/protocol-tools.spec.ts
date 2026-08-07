@@ -16,13 +16,21 @@ describe("the protocol tools", () => {
    * adding a line widens what every agent may do mid-task, and that should be
    * a decision somebody made rather than a diff nobody noticed.
    */
+  /**
+   * `judge_work` and `list_validations` spend `approve_validation`, which no
+   * agent role holds in the matrix — so they are served to nobody unless a
+   * workspace's owner has deliberately lent that power to its manager
+   * (§18.3). Listing them here does not grant them; the grant does.
+   */
   it("exposes exactly the verbs of the §10 cycle, plus the organising ones", () => {
     expect(PROTOCOL_TOOLS.map((entry) => entry.name).sort()).toEqual([
       "acquire_lock",
       "cut_task",
       "hand_over",
+      "judge_work",
       "list_goals",
       "list_team",
+      "list_validations",
       "publish_progress",
       "read_workspace",
       "record_decision",

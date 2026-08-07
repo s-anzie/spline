@@ -50,6 +50,25 @@ export interface AutomationLimits {
    * recorded that an agent HAD an instance.
    */
   sessionsPerAgent: number;
+  /**
+   * §10.9, §18.3 — whether the manager may pronounce on its TEAM's proof.
+   *
+   * Off by default, and the default is the rule rather than caution: the
+   * permission matrix carries a structural invariant that no agent role holds
+   * `approve_validation`, because an agent never decides its own work is
+   * complete.
+   *
+   * What that invariant also did, unintentionally, was make every piece of
+   * proof a human errand — so a team could not finish anything overnight
+   * without waking somebody, which is the opposite of the point. The two are
+   * separable and what separates them is the ACTOR: a manager judging a
+   * contributor's work is somebody else judging.
+   *
+   * So an owner may lend the power, per workspace, deliberately. What no
+   * switch reaches is judging your OWN work: that is §10.9 itself, enforced
+   * wherever a verdict is pronounced, whatever this says.
+   */
+  managerJudgesItsTeam: boolean;
 }
 
 export const AUTOMATION_DEFAULTS = {
@@ -99,6 +118,10 @@ export function automationOf(settings: WorkspaceSettings): AutomationLimits {
       AUTOMATION_DEFAULTS.sessionsPerAgent,
       AUTOMATION_DEFAULTS.maxSessionsPerAgent,
     ),
+    // Strictly `true`, like `automatic` and for the same reason: what this
+    // opens is an exception to a structural invariant, and a typo must not be
+    // what opens it.
+    managerJudgesItsTeam: entry.managerJudgesItsTeam === true,
   };
 }
 
@@ -107,6 +130,7 @@ function defaults(): Omit<AutomationLimits, "automatic"> {
     concurrentRuns: AUTOMATION_DEFAULTS.concurrentRuns,
     runsPerDay: AUTOMATION_DEFAULTS.runsPerDay,
     sessionsPerAgent: AUTOMATION_DEFAULTS.sessionsPerAgent,
+    managerJudgesItsTeam: false,
   };
 }
 

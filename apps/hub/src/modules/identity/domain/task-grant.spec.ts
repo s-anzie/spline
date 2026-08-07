@@ -105,6 +105,13 @@ describe("TaskGrant", () => {
     expect([...PROTOCOL_SCOPES].sort()).toEqual(
       [
         "acquire_locks",
+        /**
+         * Reachable, granted to nobody by default: no agent role holds this
+         * in the matrix, so the intersection is empty unless a workspace's
+         * owner has deliberately lent it to the manager (§18.3). Leaving it
+         * out would make that lending a switch with nothing behind it.
+         */
+        "approve_validation",
         "contribute_knowledge",
         "execute_tasks",
         "manage_goals",

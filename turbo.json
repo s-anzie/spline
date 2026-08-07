@@ -57,7 +57,12 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "^db:generate"],
+      // check-types before build, in the same package: `next typegen` writes
+      // .next/types and `next build` wipes it, so running both at once made
+      // check-types fail on a file the build had just deleted — a race that
+      // looked like a different error every time. Type-checking first is also
+      // the order that makes sense: nothing broken should reach a build.
+      "dependsOn": ["^build", "^db:generate", "check-types"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**"]
     },

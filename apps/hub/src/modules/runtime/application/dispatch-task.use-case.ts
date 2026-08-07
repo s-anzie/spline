@@ -168,6 +168,9 @@ export class DispatchTaskUseCase
     const organising = assignee
       ? await this.organisingActor.organises(assignee, input.workspaceId)
       : false;
+    const mayJudge = assignee
+      ? await this.organisingActor.judges(assignee, input.workspaceId)
+      : false;
 
     const run = await this.runs.openRun(input.workspaceId, input.taskId);
 
@@ -269,6 +272,7 @@ export class DispatchTaskUseCase
           // of the same permission the bridge uses to choose its tools, so
           // the prompt cannot name a tool the agent was never given.
           organising,
+          mayJudge,
         }),
         /**
          * §8.3 — where the work happens, when it happens in code.
