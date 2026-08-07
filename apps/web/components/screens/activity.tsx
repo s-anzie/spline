@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
 import { routes } from "@/lib/routes";
+import { said } from "@/lib/said";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useResource } from "@/lib/use-hub";
@@ -105,7 +106,16 @@ export function Activity() {
               <Stripe tone={toneOf(event.severity)} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2.5">
-                  <span className="measure shrink-0 text-sm font-medium">{event.type}</span>
+                  {/**
+                   * Said, not spelled. `runtime.command_enqueued` is an
+                   * address in this codebase; "an order was queued" is what
+                   * happened. The raw name stays reachable on hover, because
+                   * somebody investigating does want it — but it is not what
+                   * the row should read as.
+                   */}
+                  <span className="shrink-0 text-sm font-medium" title={event.type}>
+                    {said(event.type)}
+                  </span>
                   <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
                     {event.actor
                       ? `${event.actor.type.toLowerCase()} ${event.actor.id.slice(0, 8)} → `
@@ -115,16 +125,13 @@ export function Activity() {
                   </span>
                   <span
                     className="measure text-muted-foreground shrink-0 text-xs"
-                    title={stamp(event.createdAt)}
+                    title={`${stamp(event.createdAt)} · hub sequence ${event.sequence}`}
                   >
                     {since(event.createdAt)}
                   </span>
-                  <span
-                    className="measure text-muted-foreground/60 w-12 shrink-0 text-right text-[0.625rem]"
-                    title="hub sequence — a total order, no ties"
-                  >
-                    {event.sequence}
-                  </span>
+                  {/* The sequence is for an investigation, not for a glance:
+                      kept on the row's tooltip rather than in a column that
+                      every reader has to skip past. */}
                 </div>
 
                 {/* Targets that have a screen of their own are reachable from
@@ -143,7 +150,16 @@ export function Activity() {
                   </Link>
                 ) : null}
 
-                <Payload value={event.payload} />
+                {/**
+                 * Only when there is something in it.
+                 *
+                 * Every row carried a "PAYLOAD ›" disclosure, including the
+                 * many whose payload holds nothing but nulls — one wasted
+                 * line per row, which on a journal is half the screen spent
+                 * on nothing. Emptiness is judged on the VALUES: `{}` and
+                 * `{ parentGoalId: null }` are the same amount of news.
+                 */}
+                {worthOpening(event.payload) ? <Payload value={event.payload} /> : null}
               </div>
             </div>
           ))}
@@ -152,5 +168,26 @@ export function Activity() {
         </>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Whether a payload has anything in it worth a disclosure.
+ *
+ * Judged on the values rather than the keys, because `{}` and
+ * `{ parentGoalId: null }` carry exactly the same amount of news — and the
+ * second shape is the common one, which is why checking for an empty object
+ * left the "PAYLOAD ›" line on nearly every row it was meant to remove.
+ */
+function worthOpening(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) {
+    return false;
+  }
+  return Object.values(payload as Record<string, unknown>).some(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      !(Array.isArray(value) && value.length === 0),
   );
 }

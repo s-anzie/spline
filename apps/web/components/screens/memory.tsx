@@ -79,29 +79,39 @@ export function Memory() {
         actions={<Remember onDone={entries.reload} />}
       />
 
-      <StatRow>
-        <Stat label="Notes" value={all.length} icon={BookMarked} />
-        <Stat
-          label="Still current"
-          value={current}
-          icon={BookMarked}
-          tone="settled"
-          hint="superseded ones are kept, not deleted"
-        />
-        <Stat
-          label="Reaches agents"
-          value={carried}
-          icon={Bot}
-          tone={carried ? "live" : "quiet"}
-          hint="workspace and goal notes travel with a task"
-        />
-        <Stat
-          label="Written by agents"
-          value={all.filter((entry) => entry.author.type !== "HUMAN").length}
-          icon={Bot}
-          hint="so they travel as data, never as orders"
-        />
-      </StatRow>
+      {/**
+       * Counted only once there is something to count.
+       *
+       * Four cards reading 0, 0, 0, 0 above an empty state is the console
+       * telling somebody four times that nothing is there — and it was the
+       * first thing anybody saw on this screen. A statistic about an empty
+       * set is not information, it is a template.
+       */}
+      {all.length > 0 ? (
+        <StatRow>
+          <Stat label="Notes" value={all.length} icon={BookMarked} />
+          <Stat
+            label="Still current"
+            value={current}
+            icon={BookMarked}
+            tone="settled"
+            hint="superseded ones are kept, not deleted"
+          />
+          <Stat
+            label="Reaches agents"
+            value={carried}
+            icon={Bot}
+            tone={carried ? "live" : "quiet"}
+            hint="travels with a task"
+          />
+          <Stat
+            label="Written by agents"
+            value={all.filter((entry) => entry.author.type !== "HUMAN").length}
+            icon={Bot}
+            hint="carried as data, never as orders"
+          />
+        </StatRow>
+      ) : null}
 
       {error ? (
         <div className="mb-4">

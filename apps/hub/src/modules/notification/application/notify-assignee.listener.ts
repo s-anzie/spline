@@ -47,8 +47,14 @@ export class NotifyAssigneeOnTaskAssignedListener {
       workspaceId: event.workspaceId,
       kind: "SYSTEM_ALERT",
       scope: "DIRECT",
-      title: "A task was assigned to you",
-      body: `Task ${event.aggregateId} is now yours.`,
+      /**
+       * The task's own name, because six rows of "A task was assigned to
+       * you" over a uuid is a list nobody can read. The generic sentence
+       * moves to the body, where it is the explanation rather than the
+       * heading.
+       */
+      title: event.title,
+      body: "This is now yours to work on.",
       taskId: event.aggregateId,
       createdByType: "SERVICE",
       createdById: "spline",

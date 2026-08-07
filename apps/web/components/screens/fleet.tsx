@@ -93,7 +93,17 @@ export function Fleet() {
 
   const all = workers.data ?? [];
   const reporting = all.filter((worker) => !worker.stale).length;
-  const live = (sessions.data ?? []).filter((session) => session.status === "RUNNING").length;
+  /**
+   * §4.12 — every session that has not ended, not only the ones mid-step.
+   *
+   * Counting `RUNNING` alone made this card say "0 — nothing running" with a
+   * STARTING session listed three inches below it. A session that exists and
+   * has not ended is an agent that is working; STARTING is the first second
+   * of that, not a different thing.
+   */
+  const live = (sessions.data ?? []).filter(
+    (session) => session.status !== "STOPPED" && session.status !== "CRASHED",
+  ).length;
   const queued = (commands.data ?? []).filter(
     (command) => command.status === "PENDING" || command.status === "CLAIMED",
   ).length;

@@ -62,6 +62,15 @@ export function RunList() {
 
   const all = runs.data ?? [];
   const paged = usePaged(all);
+  /**
+   * The titles, fetched alongside. A run knows only its task's id, and an id
+   * is not what anybody is looking for.
+   */
+  const tasks = useResource(() => api.tasks.list(workspaceId), [workspaceId], {
+    pollMs: 30_000,
+  });
+  const titleOf = (taskId: string) =>
+    (tasks.data ?? []).find((task) => task.id === taskId)?.title;
   const running = all.filter((run) => run.status === "RUNNING").length;
   const failed = all.filter((run) => run.status === "FAILED").length;
   const total = all.reduce((sum, run) => sum + spent(run), 0);
@@ -119,21 +128,34 @@ export function RunList() {
             <Row key={run.runId} href={routes.run(run.runId)} className="py-3">
               <Stripe tone={toneOf(run.status)} live={run.status === "RUNNING"} />
               <div className="min-w-0 flex-1">
+                {/**
+                 * The TASK, not the provider.
+                 *
+                 * Every row here used to be titled "claude", because that is
+                 * what the attempt records — so a screen of seven runs was a
+                 * column of the same word seven times, and the only thing
+                 * distinguishing them was eight characters of task id in the
+                 * line below. What somebody scanning this wants is which
+                 * piece of work it was.
+                 */}
                 <p className="truncate text-sm font-medium">
-                  {run.attempts.at(-1)?.provider ?? "not started"}
-                  {run.attempts.at(-1)?.model ? (
-                    <span className="measure text-muted-foreground ml-2 text-xs font-normal">
-                      {run.attempts.at(-1)?.model}
-                    </span>
-                  ) : null}
+                  {titleOf(run.taskId) ?? `task ${run.taskId.slice(0, 8)}`}
                 </p>
                 <p className="text-muted-foreground mt-0.5 text-xs">
-                  task <span className="measure">{run.taskId.slice(0, 8)}</span> ·{" "}
+                  {run.attempts.at(-1)?.provider ?? "not started yet"}
+                  {run.attempts.at(-1)?.model ? ` · ${run.attempts.at(-1)?.model}` : ""} ·{" "}
                   {run.attempts.length} attempt{run.attempts.length === 1 ? "" : "s"}
-                  {run.failureReason ? (
-                    <span className="text-signal"> · {run.failureReason}</span>
-                  ) : null}
                 </p>
+                {/**
+                 * On its own line and clamped. Three of these paragraphs in a
+                 * list turned the screen into a wall of the same red sentence
+                 * repeated; the whole of it is one click away on the run.
+                 */}
+                {run.failureReason ? (
+                  <p className="text-signal mt-0.5 truncate text-xs" title={run.failureReason}>
+                    {run.failureReason}
+                  </p>
+                ) : null}
               </div>
               <span className="measure w-20 shrink-0 text-right text-sm">
                 {money(spent(run))}

@@ -195,6 +195,7 @@ export class Task extends AggregateRoot<TaskProps> {
         workspaceId.value,
         goalId.value,
         input.assignee,
+        title.value,
       ),
     );
     return Result.ok(task);
@@ -296,7 +297,9 @@ export class Task extends AggregateRoot<TaskProps> {
 
     this.props.assignee = assignee;
     this.props.updatedAt = now;
-    this.addDomainEvent(new TaskAssigned(this.id.value, now, this.props.workspaceId, assignee));
+    this.addDomainEvent(
+      new TaskAssigned(this.id.value, now, this.props.workspaceId, assignee, this.props.title),
+    );
     return Result.ok(undefined);
   }
 

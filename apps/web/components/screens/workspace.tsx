@@ -161,9 +161,27 @@ function Health({ workspaceId }: { workspaceId: string }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2.5">
                   <span className="text-sm font-medium">{humanise(signal.probe)}</span>
-                  <span className="text-muted-foreground flex-1 text-sm">
-                    {signal.reason || "nothing to report"}
-                  </span>
+                  {/**
+                   * The reason, and NOTHING when there is none.
+                   *
+                   * This said "nothing to report" whenever the reason was
+                   * empty — including on rows that were reporting a warning
+                   * with a degraded resource named underneath. Every warning
+                   * on this screen contradicted itself in the same line, and
+                   * the placeholder was doing it: a probe's `reason` is often
+                   * empty while its `resources` carry the finding.
+                   */}
+                  {signal.reason ? (
+                    <span className="text-muted-foreground flex-1 text-sm">
+                      {signal.reason}
+                    </span>
+                  ) : signal.resources.length === 0 ? (
+                    <span className="text-muted-foreground flex-1 text-sm">
+                      nothing to report
+                    </span>
+                  ) : (
+                    <span className="flex-1" />
+                  )}
                   <Status value={signal.level} />
                 </div>
                 {signal.resources.length > 0 ? (

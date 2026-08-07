@@ -67,8 +67,25 @@ export function shortId(id: string | null | undefined): string {
   return id ? id.slice(0, 8) : "—";
 }
 
-/** SCREAMING_SNAKE from the domain, read by a human. */
+/** A name the domain uses — `SCREAMING_SNAKE` or `PascalCase` — read by a person. */
 export function humanise(word: string | null | undefined): string {
   if (!word) return "—";
-  return word.toLowerCase().replace(/_/g, " ");
+  return (
+    word
+      /**
+       * Two shapes arrive here and only one used to be handled.
+       *
+       * `SCREAMING_SNAKE` (a status) split on its underscores; `PascalCase`
+       * (a command type) did not, so `ExecuteTask` reached the screen as
+       * "executetask" — one mashed word in the middle of a queue somebody
+       * reads to know what their machines are doing.
+       *
+       * The lookahead keeps runs of capitals together, so `HTTPRequest`
+       * becomes "http request" rather than "h t t p request".
+       */
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .toLowerCase()
+      .replace(/_/g, " ")
+  );
 }
