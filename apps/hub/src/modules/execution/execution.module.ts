@@ -10,6 +10,7 @@ import {
   StartRunUseCase,
   SweepOverrunRunsUseCase,
 } from "./application/run.use-cases";
+import { SettleRunWithProofListener } from "./application/settle-run-with-proof.listener";
 import { RUN_REPOSITORY } from "./domain/ports/run.repository.port";
 import { PrismaRunRepository } from "./infrastructure/prisma-run.repository";
 import { ExecutionController } from "./interface/execution.controller";
@@ -32,6 +33,7 @@ import { ExecutionController } from "./interface/execution.controller";
     FinishAttemptUseCase,
     CheckResumableUseCase,
     SweepOverrunRunsUseCase,
+    SettleRunWithProofListener,
   ],
   exports: [RUN_REPOSITORY, StartRunUseCase],
 })

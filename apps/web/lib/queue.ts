@@ -40,7 +40,9 @@ export interface Intervention {
    */
   actionable: boolean;
   /** Set on entries whose whole resolution fits on this screen. */
-  inline?: "approve-machine";
+  inline?: "approve-machine" | "settle-validation";
+  /** §11 — which piece of proof the verdict is about. */
+  validationId?: string;
 }
 
 /**
@@ -52,14 +54,17 @@ export async function loadQueue(
   organizationId: string | null,
   workspaceId: string,
 ): Promise<Intervention[]> {
-  const [enrolments, runs, tasks, checkIns, commands] = await Promise.all([
+  const [enrolments, tasks, checkIns, commands, proof] = await Promise.all([
     organizationId
       ? api.enrolments.pending(organizationId)
       : Promise.resolve({ ok: false as const, error: { status: 0, message: "" } }),
-    api.runs.list(workspaceId, { limit: 50 }),
+    // Runs are no longer read here: the queue asks about PROOF, which is the
+    // thing a person can actually pronounce on. A run at VALIDATING is the
+    // consequence of proof outstanding, not a separate thing to act on.
     api.tasks.list(workspaceId),
     api.schedule.checkIns(workspaceId),
     api.runtime.commands(workspaceId),
+    api.validations.list(workspaceId),
   ]);
 
   const queue: Intervention[] = [];
@@ -90,18 +95,34 @@ export async function loadQueue(
     }
   }
 
-  /** §11 — a run that finished and is waiting for somebody to judge it. */
-  if (runs.ok) {
-    for (const run of runs.value.filter((entry) => entry.status === "VALIDATING")) {
-      const cost = run.attempts.reduce((total, a) => total + (a.cost ?? 0), 0);
+  /**
+   * §11 — proof somebody asked for, and only somebody else can give.
+   *
+   * The PROOF, not the run. This listed runs sitting at VALIDATING and sent
+   * the reader to the run screen, where there was nothing to press: an agent
+   * asking for validation — exactly what §10.9 requires of it — produced a
+   * line telling you to act and no way anywhere to act. The verdict is a
+   * decision about a validation, so that is what the queue offers, and it
+   * offers it here rather than three screens away.
+   */
+  if (proof.ok) {
+    const titleOf = (taskId: string) =>
+      tasks.ok
+        ? tasks.value.find((task) => task.id === taskId)?.title
+        : undefined;
+    for (const validation of proof.value.filter(
+      (entry) => entry.status === "PENDING" || entry.status === "RUNNING",
+    )) {
       queue.push({
-        key: `run:${run.runId}`,
+        key: `validation:${validation.id}`,
         kind: "validation",
-        title: "A run is waiting to be validated",
-        detail: `task ${run.taskId.slice(0, 8)} · ${run.attempts[0]?.provider ?? "?"} · $${cost.toFixed(4)} over ${run.attempts.length} attempt${run.attempts.length === 1 ? "" : "s"}`,
-        href: routes.run(run.runId),
-        since: run.startedAt,
+        title: titleOf(validation.taskId) ?? `task ${validation.taskId.slice(0, 8)}`,
+        detail: `waiting on ${humanKind(validation.type)}${validation.mandatory ? "" : " (optional)"} — asked for by ${validation.requestedBy.type.toLowerCase()} ${validation.requestedBy.id.slice(0, 8)}`,
+        href: routes.task(validation.taskId),
+        since: validation.createdAt,
         actionable: true,
+        inline: "settle-validation",
+        validationId: validation.id,
       });
     }
   }
@@ -170,4 +191,9 @@ export async function loadQueue(
 
 function name(actor: Actor): string {
   return `${actor.type.toLowerCase()} ${actor.id.slice(0, 8)}`;
+}
+
+/** `unit_test` is how the domain writes it; "a unit test" is how it reads. */
+function humanKind(type: string): string {
+  return type.replace(/_/g, " ");
 }

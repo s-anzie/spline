@@ -424,6 +424,22 @@ export interface RepositoryView {
   createdAt: string;
 }
 
+/** §11 — one piece of proof a task is waiting on, or has. */
+export interface ValidationView extends Affordable {
+  id: string;
+  workspaceId: string;
+  taskId: string;
+  type: string;
+  status: string;
+  mandatory: boolean;
+  requestedBy: Actor;
+  executedBy: Actor | null;
+  output: string | null;
+  satisfied: boolean;
+  createdAt: string;
+  settledAt: string | null;
+}
+
 export interface WorkspaceDetail {
   id: string;
   name: string;
@@ -458,6 +474,29 @@ export const api = {
       hub.post<{ organizationId: string; slug: string }>("/organizations", { name }),
     rename: (organizationId: string, name: string) =>
       hub.patch(`/organizations/${organizationId}`, { name }),
+  },
+
+  /**
+   * §11 — pronouncing on proof.
+   *
+   * The routes existed on the hub from the start and nothing in the console
+   * ever called them, so an agent asking for validation — exactly what §10.9
+   * requires of it — produced a queue entry telling somebody to act and no
+   * way anywhere to act. Tasks waited for a verdict that had no button.
+   */
+  validations: {
+    list: (workspace: string, filters: { taskId?: string; status?: string } = {}) =>
+      hub.get<ValidationView[]>(`/workspaces/${workspace}/validations${q(filters)}`),
+    settle: (
+      workspace: string,
+      validationId: string,
+      action: "START" | "SUCCEEDED" | "FAILED" | "SKIPPED" | "CANCELLED",
+      output?: string,
+    ) =>
+      hub.post(`/workspaces/${workspace}/validations/${validationId}/settle`, {
+        action,
+        ...(output ? { output } : {}),
+      }),
   },
 
   workspaces: {
