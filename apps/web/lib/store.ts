@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { useEffect } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -22,6 +24,15 @@ export interface Workspace {
   id: string;
   name: string;
   status: string;
+  /**
+   * §4.1 — which organization this belongs to.
+   *
+   * Carried so the console can show one organization's workspaces rather than
+   * every workspace this account can reach. The hub has always answered with
+   * it; nothing read it while the console assumed a person owned exactly one
+   * organization.
+   */
+  organizationId: string;
 }
 
 interface SessionState {
@@ -33,6 +44,15 @@ interface SessionState {
   workspaces: Workspace[];
   /** The workspace every screen is scoped to. §4.2 makes this mandatory. */
   workspaceId: string | null;
+  /**
+   * §4.1 — the organization the console is acting inside.
+   *
+   * Every screen used to read `organizations[0]`, which was true for as long
+   * as there was no way to make a second one. Now that founding one is a
+   * route, an organization nobody could switch to would be an organization
+   * nobody could use.
+   */
+  organizationId: string | null;
   loading: boolean;
   error: string | null;
   /**
@@ -48,6 +68,7 @@ interface SessionState {
   logOut(): Promise<void>;
   restore(): Promise<void>;
   chooseWorkspace(workspaceId: string | null): void;
+  chooseOrganization(organizationId: string): void;
   refreshWorkspaces(): Promise<void>;
 }
 
@@ -66,6 +87,7 @@ export const useSession = create<SessionState>((set, get) => ({
   organizations: [],
   workspaces: [],
   workspaceId: null,
+  organizationId: null,
   loading: false,
   error: null,
   restored: false,
@@ -148,6 +170,20 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ loading: false, restored: true });
   },
 
+  /**
+   * Switching organization drops the workspace with it: a workspace of the
+   * other organization is not reachable from here, and keeping it selected
+   * would put every screen in the cross-workspace read §4.2 forbids.
+   */
+  chooseOrganization(organizationId) {
+    const first = get().workspaces.find(
+      (workspace) => workspace.organizationId === organizationId,
+    );
+    set({ organizationId, workspaceId: first?.id ?? null });
+    usePreferences.getState().rememberOrganization(organizationId);
+    usePreferences.getState().rememberWorkspace(first?.id ?? null);
+  },
+
   chooseWorkspace(workspaceId) {
     // The caller sends the browser back to the queue afterwards: a run id from
     // the previous workspace resolves to nothing here, and asking for it is
@@ -161,14 +197,32 @@ export const useSession = create<SessionState>((set, get) => ({
       hub.get<Organization[]>("/organizations"),
       hub.get<Workspace[]>("/workspaces"),
     ]);
+    const owned = organizations.ok ? organizations.value : [];
+    const all = workspaces.ok ? workspaces.value : [];
+    // Chosen for them when there is only one: a console that made an operator
+    // pick from a list of one is a console that wastes a click every time.
+    const organizationId =
+      chooseFrom(owned, get().organizationId, usePreferences.getState().lastOrganizationId) ??
+      /**
+       * Unlike a workspace, an organization is never left unchosen. §4.2 makes
+       * picking a workspace a deliberate act because its screens are scoped to
+       * it; an organization with none chosen would simply render nothing —
+       * including the machines screen, which is where somebody goes to pair
+       * the first machine.
+       */
+      owned[0]?.id ??
+      null;
+    // Only this organization's workspaces are selectable — the others exist,
+    // but not from where the reader is standing.
+    const here = organizationId
+      ? all.filter((workspace) => workspace.organizationId === organizationId)
+      : all;
     set({
-      organizations: organizations.ok ? organizations.value : [],
-      workspaces: workspaces.ok ? workspaces.value : [],
-      // Chosen for them when there is only one: a console that made an
-      // operator pick from a list of one is a console that wastes a click
-      // every time.
+      organizations: owned,
+      workspaces: all,
+      organizationId,
       workspaceId: chooseFrom(
-        workspaces.ok ? workspaces.value : [],
+        here,
         get().workspaceId,
         usePreferences.getState().lastWorkspaceId,
       ),
@@ -201,6 +255,8 @@ interface PreferenceState {
    */
   lastWorkspaceId: string | null;
   rememberWorkspace(workspaceId: string | null): void;
+  lastOrganizationId: string | null;
+  rememberOrganization(organizationId: string | null): void;
 }
 
 /**
@@ -226,6 +282,8 @@ export const usePreferences = create<PreferenceState>()(
       setOrganizationInRail: (organizationInRail) => set({ organizationInRail }),
       lastWorkspaceId: null,
       rememberWorkspace: (lastWorkspaceId) => set({ lastWorkspaceId }),
+      lastOrganizationId: null,
+      rememberOrganization: (lastOrganizationId) => set({ lastOrganizationId }),
     }),
     {
       name: "spline.preferences",
@@ -270,16 +328,21 @@ export function useRestorePreferences(): void {
  * time. Anything the hub did not return is dropped — a remembered id from
  * another account matches nothing and falls through.
  */
+/**
+ * Keep what is still valid, else what was remembered, else the only one there
+ * is. Written over `{ id }` rather than `Workspace` because organizations
+ * choose themselves the same way, and two copies of this would drift.
+ */
 function chooseFrom(
-  workspaces: Workspace[],
+  options: readonly { id: string }[],
   current: string | null,
   remembered: string | null,
 ): string | null {
   const has = (id: string | null) =>
-    Boolean(id) && workspaces.some((workspace) => workspace.id === id);
+    Boolean(id) && options.some((option) => option.id === id);
   if (has(current)) return current;
   if (has(remembered)) return remembered;
-  return workspaces.length === 1 ? (workspaces[0]?.id ?? null) : null;
+  return options.length === 1 ? (options[0]?.id ?? null) : null;
 }
 
 /**
@@ -302,6 +365,7 @@ setTokenRenewal(async () => {
       organizations: [],
       workspaces: [],
       workspaceId: null,
+      organizationId: null,
       restored: true,
     });
     return false;
@@ -310,7 +374,41 @@ setTokenRenewal(async () => {
   return true;
 });
 
-/** The organization the console acts on behalf of. One, in practice. */
+/** The organization the console is acting inside. */
 export function useOrganizationId(): string | null {
-  return useSession((state) => state.organizations[0]?.id ?? null);
+  return useSession((state) => state.organizationId);
+}
+
+/**
+ * The same one, whole. Every screen that used `organizations[0]` wants this.
+ *
+ * `find` returns a reference the store already holds, so unlike the list
+ * above this is stable and may stay in the selector.
+ */
+export function useOrganization(): Organization | null {
+  return useSession(
+    (state) =>
+      state.organizations.find((entry) => entry.id === state.organizationId) ?? null,
+  );
+}
+
+/**
+ * The workspaces of the organization the console is inside — never all of them.
+ *
+ * Derived in a memo rather than inside the selector. A Zustand selector that
+ * builds a new array every call returns a new reference every render, and the
+ * store re-renders on every new reference: React tore the console down with
+ * "Maximum update depth exceeded" the moment this shipped. The selector must
+ * return what the store already holds; the filtering happens after.
+ */
+export function useWorkspacesHere(): Workspace[] {
+  const workspaces = useSession((state) => state.workspaces);
+  const organizationId = useSession((state) => state.organizationId);
+  return useMemo(
+    () =>
+      organizationId
+        ? workspaces.filter((workspace) => workspace.organizationId === organizationId)
+        : workspaces,
+    [workspaces, organizationId],
+  );
 }

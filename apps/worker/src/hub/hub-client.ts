@@ -19,6 +19,18 @@ export interface ClaimedCommand {
 export interface Capabilities {
   capabilities: string[];
   labels: string[];
+  /**
+   * §7.4 — the agent CLIs this machine can actually drive, which is a
+   * different list from what it merely HAS.
+   *
+   * The hub builds its provider catalogue from this, and it has to be
+   * separate from `capabilities`: a machine announcing "docker" and "node"
+   * has capabilities, not providers, and a hub that treated them the same
+   * would dispatch a task to `docker` and have the machine refuse it. This
+   * machine is the only honest authority on the question — it holds the
+   * specs, and it knows what the operator allowed it to spawn.
+   */
+  providers: string[];
 }
 
 /**
@@ -92,6 +104,7 @@ export class HubClient implements PairingHub {
       operatingSystem: platform(),
       capabilities: capabilities.capabilities,
       labels: capabilities.labels,
+      providers: capabilities.providers,
     });
     this.workerId = body.workerId;
     return body.workerId;

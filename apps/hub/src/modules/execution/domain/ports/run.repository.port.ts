@@ -29,6 +29,8 @@ export interface RunRepository {
    * load every live run to do arithmetic on it.
    */
   countLive(workspaceId: string): Promise<number>;
+  /** The tasks whose run has not finished. See the note on the runtime port. */
+  liveTaskIds(workspaceId: string, taskIds: readonly string[]): Promise<string[]>;
   countSince(workspaceId: string, since: Date): Promise<number>;
 }
 

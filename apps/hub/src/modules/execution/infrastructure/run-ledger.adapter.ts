@@ -149,6 +149,13 @@ export class RunLedgerAdapter implements RunLedger {
     return this.runs.countLive(workspaceId);
   }
 
+  async liveTaskIds(
+    workspaceId: string,
+    taskIds: readonly string[],
+  ): Promise<string[]> {
+    return this.runs.liveTaskIds(workspaceId, taskIds);
+  }
+
   async countSince(workspaceId: string, since: Date): Promise<number> {
     return this.runs.countSince(workspaceId, since);
   }

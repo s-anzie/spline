@@ -48,6 +48,16 @@ export interface RegisterWorkerInput {
   architecture: string;
   operatingSystem: string;
   capabilities?: readonly string[];
+  /**
+   * §7.4 — the agent CLIs this machine can drive.
+   *
+   * Separate from `capabilities` on purpose: a machine announcing "docker"
+   * and "node" has capabilities, not providers, and cataloguing those would
+   * let auto-dispatch pick "docker" and send a command the machine refuses.
+   * Not persisted on the worker — the catalogue is the durable thing, and
+   * this is only how it learns.
+   */
+  providers?: readonly string[];
   labels?: readonly string[];
 }
 
@@ -74,6 +84,7 @@ export class RegisterWorkerUseCase
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
     @Inject(ACTOR_STANDING) private readonly standing: ActorStanding,
+    @Inject(PROVIDER_STORE) private readonly providers: ProviderStore,
   ) {}
 
   async execute(
@@ -112,18 +123,85 @@ export class RegisterWorkerUseCase
         existing.handOverTo(input.registeredBy, now);
       }
       existing.heartbeat(now);
+      // Same union on a restart: a machine that gained a provider between two
+      // boots must not have to be re-registered by hand to be given work.
+      existing.announce(
+        [...new Set([...(input.capabilities ?? []), ...(input.providers ?? [])])],
+        now,
+      );
       await this.workers.save(existing);
       await flushDomainEvents(existing, this.publisher);
+      await this.catalogue(input.providers ?? [], now);
       return Result.ok({ workerId: existing.id.value });
     }
 
-    const worker = WorkerNode.register({ ...input, now });
+    const worker = WorkerNode.register({
+      ...input,
+      /**
+       * §7.4 — a provider IS a capability, and the machine should not have to
+       * say so twice.
+       *
+       * `providers` names the agent CLIs this machine can drive; `capabilities`
+       * is the free-form list dispatch matches a task against. They are a
+       * subset relationship, not two independent lists, and leaving an
+       * operator to keep them in agreement is leaving them a trap: a machine
+       * that announced `providers: ["claude"]` and nothing else was refused
+       * every claude task with "no machine attached here can run claude",
+       * while the catalogue happily listed it as available.
+       */
+      capabilities: [...new Set([...(input.capabilities ?? []), ...(input.providers ?? [])])],
+      now,
+    });
     if (worker.isFailure) {
       return Result.fail(worker.error);
     }
     await this.workers.save(worker.value);
     await flushDomainEvents(worker.value, this.publisher);
+    await this.catalogue(input.providers ?? [], now);
     return Result.ok({ workerId: worker.value.id.value });
+  }
+
+  /**
+   * §7.4, §9 — a machine that says it can run something is the reason that
+   * something exists in the catalogue.
+   *
+   * Nothing used to write this table. A profile appeared only when an
+   * operator called the availability route by hand, and neither the console
+   * nor the daemon ever called it — so the catalogue stayed empty forever,
+   * and auto-dispatch, which picks the first AVAILABLE provider, found none
+   * and returned. Silently, into a log nobody was reading. A workspace with
+   * automation on, a machine online, an agent assigned and a task READY
+   * produced zero commands and no explanation. "0 provider" on the machines
+   * screen was the only clue, and it read like a display bug.
+   *
+   * Deriving it from what machines announce is the same rule §7.15 states in
+   * the other direction: what a provider can do is read from PROCESSES,
+   * never from an agent's claim. A daemon announcing its capabilities is a
+   * process fact, and it is the only honest source — a catalogue listing a
+   * provider no machine can run is a catalogue that dispatches into nothing.
+   *
+   * Existing profiles are left exactly as they are. An operator who disabled
+   * a provider meant it, and a machine reconnecting — which happens on every
+   * restart — must not quietly undo that.
+   */
+  private async catalogue(capabilities: readonly string[], now: Date): Promise<void> {
+    for (const capability of capabilities) {
+      const named = capability.trim();
+      if (named === "") {
+        continue;
+      }
+      if (await this.providers.findByProvider(named)) {
+        continue;
+      }
+      const registered = ProviderProfile.register({ provider: named, now });
+      if (registered.isFailure) {
+        // A capability that is not a usable provider name is not a reason to
+        // refuse the machine: it is still a machine, and it still works.
+        continue;
+      }
+      await this.providers.save(registered.value);
+      await flushDomainEvents(registered.value, this.publisher);
+    }
   }
 }
 

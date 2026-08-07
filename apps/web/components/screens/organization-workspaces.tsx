@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Layers } from "lucide-react";
 
 import { routes } from "@/lib/routes";
-import { useSession } from "@/lib/store";
+import { useOrganization, useSession, useWorkspacesHere } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { AddButton, NewWorkspace } from "@/components/forms";
 import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit";
@@ -18,8 +18,9 @@ import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit"
  * thing to leak between them.
  */
 export function WorkspaceList() {
-  const { workspaces, chooseWorkspace } = useSession();
-  const organization = useSession((state) => state.organizations[0]);
+  const workspaces = useWorkspacesHere();
+  const chooseWorkspace = useSession((state) => state.chooseWorkspace);
+  const organization = useOrganization();
   const router = useRouter();
 
   return (

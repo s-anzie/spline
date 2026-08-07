@@ -281,6 +281,9 @@ describe("the protocol tools", () => {
         // §4.6 — assigned from its first instant, so the tool cannot omit it.
         assigneeType: "AGENT",
         assigneeId: "agent-7",
+        // And READY from its first instant too: nothing dispatches a PLANNED
+        // task, so a manager's entire plan used to sit still after being cut.
+        start: true,
       });
     });
 

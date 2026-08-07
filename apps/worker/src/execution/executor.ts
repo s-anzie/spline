@@ -34,6 +34,15 @@ export interface ExecutorDeps {
   checkoutFor?: AgentRunDeps["checkoutFor"];
   /** §8.7 — likewise: what becomes of what the agent wrote. */
   publishFor?: AgentRunDeps["publishFor"];
+  /**
+   * §17 — each step of an agent run, as it happens.
+   *
+   * Passed through so the daemon can say what it is doing on its own output.
+   * It reported only the final outcome, which for a four-minute run meant an
+   * operator watching the log saw nothing at all and concluded, reasonably,
+   * that nothing was running.
+   */
+  onProgress?: AgentRunDeps["onProgress"];
 }
 
 /** §10 — obtains the credential an agent acts with, for one order. */
@@ -105,6 +114,7 @@ export async function executeCommand(
       grantFor: deps.grantFor,
       checkoutFor: deps.checkoutFor,
       publishFor: deps.publishFor,
+      ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
     });
   }
   const program = typeof payload.command === "string" ? payload.command : "";

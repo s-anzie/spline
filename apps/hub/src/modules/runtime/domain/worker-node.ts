@@ -204,6 +204,27 @@ export class WorkerNode extends AggregateRoot<WorkerProps> {
     return [...this.props.capabilities];
   }
 
+  /**
+   * §7.4 — what this machine says it can do, as of its latest boot.
+   *
+   * A replacement rather than a union, because the machine is the authority:
+   * a provider removed from its configuration must stop attracting work, and
+   * a set that only ever grows would keep dispatching claude tasks to a
+   * machine whose operator uninstalled it.
+   *
+   * It raises `worker_registered` like a first registration does, and that is
+   * the point rather than a detail. A machine that already exists took the
+   * upsert path, which raised nothing — so a daemon restarting was invisible
+   * to everything listening, including the sweep that hands out work refused
+   * while no machine was there. The one case that matters most (an operator
+   * restarts their worker to fix exactly this) was the one case that did not
+   * fire.
+   */
+  announce(capabilities: readonly string[], now: Date): void {
+    this.props.capabilities = [...capabilities];
+    this.addDomainEvent(new WorkerRegistered(this.id.value, now, this.props.hostname));
+  }
+
   get workspaceIds(): readonly string[] {
     return [...this.props.workspaceIds];
   }

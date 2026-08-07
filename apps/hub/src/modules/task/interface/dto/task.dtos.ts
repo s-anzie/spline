@@ -1,6 +1,7 @@
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -16,6 +17,24 @@ import { BLOCKER_TYPES, BlockerType } from "../../domain/blocker";
 import { TASK_STATUSES, TaskStatus } from "../../domain/task";
 
 export class CreateTaskDto {
+  /**
+   * §4.6 — whether this task is ready to be worked on, or still being planned.
+   *
+   * Explicit rather than inferred, and false by default because creating a
+   * task is not always handing it out — somebody sketching a plan means
+   * PLANNED, and a hub that started everything would run their sketch.
+   *
+   * A manager cutting work sets it. Before this existed, every task a manager
+   * cut sat at PLANNED forever: nothing dispatches a PLANNED task, so a
+   * manager could read a need, state a goal, cut it into three tasks and
+   * assign them all — and not one of them would ever run. The organising
+   * worked and the work never started, which from outside is the same as an
+   * agent that did nothing.
+   */
+  @IsOptional()
+  @IsBoolean()
+  start?: boolean;
+
   @IsString()
   @IsNotEmpty()
   goalId!: string;

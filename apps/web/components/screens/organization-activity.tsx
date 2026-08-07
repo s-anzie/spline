@@ -6,7 +6,7 @@ import { RefreshCw, ScrollText } from "lucide-react";
 import { api } from "@/lib/api";
 import { since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
-import { useSession } from "@/lib/store";
+import { useOrganizationId } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useResource } from "@/lib/use-hub";
 import {
@@ -42,7 +42,7 @@ const CAP = 150;
  * still printed on every row; the filter is a way in, not a summary.
  */
 export function OrganizationActivity() {
-  const organizationId = useSession((state) => state.organizations[0]?.id);
+  const organizationId = useOrganizationId();
   const [family, setFamily] = useState("");
   const events = useResource(
     () => api.events.organization(organizationId!, CAP),

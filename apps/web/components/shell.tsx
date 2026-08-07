@@ -31,7 +31,7 @@ import {
   titleFor,
   type NavItem,
 } from "@/lib/routes";
-import { useOrganizationId, usePreferences, useSession } from "@/lib/store";
+import { useOrganization, useOrganizationId, usePreferences, useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { TONE_TEXT } from "@/components/kit";
 import { CommandMenu } from "@/components/command-menu";
@@ -50,7 +50,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function Shell({ children }: { children: React.ReactNode }) {
   const { email, displayName, workspaceId, workspaces, chooseWorkspace, logOut } =
     useSession();
-  const organization = useSession((state) => state.organizations[0]);
+  const organization = useOrganization();
   const inRail = usePreferences((state) => state.organizationInRail);
   const pathname = usePathname();
   const router = useRouter();
@@ -519,7 +519,7 @@ function detailOf(pathname: string): string | null {
  * looks for it twice. Editing lives on the settings page.
  */
 function OrganizationLine() {
-  const organization = useSession((state) => state.organizations[0]);
+  const organization = useOrganization();
   if (!organization) return null;
 
   return (

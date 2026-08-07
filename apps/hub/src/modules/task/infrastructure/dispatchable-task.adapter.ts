@@ -45,6 +45,26 @@ export class DispatchableTaskAdapter implements DispatchableTask, TaskAssignee {
     @Inject(REPOSITORY_STORE) private readonly repositories: RepositoryStore,
   ) {}
 
+  /**
+   * §9 — the tasks waiting to be run, oldest first.
+   *
+   * READY only, not the whole dispatchable set: ASSIGNED and RUNNING are
+   * states a machine already holds, and handing them out again would start a
+   * second run on work somebody is doing. The listener applies the ceilings
+   * on top of this — this answers "what is waiting", never "what may go".
+   */
+  async awaitingDispatch(workspaceId: string, limit: number): Promise<string[]> {
+    const waiting = await this.tasks.list({
+      workspaceId,
+      statuses: ["READY"],
+      limit,
+    });
+    return waiting
+      .slice()
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+      .map((task) => task.id.value);
+  }
+
   async briefingFor(workspaceId: string, taskId: string): Promise<TaskBriefing> {
     const task = await this.tasks.findById(taskId);
     // §4.2 — a task of another workspace is simply not there.

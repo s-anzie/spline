@@ -364,6 +364,17 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
         ...(text(args, "repositoryId")
           ? { repositoryId: text(args, "repositoryId") }
           : {}),
+        /**
+         * §4.6 — cut to be worked on, not to be filed.
+         *
+         * Without this every task a manager cut stayed PLANNED, and nothing
+         * dispatches a PLANNED task. A manager could read a need, state a
+         * goal, cut it into three tasks and assign every one of them — and
+         * not one would ever run. The organising worked perfectly and the
+         * work never started, which from outside is an agent that did
+         * nothing.
+         */
+        start: true,
       },
     }),
   },

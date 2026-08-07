@@ -53,6 +53,21 @@ export interface DispatchableTask {
    * false when used.
    */
   briefingFor(workspaceId: string, taskId: string): Promise<TaskBriefing>;
+
+  /**
+   * §9 — the tasks in this workspace waiting to be run, oldest first.
+   *
+   * Dispatch used to happen only on `task.created` and `task.assigned`, so
+   * every reason it could decline — no provider in the catalogue, the
+   * ceiling already reached, no machine attached at that instant — stranded
+   * the task for good. Every one of those conditions is TEMPORARY and the
+   * stall was permanent, which is how a workspace with automation on, a
+   * machine online and a task READY sat at zero commands.
+   *
+   * Oldest first, because what has waited longest is what has been forgotten
+   * (§10.1).
+   */
+  awaitingDispatch(workspaceId: string, limit: number): Promise<string[]>;
 }
 
 export const DISPATCHABLE_TASK = "runtime/DispatchableTask";
@@ -103,6 +118,17 @@ export interface RunLedger {
    * reading, not for arithmetic.
    */
   countLive(workspaceId: string): Promise<number>;
+  /**
+   * §9 — the tasks that already have a run in flight.
+   *
+   * Needed because dispatching does NOT move a task out of READY: the task
+   * stays ready while its run works, so anything that looks for ready tasks
+   * and dispatches them would start a second run on work already under way —
+   * and, on a trigger that repeats, a third and a fourth. A repeated sweep
+   * without this is a runaway, which is a far worse failure than the stall it
+   * was written to fix.
+   */
+  liveTaskIds(workspaceId: string, taskIds: readonly string[]): Promise<string[]>;
   countSince(workspaceId: string, since: Date): Promise<number>;
   /**
    * §9.13 — ends the runs whose machine stopped talking, and answers how many.

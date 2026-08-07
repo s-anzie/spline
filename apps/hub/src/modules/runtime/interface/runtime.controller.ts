@@ -90,6 +90,17 @@ export class RegisterWorkerDto {
   @IsArray()
   @IsString({ each: true })
   labels?: string[];
+
+  /**
+   * §7.4 — the agent CLIs this machine can drive, which is not the same list
+   * as what it HAS. A machine announcing "docker" and "node" has
+   * capabilities; a hub that treated those as providers would dispatch a task
+   * to `docker` and have the machine refuse it on arrival.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  providers?: string[];
 }
 
 export class HeartbeatDto {

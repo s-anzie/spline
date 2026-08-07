@@ -612,4 +612,82 @@ describe("Runtime (e2e)", () => {
       .send({ hostname: "x", architecture: "y", operatingSystem: "z" })
       .expect(401);
   });
+
+  /**
+   * §7.4, §9 — a machine that says it can run something is the reason that
+   * something exists in the catalogue.
+   *
+   * This is the defect that made the whole product look dead. A provider
+   * profile was only ever created by an operator calling
+   * `POST /runtime/providers/:provider/availability` by hand, and neither the
+   * console nor the daemon ever called it. So the catalogue stayed empty
+   * forever, and auto-dispatch — which picks the first AVAILABLE provider —
+   * found none and returned. Silently, into a log nobody was reading.
+   *
+   * The visible result: a workspace with automation on, a machine online, an
+   * agent assigned, a task READY, and zero commands. "0 provider" on the
+   * machines screen was the only clue, and it read like a display bug.
+   */
+  it("registers a provider for each capability a machine announces", async () => {
+    const ctx = await setup();
+
+    await ctx
+      .auth(request(http).post("/runtime/workers"))
+      .send({
+        hostname: "salsa-013",
+        architecture: "x86_64",
+        operatingSystem: "linux",
+        capabilities: ["docker", "node"],
+        // Capabilities and providers are different lists, and this test is
+        // the reason: cataloguing the former would put "docker" in front of
+        // auto-dispatch, which picks the first available provider.
+        providers: ["claude", "codex"],
+      })
+      .expect(201);
+
+    const providers = await ctx.auth(request(http).get("/runtime/providers")).expect(200);
+    const listed = providers.body as {
+      provider: string;
+      effectiveAvailable: boolean;
+    }[];
+
+    expect(listed.map((entry) => entry.provider).sort()).toEqual(["claude", "codex"]);
+    /**
+     * Available on arrival: the machine that just said it can run this is the
+     * evidence. Anything else would need a second manual act to undo the
+     * first, which is the state these tests exist to prevent.
+     */
+    expect(listed.every((entry) => entry.effectiveAvailable)).toBe(true);
+  });
+
+  /**
+   * An operator who disabled a provider meant it. A machine reconnecting —
+   * which happens on every restart — must not quietly undo that.
+   */
+  it("never re-enables a provider an operator turned off", async () => {
+    const ctx = await setup();
+    const announce = () =>
+      ctx
+        .auth(request(http).post("/runtime/workers"))
+        .send({
+          hostname: "salsa-013",
+          architecture: "x86_64",
+          operatingSystem: "linux",
+          capabilities: ["docker"],
+          providers: ["claude"],
+        })
+        .expect(201);
+
+    await announce();
+    await ctx
+      .auth(request(http).post("/runtime/providers/claude/availability"))
+      .send({ action: "DISABLE" })
+      .expect(200);
+    await announce();
+
+    const providers = await ctx.auth(request(http).get("/runtime/providers")).expect(200);
+    const listed = providers.body as { effectiveAvailable: boolean }[];
+    expect(listed[0]?.effectiveAvailable).toBe(false);
+  });
+
 });

@@ -49,6 +49,21 @@ export class ListEventsUseCase
       ...(input.afterSequence !== undefined && { afterSequence: input.afterSequence }),
       ...(actor?.isSuccess && { actor: actor.value }),
       limit: Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT),
+      /**
+       * §14 — newest first, unless the caller is replaying.
+       *
+       * A page read without a cursor is somebody LOOKING at a screen, and
+       * they want what just happened. Answering with the oldest page made the
+       * Activity screen useless the moment a workspace had any history: the
+       * newest fact anybody could see was from the workspace's first minutes,
+       * so an operator watching for their agent to start saw a screen that
+       * never changed and concluded, reasonably, that nothing was running.
+       *
+       * With `afterSequence` the caller is walking the journal forward from a
+       * point and wants what came NEXT, which is ascending. The cursor is
+       * exactly what tells the two apart.
+       */
+      newestFirst: input.afterSequence === undefined,
     });
     return Result.ok(events);
   }

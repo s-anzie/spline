@@ -449,6 +449,13 @@ export const api = {
 
   organizations: {
     list: () => hub.get<Organization[]>("/organizations"),
+    /**
+     * §4.1 — founding one, rather than only inheriting the one registration
+     * made. A machine is paired to an organization and lent to its
+     * workspaces, so a second organization is a second fleet.
+     */
+    create: (name: string) =>
+      hub.post<{ organizationId: string; slug: string }>("/organizations", { name }),
     rename: (organizationId: string, name: string) =>
       hub.patch(`/organizations/${organizationId}`, { name }),
   },

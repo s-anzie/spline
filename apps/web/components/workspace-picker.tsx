@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, FolderOpen } from "lucide-react";
 
 import { routes } from "@/lib/routes";
-import { useSession } from "@/lib/store";
+import { useSession, useWorkspacesHere } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { Empty, PageHeader, Panel, Row, Status, Stripe } from "@/components/kit";
 import { AddButton, NewWorkspace } from "@/components/forms";
@@ -17,7 +17,10 @@ import { AddButton, NewWorkspace } from "@/components/forms";
  * aggregate across them would be the first thing to leak between them.
  */
 export function WorkspacePicker() {
-  const { workspaces, chooseWorkspace } = useSession();
+  // Only this organization's workspaces: the others exist, but not from
+  // where the reader is standing (§4.1).
+  const workspaces = useWorkspacesHere();
+  const chooseWorkspace = useSession((state) => state.chooseWorkspace);
   const router = useRouter();
 
   return (

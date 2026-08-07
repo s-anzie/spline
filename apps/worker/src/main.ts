@@ -12,6 +12,7 @@ import { publishWork } from "./git/publish";
 import { gitRunner } from "./git/runner";
 import { pairMachine } from "./enrolment/pairing";
 import { ClaimedCommand, HubClient } from "./hub/hub-client";
+import { PROVIDERS } from "./providers/provider-spec";
 import { preflightComplaints } from "./supervision/preflight";
 
 loadDotenv();
@@ -148,6 +149,16 @@ async function main(): Promise<void> {
   const workerId = await hub.register({
     capabilities: config.capabilities,
     labels: config.labels,
+    /**
+     * §7.4 — what this machine can drive AND is allowed to spawn.
+     *
+     * Both halves matter. A provider this build has no spec for cannot be
+     * driven whatever the operator says; a provider the allowlist refuses
+     * cannot be started whatever the build knows. Announcing anything wider
+     * would put a provider in the hub's catalogue that dispatches here and
+     * fails on arrival.
+     */
+    providers: PROVIDERS.filter((name) => config.allowedCommands.includes(name)),
   });
   console.info(`registered with the hub as ${workerId} (${config.hostname})`);
 
@@ -224,9 +235,26 @@ async function main(): Promise<void> {
            * parallel; two tasks here take turns.
            */
           const repositoryPath = repositoryPathOf(command, config);
+          /**
+           * §17 — say what is happening, while it happens.
+           *
+           * The daemon printed one line per order, at the END. A run takes
+           * minutes, so an operator watching this log saw nothing between
+           * "registered with the hub" and a result — and concluded, entirely
+           * reasonably, that no agent was running at all. That is the
+           * complaint this exists to answer, and it costs one line per step.
+           */
+          console.info(
+            `${command.type} (${command.id}): taken` +
+              (typeof command.payload.taskId === "string"
+                ? ` — task ${command.payload.taskId}`
+                : ""),
+          );
           const runOrder = () => executeCommand(command, {
             ...executor,
             secretsFor: () => secrets,
+            onProgress: (entry) =>
+              console.info(`  ${entry.kind === "used" ? "·" : ">"} ${entry.text}`),
             /**
              * §8.3 — the checkout this order works in, when it names a
              * repository. The branch was named by the hub so that its record

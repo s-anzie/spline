@@ -82,6 +82,32 @@ export class PrismaRunRepository implements RunRepository {
    * taken still cost a dispatch and still occupies the ceiling. Judging on
    * `startedAt` would let a machine that claims nothing be asked forever.
    */
+  async liveTaskIds(
+    workspaceId: string,
+    taskIds: readonly string[],
+  ): Promise<string[]> {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    const live = await this.prisma.run.findMany({
+      where: {
+        workspaceId,
+        taskId: { in: [...taskIds] },
+        status: { in: LIVE_STATUSES },
+      },
+      select: { taskId: true },
+      distinct: ["taskId"],
+      // Bounded by what was asked about, which is the point of asking.
+      take: taskIds.length,
+    });
+    return live.map((run) => run.taskId);
+  }
+
+  /**
+   * Counted on `createdAt`, not `startedAt`: a run that was ordered and never
+   * taken still cost a dispatch and still occupies the ceiling. Judging on
+   * `startedAt` would let a machine that claims nothing be asked forever.
+   */
   async countSince(workspaceId: string, since: Date): Promise<number> {
     return this.prisma.run.count({
       where: { workspaceId, createdAt: { gte: since } },

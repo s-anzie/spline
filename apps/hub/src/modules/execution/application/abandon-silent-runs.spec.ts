@@ -36,6 +36,11 @@ class InMemoryRunRepository implements RunRepository {
     return (await this.listLive()).length;
   }
 
+  async liveTaskIds(_workspaceId: string, taskIds: readonly string[]): Promise<string[]> {
+    const live = new Set((await this.listLive()).map((run) => run.taskId));
+    return taskIds.filter((taskId) => live.has(taskId));
+  }
+
   async countSince(): Promise<number> {
     return this.runs.length;
   }

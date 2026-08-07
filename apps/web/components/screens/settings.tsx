@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { usePreferences, useSession } from "@/lib/store";
+import { useOrganization, useOrganizationId, usePreferences, useSession, useWorkspacesHere } from "@/lib/store";
 import { useAction } from "@/lib/use-hub";
 import { Field, Id, Note, PageHeader, Section } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -134,9 +134,9 @@ function Profile() {
  * default and a poor label the moment a colleague joins.
  */
 function OrganizationSettings() {
-  const organization = useSession((state) => state.organizations[0]);
+  const organization = useOrganization();
   const refresh = useSession((state) => state.refreshWorkspaces);
-  const workspaces = useSession((state) => state.workspaces);
+  const workspaces = useWorkspacesHere();
   const [name, setName] = useState("");
   const { run, pending, error } = useAction();
 
@@ -204,8 +204,92 @@ function OrganizationSettings() {
               : workspaces.map((workspace) => workspace.name).join(", ")}
           </p>
         </Setting>
+
+        <Organizations />
       </Panel>
     </Section>
+  );
+}
+
+/**
+ * §4.1 — the ones this account owns, and the way to found another.
+ *
+ * Registration made exactly one and there was no route to make a second, so
+ * everything the console does — the sidebar, the machines, the agents — read
+ * `organizations[0]` and meant it. That was a ceiling on the FLEET, not on
+ * tidiness: a machine is paired to an organization (§6.3) and lent to its
+ * workspaces, so one organization meant one set of machines for everything a
+ * person does.
+ *
+ * Switching drops the chosen workspace with it. A workspace of the other
+ * organization is not reachable from here, and carrying one across would put
+ * every screen in the cross-workspace read §4.2 forbids outright.
+ */
+function Organizations() {
+  const owned = useSession((state) => state.organizations);
+  const current = useOrganizationId();
+  const choose = useSession((state) => state.chooseOrganization);
+  const refresh = useSession((state) => state.refreshWorkspaces);
+  const [name, setName] = useState("");
+  const { run, pending, error } = useAction();
+
+  return (
+    <Setting
+      label="Your organizations"
+      hint="Each owns its own machines, agents and workspaces. Nothing is shared between them."
+    >
+      <div className="grid max-w-md gap-3 py-1">
+        {owned.length > 1 ? (
+          <ul className="grid gap-1">
+            {owned.map((entry) => (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  onClick={() => entry.id !== current && choose(entry.id)}
+                  disabled={entry.id === current}
+                  className={`hover:bg-muted/60 flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                    entry.id === current ? "bg-muted" : ""
+                  }`}
+                >
+                  <span className="flex-1 truncate">{entry.name}</span>
+                  {entry.id === current ? (
+                    <span className="text-muted-foreground text-xs">here</span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">switch</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(
+              () => api.organizations.create(name.trim()),
+              () => {
+                setName("");
+                void refresh();
+              },
+            );
+          }}
+        >
+          <Field
+            label="Found another"
+            value={name}
+            onChange={setName}
+            placeholder="Research"
+            className="flex-1"
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={pending || !name.trim()}>
+            {pending ? "Founding…" : "Found"}
+          </Button>
+        </form>
+        {error ? <Note>{error}</Note> : null}
+      </div>
+    </Setting>
   );
 }
 

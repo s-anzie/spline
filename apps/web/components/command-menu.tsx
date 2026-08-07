@@ -5,7 +5,7 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { NAV, routes } from "@/lib/routes";
-import { useSession } from "@/lib/store";
+import { useSession, useWorkspacesHere } from "@/lib/store";
 import {
   CommandDialog,
   CommandEmpty,
@@ -34,7 +34,8 @@ export function CommandMenu({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { workspaces, workspaceId, chooseWorkspace } = useSession();
+  const workspaces = useWorkspacesHere();
+  const { workspaceId, chooseWorkspace } = useSession();
   const { theme, setTheme } = useTheme();
 
   const run = (action: () => void) => {

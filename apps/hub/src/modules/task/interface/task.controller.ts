@@ -130,11 +130,31 @@ export class TaskController {
     @Param("workspaceId") workspaceId: string,
     @Body() dto: CreateTaskDto,
   ): Promise<{ taskId: string }> {
-    const result = await this.createTask.execute({ workspaceId, ...dto });
+    const { start, ...rest } = dto;
+    const result = await this.createTask.execute({ workspaceId, ...rest });
     if (result.isFailure) {
       throw toHttpException(result.error, {
         forbidden: ["AssigneeNotInWorkspaceError", "AssigneeCannotExecuteError"],
       });
+    }
+
+    /**
+     * §4.6 — handed out, not merely written down.
+     *
+     * Two steps rather than a status on creation, because they are two
+     * different facts and the journal records both: a task came into being,
+     * and then it was made ready. A `status` field on creation would let a
+     * caller invent any state it liked, including DONE.
+     */
+    if (start) {
+      const ready = await this.changeStatus.execute({
+        workspaceId,
+        taskId: result.value.taskId,
+        status: "READY",
+      });
+      if (ready.isFailure) {
+        throw toHttpException(ready.error);
+      }
     }
     return result.value;
   }

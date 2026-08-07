@@ -85,9 +85,14 @@ describe("Event (e2e)", () => {
     expect(created.target.type).toBe("goal");
     expect(created.severity).toBe("INFO");
     expect(created.workspaceId).toBe(ctx.workspaceId);
-    // Ordered by a real sequence, not by timestamp.
+    /**
+     * Ordered by a real sequence, not by timestamp — and NEWEST first, because
+     * a page read without a cursor is somebody looking at a screen. This
+     * assertion used to expect ascending, which is what made the Activity
+     * screen show a workspace's first minutes forever.
+     */
     const sequences = journal.body.map((e: { sequence: string }) => Number(e.sequence));
-    expect([...sequences].sort((a, b) => a - b)).toEqual(sequences);
+    expect([...sequences].sort((a, b) => b - a)).toEqual(sequences);
   });
 
   it("severity is assigned by convention, so alerts have something to read", async () => {
@@ -328,4 +333,71 @@ describe("Event (e2e)", () => {
       .set("Authorization", `Bearer ${stranger.body.accessToken}`)
       .expect(403);
   });
+
+  /**
+   * §14 — a journal read without a cursor answers with the NEWEST facts.
+   *
+   * It answered with the oldest, capped at a page, and that made the Activity
+   * screen useless the moment a workspace had any history: the newest fact a
+   * reader could see was whatever happened in the workspace's first minutes.
+   * An operator watching for their agent to start saw a screen that never
+   * changed, and reasonably concluded nothing was running.
+   *
+   * The cursor is what separates the two readings. A caller replaying forward
+   * from `afterSequence` wants what came NEXT; a caller with no cursor is
+   * looking at a screen and wants what just happened.
+   */
+  it("answers with the newest facts when nothing asked to replay", async () => {
+    const ctx = await setup();
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+
+    for (const title of ["First", "Second", "Third"]) {
+      await auth(request(http).post(`/workspaces/${ctx.workspaceId}/goals`))
+        .send({ title, successCriteria: ["c"] })
+        .expect(201);
+    }
+
+    const page = await auth(request(http).get(`${ctx.base}?limit=1`)).expect(200);
+    const facts = page.body as { sequence: string }[];
+    expect(facts).toHaveLength(1);
+
+    // The one fact returned is the LAST recorded, not the first. Compared by
+    // sequence rather than by title: a `goal.created` payload carries the
+    // parent, never the name, and asserting on a name that is not there would
+    // be a test that passes for the wrong reason.
+    const everything = (await auth(request(http).get(ctx.base)).expect(200)).body as {
+      sequence: string;
+    }[];
+    const newest = Math.max(...everything.map((fact) => Number(fact.sequence)));
+    expect(Number(facts[0]?.sequence)).toBe(newest);
+  });
+
+  /** With a cursor, the caller is replaying forward and wants what came next. */
+  it("replays forward in order when given a cursor", async () => {
+    const ctx = await setup();
+    const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ctx.token}`);
+
+    for (const title of ["First", "Second", "Third"]) {
+      await auth(request(http).post(`/workspaces/${ctx.workspaceId}/goals`))
+        .send({ title, successCriteria: ["c"] })
+        .expect(201);
+    }
+
+    const all = (await auth(request(http).get(ctx.base)).expect(200)).body as {
+      sequence: number;
+    }[];
+    const oldest = Math.min(...all.map((fact) => fact.sequence));
+
+    const after = await auth(
+      request(http).get(`${ctx.base}?afterSequence=${oldest}&limit=2`),
+    ).expect(200);
+    const replayed = after.body as { sequence: number }[];
+    expect(replayed.length).toBeGreaterThan(0);
+    // Ascending, and every one of them after the cursor.
+    expect(replayed.map((fact) => fact.sequence)).toEqual(
+      [...replayed.map((fact) => fact.sequence)].sort((a, b) => a - b),
+    );
+    expect(Math.min(...replayed.map((fact) => fact.sequence))).toBeGreaterThan(oldest);
+  });
+
 });
