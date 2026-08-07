@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { flushDomainEvents } from "../../../kernel/application/flush-domain-events";
 import { UseCase } from "../../../kernel/application/use-case";
@@ -11,6 +11,10 @@ import {
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
 import { SessionStatus } from "../domain/agent-session";
+import {
+  AUTOMATION_POLICY,
+  AutomationPolicy,
+} from "../domain/ports/dispatch.port";
 import { RuntimeCommand } from "../domain/runtime-command";
 import {
   COMMAND_STORE,
@@ -123,7 +127,10 @@ export class ClaimCommandsUseCase
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
     @Inject(SESSION_STORE) private readonly sessions: SessionStore,
+    @Inject(AUTOMATION_POLICY) private readonly policy: AutomationPolicy,
   ) {}
+
+  private readonly logger = new Logger(ClaimCommandsUseCase.name);
 
   private moveSession(
     command: RuntimeCommand,
@@ -132,6 +139,49 @@ export class ClaimCommandsUseCase
     reason?: string,
   ): Promise<void> {
     return moveSessionOf(this.sessions, this.publisher, command, next, now, reason);
+  }
+
+  /**
+   * Whether handing this order out would put its agent over the workspace's
+   * ceiling.
+   *
+   * Counts the agent's sessions that are already WORKING, which deliberately
+   * excludes this order's own — it is STARTING until the claim, and counting
+   * it would refuse every first order. An order that names no session (one
+   * enqueued by hand, or for a task nobody holds) is nobody's instance and
+   * passes: the ceiling is about an agent, and there is no agent here.
+   */
+  private async overCeiling(command: RuntimeCommand, now: Date): Promise<boolean> {
+    const sessionId =
+      typeof command.payload.sessionId === "string" ? command.payload.sessionId : null;
+    if (!sessionId) {
+      return false;
+    }
+    const session = await this.sessions.findById(sessionId);
+    if (!session || session.workspaceId !== command.workspaceId) {
+      return false;
+    }
+    const limits = await this.policy.limitsFor(command.workspaceId);
+    const working = await this.sessions.list({
+      workspaceId: command.workspaceId,
+      agent: session.agent,
+      liveOnly: true,
+      limit: limits.sessionsPerAgent + 2,
+    });
+    const others = working.filter(
+      (entry) => entry.id.value !== sessionId && entry.status !== "STARTING",
+    );
+    if (others.length < limits.sessionsPerAgent) {
+      return false;
+    }
+    this.logger.log(
+      `Holding an order for agent ${session.agent.actorId}: ${others.length} ` +
+        `session(s) already working, ceiling ${limits.sessionsPerAgent}. It stays queued.`,
+    );
+    // `now` is unused here and that is on purpose — nothing about this is
+    // judged against a clock.
+    void now;
+    return true;
   }
 
   async execute(
@@ -162,6 +212,24 @@ export class ClaimCommandsUseCase
       worker.id.value,
       input.max ?? 10,
     )) {
+      /**
+       * §4.12 — the ceiling has to hold where orders are HANDED OUT.
+       *
+       * Refusing at dispatch stops the ordinary path and nothing else. An
+       * order enqueued directly never passes that check, and two orders
+       * dispatched while the ceiling still allowed both sit PENDING until a
+       * machine takes them — together. A queue outlives the configuration
+       * that let it fill, and the claim is the last moment before an agent
+       * actually starts.
+       *
+       * Skipped rather than failed: the order is not wrong, it is not its
+       * turn. It stays PENDING, and the next claim — after something finishes
+       * — takes it.
+       */
+      if (await this.overCeiling(command, now)) {
+        continue;
+      }
+
       const took = command.claim(worker.id.value, now);
       if (took.isFailure) {
         // Another worker got there first. Skipped, never reported as an

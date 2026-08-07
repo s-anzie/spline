@@ -194,16 +194,24 @@ describe("AgentSession", () => {
     expect(live.endReason).toBe("no heartbeat for ten minutes");
   });
 
-  it("goes stale on its own silence, and a finished session never does", () => {
+  /**
+   * The staleness this used to assert is gone, deliberately.
+   *
+   * A session judged its own silence against `lastHeartbeatAt`, and nothing
+   * ever sent a session heartbeat: the field was written once, at creation.
+   * The health probe therefore called every session over five minutes silent,
+   * and "Recover lost sessions" would have crashed every healthy agent in the
+   * workspace. This test passed the whole time, because a domain method can
+   * be correct about a signal that never arrives.
+   *
+   * What is left is the recording, which is all it ever honestly was.
+   */
+  it("records when it was last touched, and stops recording once it ends", () => {
     const live = session().value;
-    expect(live.isStaleAt(later, MINUTE)).toBe(true);
+    expect(live.lastHeartbeatAt).toEqual(now);
 
     live.heartbeat(later);
-    expect(live.isStaleAt(later, MINUTE)).toBe(false);
-
-    live.changeStatus("STOPPED", later);
-    // A stopped session is not late — it is done.
-    expect(live.isStaleAt(new Date("2026-08-04T23:00:00Z"), MINUTE)).toBe(false);
+    expect(live.lastHeartbeatAt).toEqual(later);
   });
 
   it("ignores a heartbeat from a session that has already ended", () => {
@@ -227,4 +235,40 @@ describe("AgentSession", () => {
     live.changeStatus("STOPPED", now);
     expect(live.allowedStatusTargets()).toEqual([]);
   });
+
+  /**
+   * §4.12 lists six statuses and `IDLE` is the one nothing reaches — said
+   * here so that nobody reads the state machine and assumes otherwise.
+   *
+   * `IDLE` means an instance that is alive and not working. In this system a
+   * session is opened for ONE task and ends with it: STARTING while the order
+   * waits, RUNNING while the machine executes, WAITING while somebody else
+   * must move, then STOPPED or CRASHED. There is no moment in that life when
+   * the agent is alive with nothing to do.
+   *
+   * Making it real means letting a session serve several tasks — which the
+   * provider layer nearly supports already (a run resumes the previous
+   * attempt's provider session) but only WITHIN one task. Doing it properly
+   * changes three things that are settled today: an IDLE session must not
+   * count against `sessionsPerAgent` (the agent is not working), something
+   * must end one that lingers, and dispatch must prefer reusing one over
+   * opening another. That is a design change, not a missing line, and
+   * inventing a meaning for the state to fill the slot would be worse than
+   * saying this.
+   *
+   * The transition itself is legal, so the day a session does outlive a task
+   * nothing here has to move.
+   */
+  it("leaves IDLE reachable in the machine and unreached by this system", () => {
+    const live = session().value;
+
+    expect(live.allowedStatusTargets()).toContain("IDLE");
+    expect(live.changeStatus("IDLE", now).isSuccess).toBe(true);
+
+    // And from there, back to work or out — nothing is a dead end.
+    expect(live.allowedStatusTargets()).toEqual(
+      expect.arrayContaining(["RUNNING", "STOPPED", "CRASHED"]),
+    );
+  });
+
 });

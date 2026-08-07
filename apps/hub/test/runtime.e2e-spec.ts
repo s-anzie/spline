@@ -298,10 +298,15 @@ describe("Runtime (e2e)", () => {
       "workers",
     );
 
-    // Both fall silent.
+    /**
+     * The machine falls silent. A SESSION is deliberately not aged here any
+     * more: it has no heartbeat of its own, nothing ever sent one, and the
+     * probe that pretended otherwise reported every session over five minutes
+     * as dead — including ones working perfectly. Ageing a field nobody
+     * writes was this test agreeing with that fiction.
+     */
     const longAgo = new Date(Date.now() - 60 * 60 * 1000);
     await prisma.workerNode.updateMany({ data: { lastHeartbeatAt: longAgo } });
-    await prisma.agentSession.updateMany({ data: { lastHeartbeatAt: longAgo } });
 
     const degraded = await ctx
       .auth(request(http).get(`/workspaces/${ctx.workspaceId}/health`))
@@ -309,13 +314,15 @@ describe("Runtime (e2e)", () => {
     const workers = degraded.body.signals.find(
       (s: { probe: string }) => s.probe === "workers",
     );
+    // Named, not counted — §17.8 all the way through.
+    expect(workers.resources[0].type).toBe("worker:workshop-01");
+    expect(degraded.body.level).not.toBe("HEALTHY");
+
+    // And the sessions probe stays quiet, because this session's run is fine.
     const sessions = degraded.body.signals.find(
       (s: { probe: string }) => s.probe === "sessions",
     );
-    // Named, not counted — §17.8 all the way through.
-    expect(workers.resources[0].type).toBe("worker:workshop-01");
-    expect(sessions.resources[0].type).toBe("session:claude");
-    expect(degraded.body.level).not.toBe("HEALTHY");
+    expect(sessions.resources).toHaveLength(0);
   });
 
   it("never shows a machine to a workspace it does not serve", async () => {
@@ -393,9 +400,17 @@ describe("Runtime (e2e)", () => {
     expect(before.body.ready).toHaveLength(0);
     expect(before.body.waiting).toHaveLength(0);
 
-    // The session and its machine both fall silent.
+    /**
+     * The MACHINE falls silent, which is the only silence that exists.
+     *
+     * This used to age the session's own `lastHeartbeatAt`, and nothing ever
+     * writes that field after creation — so recovery fired on a signal with
+     * no source, and "Recover lost sessions" would have crashed every healthy
+     * agent in the workspace. A button that destroys what it claims to
+     * rescue. It was harmless only while no session existed at all.
+     */
     const longAgo = new Date(Date.now() - 60 * 60 * 1000);
-    await prisma.agentSession.updateMany({ data: { lastHeartbeatAt: longAgo } });
+    await prisma.workerNode.updateMany({ data: { lastHeartbeatAt: longAgo } });
 
     const report = await ctx
       .auth(request(http).post(`${ctx.base}/recover`))

@@ -3,7 +3,6 @@ import { BaseDomainEvent } from "../../../kernel/domain/base-domain-event";
 import { InvalidStateTransitionError } from "../../../kernel/domain/errors";
 import { Guard, GuardViolation } from "../../../kernel/domain/guard";
 import { Result } from "../../../kernel/domain/result";
-import { isStale } from "../../../kernel/domain/staleness";
 import { StateMachine } from "../../../kernel/domain/state-machine";
 import { UniqueEntityId } from "../../../kernel/domain/unique-entity-id";
 import { ActorRef } from "../../identity/domain/actor";
@@ -187,6 +186,13 @@ export class AgentSession extends AggregateRoot<SessionProps> {
     return this.props.status;
   }
 
+  /**
+   * The last time anything touched this session, and nothing more.
+   *
+   * Recorded, never judged: no machine sends it, so an old value means "the
+   * session has not changed state lately", which is the ordinary condition of
+   * a session working steadily. See the note above the removed `isStaleAt`.
+   */
   get lastHeartbeatAt(): Date | null {
     return this.props.lastHeartbeatAt;
   }
@@ -207,11 +213,21 @@ export class AgentSession extends AggregateRoot<SessionProps> {
     return this.props.status !== "STOPPED" && this.props.status !== "CRASHED";
   }
 
-  /** §17.7 — judged at read, like a worker's and a lock's. */
-  isStaleAt(now: Date, ttlMs: number): boolean {
-    return this.isLive && isStale(this.props.lastHeartbeatAt, ttlMs, now);
-  }
-
+  /**
+   * `isStaleAt` is gone, and its absence is the point.
+   *
+   * A session had one, judged against `lastHeartbeatAt`, and NOTHING ever
+   * sent a session heartbeat — the field was written once, at creation, and
+   * never again. Two things asked it anyway: the health probe, which then
+   * reported every session older than five minutes as silent, and "Recover
+   * lost sessions", which would have crashed every healthy agent in the
+   * workspace. A button that destroys what it claims to rescue.
+   *
+   * A machine reports against a RUN, and against itself. Those are the two
+   * signals of life that exist. A session has none of its own, so it must not
+   * offer a method that looks like one — which is why this is a comment where
+   * a method used to be, rather than a method nobody happens to call.
+   */
   heartbeat(now: Date): void {
     if (this.isLive) {
       this.props.lastHeartbeatAt = now;

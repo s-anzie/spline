@@ -9,13 +9,20 @@ import {
   EventPublisher,
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
-import { DEFAULT_SESSION_STALENESS_MS } from "../infrastructure/session-health.probe";
 import {
   SESSION_STORE,
   SessionStore,
   WORKER_STORE,
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
+
+/**
+ * §6.6 — how long a machine may say nothing before what it holds is lost.
+ *
+ * A MACHINE's silence, not a session's: the machine is the thing that
+ * reports, and the session is what it was holding.
+ */
+export const DEFAULT_MACHINE_SILENCE_MS = 5 * 60 * 1000;
 
 export interface RecoverInput {
   workspaceId: string;
@@ -68,7 +75,17 @@ export class RecoverCrashedSessionsUseCase
     }
 
     const now = this.clock.now();
-    const ttl = input.stalenessMs ?? DEFAULT_SESSION_STALENESS_MS;
+    /**
+     * Judged against the MACHINE, which is the only thing that reports.
+     *
+     * This used to ask whether the SESSION was stale, and nothing ever sent a
+     * session heartbeat: `lastHeartbeatAt` was written once, at creation. So
+     * every session older than five minutes qualified, and pressing "Recover
+     * lost sessions" would have crashed every healthy agent in the workspace
+     * — a button that destroys exactly what it claims to rescue. It was
+     * harmless only for as long as no session existed at all.
+     */
+    const ttl = input.stalenessMs ?? DEFAULT_MACHINE_SILENCE_MS;
     const live = await this.sessions.list({
       workspaceId: workspaceId.value,
       liveOnly: true,
@@ -78,23 +95,23 @@ export class RecoverCrashedSessionsUseCase
     const workersGone = new Set<string>();
 
     for (const session of live) {
-      if (!session.isStaleAt(now, ttl)) {
-        continue;
-      }
       const worker = await this.workers.findById(session.workerId);
       const machineGone = !worker || worker.isStaleAt(now, ttl);
-      if (machineGone) {
-        workersGone.add(session.workerId);
+      if (!machineGone) {
+        // Its machine is answering, so this session is not lost — whatever
+        // any timer of its own might once have said.
+        continue;
       }
+      workersGone.add(session.workerId);
 
       // The reason is kept because §17.8 asks for it and because "crashed"
       // alone tells an operator nothing about where to look.
       const marked = session.changeStatus(
         "CRASHED",
         now,
-        machineGone
-          ? `the machine stopped reporting as well (${session.workerId})`
-          : "the session stopped reporting while its machine kept answering",
+        worker
+          ? `its machine stopped reporting (${worker.hostname})`
+          : `its machine no longer exists (${session.workerId})`,
       );
       if (marked.isFailure) {
         continue;
@@ -104,7 +121,7 @@ export class RecoverCrashedSessionsUseCase
       recovered.push({
         sessionId: session.id.value,
         taskId: session.taskId,
-        silentSince: (session.lastHeartbeatAt ?? session.startedAt).toISOString(),
+        silentSince: session.startedAt.toISOString(),
       });
     }
 

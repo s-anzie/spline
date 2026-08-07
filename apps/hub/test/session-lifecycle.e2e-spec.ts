@@ -341,4 +341,237 @@ describe("An agent's session follows its work (e2e)", () => {
       .expect(201);
   });
 
+
+  /**
+   * §4.12 — `WAITING` existed in the state machine and nothing ever reached
+   * it, so a session that was blocked on a person looked exactly like one
+   * mid-edit. Both said RUNNING.
+   *
+   * The two things an agent waits on are the two it cannot resolve itself:
+   * proof it is not allowed to grant (§10.9 — it never decides its own work
+   * is done) and an obstacle it reported (§10.8). Both are already facts on
+   * the journal; nothing new has to be invented to know.
+   */
+  it("waits when its agent asks for proof, and works again once decided", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({ max: 1 })
+      .expect(200);
+
+    const asked = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}/validations`))
+      .send({ validations: [{ type: "human_review", mandatory: true }] })
+      .expect(201);
+    const validationId = (asked.body as { validationIds: string[] }).validationIds[0];
+
+    expect(
+      (await prisma.agentSession.findFirst({ where: { workspaceId: ctx.workspaceId } }))
+        ?.status,
+    ).toBe("WAITING");
+
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/validations/${validationId}/settle`,
+        ),
+      )
+      .send({ action: "START" })
+      .expect(200);
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/validations/${validationId}/settle`,
+        ),
+      )
+      .send({ action: "SUCCEEDED" })
+      .expect(200);
+
+    expect(
+      (await prisma.agentSession.findFirst({ where: { workspaceId: ctx.workspaceId } }))
+        ?.status,
+    ).toBe("RUNNING");
+  });
+
+  /** The other thing an agent cannot resolve on its own. */
+  it("waits when its agent reports a blocker, and works again once cleared", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({ max: 1 })
+      .expect(200);
+
+    const reported = await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}/blockers`))
+      .send({ type: "TECHNICAL", description: "the API key is missing" })
+      .expect(201);
+    const blockerId = (reported.body as { blockerId: string }).blockerId;
+
+    expect(
+      (await prisma.agentSession.findFirst({ where: { workspaceId: ctx.workspaceId } }))
+        ?.status,
+    ).toBe("WAITING");
+
+    await ctx
+      .auth(
+        request(http).post(
+          `/workspaces/${ctx.workspaceId}/tasks/${ctx.taskId}/blockers/${blockerId}/resolve`,
+        ),
+      )
+      .send({ resolution: "the key was added" })
+      .expect(200);
+
+    expect(
+      (await prisma.agentSession.findFirst({ where: { workspaceId: ctx.workspaceId } }))
+        ?.status,
+    ).toBe("RUNNING");
+  });
+
+
+  /**
+   * §6.6, §9.13 — ONE mechanism for one question.
+   *
+   * A session carried its own `lastHeartbeatAt` and an `isStaleAt`, and the
+   * machine never sent a session heartbeat: the field was set once, at
+   * creation, and never again. So the sessions probe declared every session
+   * older than its threshold silent — including one that had been working
+   * happily for an hour. The workspace's health screen showed a standing
+   * warning that meant nothing, which is worse than no warning at all,
+   * because it teaches a reader to ignore the row.
+   *
+   * A machine reports against a RUN. That is the signal of life, it is the
+   * one the sweep already judges, and a session now ends with its run. So
+   * there is nothing a second timer could tell anybody — and what the probe
+   * watches instead is the invariant that makes that true.
+   */
+  it("does not call a working session silent", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({ max: 1 })
+      .expect(200);
+
+    // An hour of honest work. The machine is reporting against the run, which
+    // is the only place a machine ever reports.
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.agentSession.updateMany({
+      where: { workspaceId: ctx.workspaceId },
+      data: { startedAt: anHourAgo, lastHeartbeatAt: anHourAgo },
+    });
+
+    const health = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/health`))
+      .expect(200);
+    const sessions = (health.body as { signals: { probe: string; level: string }[] })
+      .signals.find((signal) => signal.probe === "sessions");
+    expect(sessions?.level).toBe("HEALTHY");
+  });
+
+  /** What the probe watches instead: an instance outliving the work it was for. */
+  it("complains about a session still live after its run has ended", async () => {
+    const ctx = await setup();
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({ max: 1 })
+      .expect(200);
+
+    // The run ends behind the session's back — which is exactly the state the
+    // listener exists to prevent, so a probe that catches it is a check on
+    // that listener rather than a second way of asking the same thing.
+    await prisma.run.updateMany({
+      where: { workspaceId: ctx.workspaceId },
+      data: { status: "COMPLETED", finishedAt: new Date() },
+    });
+
+    const health = await ctx
+      .auth(request(http).get(`/workspaces/${ctx.workspaceId}/health`))
+      .expect(200);
+    const sessions = (health.body as { signals: { probe: string; level: string }[] })
+      .signals.find((signal) => signal.probe === "sessions");
+    expect(sessions?.level).not.toBe("HEALTHY");
+  });
+
+
+  /**
+   * §4.12 — the ceiling has to hold where orders are HANDED OUT, not only
+   * where they are created.
+   *
+   * Refusing at dispatch stops the ordinary path and nothing else. An order
+   * enqueued directly (`POST /runtime/commands` — a real route, meant for an
+   * operator) never passes that check, and two orders dispatched while the
+   * ceiling still allowed both sit PENDING until a machine takes them —
+   * together. The claim is the last moment before an agent actually starts,
+   * and the hub owns it, so that is where the ceiling has to be true.
+   *
+   * Skipped rather than failed: the order is not wrong, it is not its turn.
+   * It stays PENDING and the next claim, after something finishes, takes it.
+   */
+  it("does not hand out a second order for an agent already at its ceiling", async () => {
+    const ctx = await setup();
+
+    const second = (
+      await ctx
+        .auth(request(http).post(`/workspaces/${ctx.workspaceId}/tasks`))
+        .send({
+          goalId: ctx.goalId,
+          title: "Another",
+          acceptanceCriteria: ["c"],
+          assigneeType: "AGENT",
+          assigneeId: "a-1",
+          start: true,
+        })
+        .expect(201)
+    ).body.taskId as string;
+
+    /**
+     * Two orders reach the queue while the ceiling still allows both, and
+     * then the ceiling is lowered — which is the ordinary shape of the
+     * problem: a queue outlives the configuration that let it fill.
+     */
+    await ctx
+      .auth(request(http).patch(`/workspaces/${ctx.workspaceId}`))
+      .send({ settings: { automation: { sessionsPerAgent: 2 } } })
+      .expect(200);
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: ctx.taskId, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).post(`/workspaces/${ctx.workspaceId}/runtime/dispatch`))
+      .send({ taskId: second, provider: "claude" })
+      .expect(201);
+    await ctx
+      .auth(request(http).patch(`/workspaces/${ctx.workspaceId}`))
+      .send({ settings: { automation: { sessionsPerAgent: 1 } } })
+      .expect(200);
+
+    // Even asking for both at once, only one may go.
+    const claimed = await ctx
+      .auth(request(http).post(`/runtime/workers/${ctx.workerId}/commands/claim`))
+      .send({ max: 10 })
+      .expect(200);
+    expect((claimed.body as unknown[]).length).toBe(1);
+
+    const running = await prisma.agentSession.count({
+      where: { workspaceId: ctx.workspaceId, status: "RUNNING" },
+    });
+    expect(running).toBe(1);
+  });
+
 });
