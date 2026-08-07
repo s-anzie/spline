@@ -13,6 +13,7 @@ import {
 import { api, type RunView } from "@/lib/api";
 import { duration, humanise, money, since, stamp, tokens } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
+import { readable } from "@/lib/activity";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
@@ -186,10 +187,27 @@ export function RunDetail({ runId }: { runId: string }) {
   if (run.error || !run.data) return <Note>{run.error ?? "Not found"}</Note>;
   const view = run.data;
 
-  const elapsed =
+  /**
+   * How long the WORK took, not how long the row existed.
+   *
+   * This screen said "wall clock 16h 36m — start to finish" about a run whose
+   * only attempt took 54 seconds. Both numbers were true and the big one was
+   * a lie in effect: `finishedAt` is set when the verdict lands, so what was
+   * labelled "start to finish" was mostly a run sitting overnight waiting for
+   * somebody to press a button. The number a reader is looking for is the
+   * work.
+   */
+  const worked = view.attempts.reduce(
+    (total, attempt) => total + (attempt.durationMs ?? 0),
+    0,
+  );
+  const alive =
     view.startedAt && view.finishedAt
       ? new Date(view.finishedAt).getTime() - new Date(view.startedAt).getTime()
       : null;
+  /** The gap between finishing the work and somebody deciding about it. */
+  const waited = alive !== null && worked > 0 ? Math.max(0, alive - worked) : null;
+  const latest = view.attempts.at(-1);
 
   return (
     <>
@@ -197,8 +215,19 @@ export function RunDetail({ runId }: { runId: string }) {
       <PageHeader
         title={`Run #${view.attemptNumber}`}
         lead={
-          view.failureReason ??
-          "One order to execute a task, and every attempt made against it."
+          view.failureReason ?? (
+            <>
+              {latest?.provider ?? "no machine has taken this yet"}
+              {latest?.model ? ` · ${latest.model}` : ""} ·{" "}
+              {view.attempts.length} attempt{view.attempts.length === 1 ? "" : "s"} ·{" "}
+              <Link
+                href={routes.task(view.taskId)}
+                className="underline underline-offset-2"
+              >
+                the task
+              </Link>
+            </>
+          )
         }
         actions={
           <>
@@ -225,6 +254,11 @@ export function RunDetail({ runId }: { runId: string }) {
         </div>
       ) : null}
 
+      {/**
+       * Three numbers, and each one earns its place. "Attempts" was a fourth
+       * card reading 1 over the words "first time", which is a box spent on
+       * something the sentence above already says.
+       */}
       <StatRow>
         <Stat
           label="Spent"
@@ -234,10 +268,16 @@ export function RunDetail({ runId }: { runId: string }) {
           hint={`over ${view.attempts.length} attempt${view.attempts.length === 1 ? "" : "s"}`}
         />
         <Stat
-          label="Wall clock"
-          value={duration(elapsed)}
+          label="Worked"
+          value={worked > 0 ? duration(worked) : "—"}
           icon={Play}
-          hint={view.finishedAt ? "start to finish" : "still running"}
+          hint={
+            waited !== null && waited > 60_000
+              ? `then waited ${duration(waited)} for a verdict`
+              : view.finishedAt
+                ? "agent time, start to finish"
+                : "still going"
+          }
         />
         <Stat
           label="Tokens"
@@ -252,76 +292,24 @@ export function RunDetail({ runId }: { runId: string }) {
           icon={Play}
           hint="every attempt together"
         />
-        <Stat
-          label="Attempts"
-          value={view.attempts.length}
-          icon={RotateCcw}
-          tone={view.attempts.length > 1 ? "waiting" : "quiet"}
-          hint={view.attempts.length > 1 ? "it needed more than one" : "first time"}
-        />
       </StatRow>
 
-      <div className="mb-7 grid gap-6 lg:grid-cols-[1fr_18rem]">
-        <Section title="Attempts" count={view.attempts.length}>
-          {view.attempts.length === 0 ? (
-            <Empty icon={Play} title="No attempt yet">
-              This run was opened but no machine has begun. It is waiting on a
-              worker to claim its command.
-            </Empty>
-          ) : (
-            <Card className="scroll-x gap-0 overflow-hidden py-0 shadow-none">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="label">#</TableHead>
-                    <TableHead className="label">provider</TableHead>
-                    <TableHead className="label">model</TableHead>
-                    <TableHead className="label text-right">tokens</TableHead>
-                    <TableHead className="label text-right">cost</TableHead>
-                    <TableHead className="label text-right">took</TableHead>
-                    <TableHead className="label">outcome</TableHead>
-                    <TableHead className="label">session</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {view.attempts.map((attempt) => (
-                    <TableRow key={attempt.number}>
-                      <TableCell className="measure text-muted-foreground">
-                        {attempt.number}
-                      </TableCell>
-                      <TableCell className="font-medium">{attempt.provider}</TableCell>
-                      <TableCell className="measure text-muted-foreground text-xs">
-                        {attempt.model ?? "—"}
-                      </TableCell>
-                      <TableCell className="measure text-right">
-                        {tokens(attempt.tokenUsage)}
-                      </TableCell>
-                      <TableCell className="measure text-right">
-                        {money(attempt.cost)}
-                      </TableCell>
-                      <TableCell className="measure text-right">
-                        {duration(attempt.durationMs)}
-                      </TableCell>
-                      <TableCell>
-                        <Status value={attempt.outcome} />
-                      </TableCell>
-                      {/* §4.8 — what a resume would resume. Shown because it
-                          is the difference between continuing and starting
-                          over. */}
-                      <TableCell>
-                        <Id value={attempt.providerSessionId} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          )}
-        </Section>
+      {/**
+       * The story, full width, first.
+       *
+       * It used to live in an 18rem column beside a table of one row, and the
+       * grid it was in had three children in two columns — so the narrative
+       * got a fixed narrow strip it did not fit (timestamps overlapped the
+       * text), the table got a whole `1fr` for a single line, and the facts
+       * card landed in a second row leaving half the screen empty. What this
+       * page is ABOUT is what the agent did.
+       */}
+      <Trace attempts={view.attempts} />
 
-        <Trace attempts={view.attempts} />
+      {view.attempts.length > 1 ? <Attempts attempts={view.attempts} /> : null}
 
-        <Card className="h-fit gap-0 p-4 shadow-none">
+      <Section title="Where this came from">
+        <Card className="gap-0 p-4 shadow-none">
           <Facts
             items={[
               ["run", <Id key="run" value={view.runId} />],
@@ -336,6 +324,14 @@ export function RunDetail({ runId }: { runId: string }) {
                 </Link>,
               ],
               ["machine", <Id key="worker" value={view.workerId} />],
+              ...(latest?.providerSessionId
+                ? ([
+                    [
+                      "resumable session",
+                      <Id key="session" value={latest.providerSessionId} />,
+                    ],
+                  ] as [string, React.ReactNode][])
+                : []),
               ["started", stamp(view.startedAt).slice(0, 16)],
               [
                 "finished",
@@ -350,8 +346,61 @@ export function RunDetail({ runId }: { runId: string }) {
             ]}
           />
         </Card>
-      </div>
+      </Section>
     </>
+  );
+}
+
+/**
+ * §9.12 — the earlier tries, when there were any.
+ *
+ * Not shown at all for a single attempt: an eight-column table rendering one
+ * row is a table about nothing, and everything in it already sits in the
+ * header and the facts below. Several attempts is a different question —
+ * "why did the first one fail" — and that is what a comparison is for.
+ */
+function Attempts({ attempts }: { attempts: RunView["attempts"] }) {
+  return (
+    <Section title="Attempts" count={attempts.length}>
+      <Card className="scroll-x gap-0 overflow-hidden py-0 shadow-none">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="label">#</TableHead>
+              <TableHead className="label">provider</TableHead>
+              <TableHead className="label">model</TableHead>
+              <TableHead className="label text-right">tokens</TableHead>
+              <TableHead className="label text-right">cost</TableHead>
+              <TableHead className="label text-right">took</TableHead>
+              <TableHead className="label">outcome</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {attempts.map((attempt) => (
+              <TableRow key={attempt.number}>
+                <TableCell className="measure text-muted-foreground">
+                  {attempt.number}
+                </TableCell>
+                <TableCell className="font-medium">{attempt.provider}</TableCell>
+                <TableCell className="measure text-muted-foreground text-xs">
+                  {attempt.model ?? "—"}
+                </TableCell>
+                <TableCell className="measure text-right">
+                  {tokens(attempt.tokenUsage)}
+                </TableCell>
+                <TableCell className="measure text-right">{money(attempt.cost)}</TableCell>
+                <TableCell className="measure text-right">
+                  {duration(attempt.durationMs)}
+                </TableCell>
+                <TableCell>
+                  <Status value={attempt.outcome} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+    </Section>
   );
 }
 
@@ -368,7 +417,15 @@ export function RunDetail({ runId }: { runId: string }) {
  */
 function Trace({ attempts }: { attempts: RunView["attempts"] }) {
   const latest = attempts.at(-1);
-  const trace = latest?.trace ?? [];
+  /**
+   * The steps worth reading. `readable` returns null for machinery nobody
+   * outside this process needs to see happen — a run that spent three calls
+   * looking its own tools up should not spend three lines of its story
+   * saying so. Falling back to the raw text let them straight back in.
+   */
+  const trace = (latest?.trace ?? []).filter(
+    (entry) => entry.kind !== "used" || readable(entry.text) !== null,
+  );
 
   if (trace.length === 0) {
     return (
@@ -385,45 +442,58 @@ function Trace({ attempts }: { attempts: RunView["attempts"] }) {
   return (
     <Section title="What it did" count={trace.length}>
       <Card className="gap-0 overflow-hidden py-0 shadow-none">
-        <div className="divide-border/60 max-h-[28rem] divide-y overflow-y-auto">
-          {trace.map((entry, at) => (
-            <div
-              key={`${entry.at}-${at}`}
-              className="flex items-start gap-3 px-4 py-2.5"
-            >
-              <span
-                aria-hidden
-                className="mt-1 w-0.5 shrink-0 self-stretch rounded-full"
-                style={{
-                  background:
-                    entry.kind === "used"
-                      ? "var(--live)"
-                      : entry.kind === "result"
-                        ? "var(--settled)"
-                        : "var(--muted-foreground)",
-                }}
-              />
-              <span className="label text-muted-foreground w-14 shrink-0 pt-0.5">
-                {entry.kind === "used" ? "tool" : entry.kind === "result" ? "end" : "said"}
-              </span>
-              <span
-                className={
-                  entry.kind === "used"
-                    ? "measure min-w-0 flex-1 text-xs leading-relaxed"
-                    : "min-w-0 flex-1 text-sm leading-relaxed"
-                }
+        {/**
+         * No `max-h` and no inner scroll. A run's story is the reason this
+         * page exists; putting it in a 28rem box with its own scrollbar meant
+         * six of seventeen steps were visible and the rest needed a second
+         * scroll inside the first.
+         */}
+        <ul className="divide-border/60 divide-y">
+          {trace.map((entry, at) => {
+            const said = entry.kind !== "used";
+            /**
+             * `readable` turns `mcp__spline__acquire_lock` into "took a lock"
+             * and an 84-character temporary path into the file's name — the
+             * same translation the conversation uses, so the two accounts of
+             * one run do not read as two different systems.
+             */
+            const text = said ? entry.text : readable(entry.text);
+            return (
+              <li
+                key={`${entry.at}-${at}`}
+                className="flex items-baseline gap-4 px-4 py-2.5"
               >
-                {entry.text}
-              </span>
-              <span
-                className="measure text-muted-foreground/60 shrink-0 text-[0.6875rem]"
-                title={stamp(entry.at)}
-              >
-                {entry.at.slice(11, 19)}
-              </span>
-            </div>
-          ))}
-        </div>
+                {/**
+                 * The time first and fixed. It used to sit last with nothing
+                 * reserving its width, so it overlapped whatever the step
+                 * said — `mcp__spline__synchronize` and `45:28` printed on
+                 * top of each other.
+                 */}
+                <span
+                  className="measure text-muted-foreground/60 w-14 shrink-0 text-[0.6875rem] tabular-nums"
+                  title={stamp(entry.at)}
+                >
+                  {entry.at.slice(11, 19)}
+                </span>
+                <span
+                  aria-hidden
+                  className={`mt-[0.35rem] size-1.5 shrink-0 rounded-full ${
+                    said ? "bg-muted-foreground/50" : "bg-live/70"
+                  }`}
+                />
+                <span
+                  className={
+                    said
+                      ? "min-w-0 flex-1 text-sm leading-relaxed"
+                      : "text-muted-foreground min-w-0 flex-1 text-sm"
+                  }
+                >
+                  {text}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
     </Section>
   );

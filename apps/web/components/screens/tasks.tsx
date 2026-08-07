@@ -197,9 +197,16 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         actions={<Status value={view.status} />}
       />
 
-      {/* §20.6 — the hub says which moves exist; the screen offers those. */}
+      {/**
+       * §20.6 — the hub says which moves exist; the screen offers those.
+       *
+       * Labelled, because three bare words under a title read as tabs or
+       * filters rather than as things that will change the task the moment
+       * they are pressed.
+       */}
       {view.allowedStatusTargets.length > 0 || view.status === "VALIDATING" ? (
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="label text-muted-foreground mr-1">Move it to</span>
           {view.allowedStatusTargets.map((target) => (
             <Button
               key={target}
@@ -244,30 +251,52 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         </div>
       ) : null}
 
-      <div className="mb-7 grid gap-6 lg:grid-cols-[1fr_18rem]">
-        <Section title="Done means">
-          {view.acceptanceCriteria.length > 0 ? (
-            <Card className="gap-0 p-5 shadow-none">
-              <ol className="space-y-2.5">
-                {view.acceptanceCriteria.map((criterion, index) => (
-                  <li key={index} className="flex gap-3 text-sm leading-relaxed">
-                    <span className="measure text-muted-foreground pt-0.5 text-xs">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span>{criterion}</span>
-                  </li>
-                ))}
-              </ol>
-            </Card>
-          ) : (
-            <Empty icon={CircleCheck} title="No acceptance criteria">
-              Nothing prevents this task from running — but nobody can say
-              whether it succeeded.
-            </Empty>
-          )}
-        </Section>
+      <Waiting task={view} workspaceId={workspaceId} onDone={reload} />
 
-        <Card className="h-fit gap-0 p-4 shadow-none">
+      {/**
+       * Full width, and the facts moved to the foot of the page.
+       *
+       * These two lived side by side in a two-column grid, and a grid row is
+       * as tall as its tallest cell — so one line of acceptance criteria sat
+       * in a panel two hundred pixels tall, held open by a facts card beside
+       * it. `items-start` stops the stretching but not the reserving; the
+       * only way a short thing stops paying for a tall one is not to put them
+       * in the same row.
+       */}
+      <Section title="Done means">
+        {view.acceptanceCriteria.length > 0 ? (
+          <Card className="gap-0 p-5 shadow-none">
+            <ol className="space-y-2.5">
+              {view.acceptanceCriteria.map((criterion, index) => (
+                <li key={index} className="flex gap-3 text-sm leading-relaxed">
+                  <span className="measure text-muted-foreground pt-0.5 text-xs">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span>{criterion}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+        ) : (
+          <Empty icon={CircleCheck} title="No acceptance criteria">
+            Nothing prevents this task from running — but nobody can say
+            whether it succeeded.
+          </Empty>
+        )}
+      </Section>
+
+      <Blockers task={view} workspaceId={workspaceId} onDone={reload} />
+
+      <Dispatch task={view} workspaceId={workspaceId} onDone={reload} />
+
+      <Delegation
+        task={view}
+        threads={(threads.data ?? []).filter((thread) => thread.taskId === view.id)}
+        onDone={reload}
+      />
+
+      <Section title="Where this sits">
+        <Card className="gap-0 p-4 shadow-none">
           <Facts
             items={[
               ["id", <Id key="id" value={view.id} />],
@@ -280,6 +309,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 "goal",
                 view.goalId ? (
                   <Link
+                    key="goal"
                     href={routes.goal(view.goalId)}
                     className="underline underline-offset-2"
                   >
@@ -295,17 +325,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             ]}
           />
         </Card>
-      </div>
-
-      <Blockers task={view} workspaceId={workspaceId} onDone={reload} />
-
-      <Delegation
-        task={view}
-        threads={(threads.data ?? []).filter((thread) => thread.taskId === view.id)}
-        onDone={reload}
-      />
-
-      <Dispatch task={view} workspaceId={workspaceId} onDone={reload} />
+      </Section>
 
       <Section title="Runs" count={runs.data?.length}>
         {runs.data && runs.data.length > 0 ? (
@@ -332,6 +352,148 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         )}
       </Section>
     </>
+  );
+}
+
+/**
+ * §11 — what this task is waiting on, and the means to end the wait.
+ *
+ * The screen said nothing at all about proof. A task could sit in VALIDATING
+ * for a day with an agent's request outstanding, and the one page devoted to
+ * that task did not mention it — so somebody arriving from a queue entry that
+ * said "this needs you" found a status word and no verdict to give. Being
+ * asked to intervene without being given the means is worse than not being
+ * asked.
+ *
+ * First on the page, above the criteria and the facts, because a task that is
+ * waiting on somebody is waiting on the person reading this.
+ */
+function Waiting({
+  task,
+  workspaceId,
+  onDone,
+}: {
+  task: TaskView;
+  workspaceId: string;
+  onDone: () => void;
+}) {
+  const proof = useResource(
+    () => api.validations.list(workspaceId, { taskId: task.id }),
+    [workspaceId, task.id],
+    { pollMs: 10_000 },
+  );
+  const outstanding = (proof.data ?? []).filter(
+    (entry) => entry.status === "PENDING" || entry.status === "RUNNING",
+  );
+  const settled = (proof.data ?? []).filter(
+    (entry) => entry.status !== "PENDING" && entry.status !== "RUNNING",
+  );
+
+  if (outstanding.length === 0 && settled.length === 0) {
+    return null;
+  }
+
+  return (
+    <Section title="Proof" count={proof.data?.length}>
+      <Panel>
+        {outstanding.map((entry) => (
+          <Row key={entry.id} className="py-3">
+            <Stripe tone="waiting" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm">
+                {humanise(entry.type)}
+                {entry.mandatory ? "" : " (optional)"}
+              </p>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                asked for by {entry.requestedBy.type.toLowerCase()}{" "}
+                {entry.requestedBy.id.slice(0, 8)} · {since(entry.createdAt)}
+              </p>
+            </div>
+            <Verdict validationId={entry.id} workspaceId={workspaceId} onDone={onDone} />
+          </Row>
+        ))}
+        {settled.map((entry) => (
+          <Row key={entry.id} className="py-3">
+            <Stripe tone={entry.satisfied ? "settled" : "signal"} />
+            <span className="flex-1 text-sm">{humanise(entry.type)}</span>
+            {entry.output ? (
+              <span className="text-muted-foreground max-w-md truncate text-xs">
+                {entry.output}
+              </span>
+            ) : null}
+            <Status value={entry.status} />
+          </Row>
+        ))}
+      </Panel>
+    </Section>
+  );
+}
+
+/**
+ * Pass or send back, in one press — the same two words the queue uses, so
+ * the verdict reads the same wherever somebody is standing when they give it.
+ */
+function Verdict({
+  validationId,
+  workspaceId,
+  onDone,
+}: {
+  validationId: string;
+  workspaceId: string;
+  onDone: () => void;
+}) {
+  const [refusing, setRefusing] = useState(false);
+  const [why, setWhy] = useState("");
+  const { run, pending, error } = useAction();
+
+  const pronounce = (action: "SUCCEEDED" | "FAILED", output?: string) =>
+    void run(async () => {
+      const started = await api.validations.settle(workspaceId, validationId, "START");
+      // Already RUNNING is somebody having pressed first, or this very click
+      // retried. Only a server fault is worth stopping for.
+      if (!started.ok && started.error.status >= 500) {
+        return started;
+      }
+      return api.validations.settle(workspaceId, validationId, action, output);
+    }, onDone);
+
+  if (refusing) {
+    return (
+      <div className="flex flex-1 flex-wrap items-end gap-2">
+        <Field
+          label="Why"
+          value={why}
+          onChange={setWhy}
+          placeholder="What is wrong with it?"
+          className="max-w-md flex-1"
+        />
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={pending || !why.trim()}
+          onClick={() => pronounce("FAILED", why.trim())}
+        >
+          {pending ? "Sending…" : "Send it back"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setRefusing(false)}>
+          Cancel
+        </Button>
+        {error ? <Note>{error}</Note> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <Button size="sm" disabled={pending} onClick={() => pronounce("SUCCEEDED")}>
+        <CircleCheck />
+        {pending ? "Approving…" : "It passes"}
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => setRefusing(true)}>
+        Send it back
+      </Button>
+      {error ? <Note>{error}</Note> : null}
+    </div>
   );
 }
 
@@ -465,6 +627,16 @@ function Dispatch({
 
   const usable = (providers.data ?? []).filter((entry) => entry.effectiveAvailable);
   const attached = (workers.data ?? []).filter((worker) => !worker.stale);
+  /**
+   * Machines that are here but quiet, told apart from none at all.
+   *
+   * This screen said "No machine is reporting to this workspace. Pair one
+   * from Machines first." to somebody whose machine was paired, attached and
+   * simply between heartbeats — advice for a problem they did not have, about
+   * a machine that was right there. A state that contradicts what the reader
+   * knows teaches them to distrust the screen.
+   */
+  const silent = (workers.data ?? []).filter((worker) => worker.stale);
 
   return (
     <Section title="Hand it to a machine">
@@ -473,6 +645,14 @@ function Dispatch({
           <p className="text-muted-foreground text-sm">
             No provider is available right now. One that has hit its quota comes
             back on its own — the hub records until when.
+          </p>
+        ) : attached.length === 0 && silent.length > 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {silent.length === 1
+              ? `${silent[0]?.hostname ?? "A machine"} is attached here but has stopped reporting.`
+              : `${silent.length} machines are attached here and none is reporting.`}{" "}
+            Work handed over now waits until one comes back — check it is still
+            running.
           </p>
         ) : attached.length === 0 ? (
           <p className="text-muted-foreground text-sm">
@@ -633,11 +813,20 @@ function Delegation({
         </Card>
       ) : (
         <div className={threads.length > 0 ? "mt-3" : undefined}>
+          {/**
+           * One line, not an empty state.
+           *
+           * `Empty` is a two-hundred-pixel panel with an icon in the middle,
+           * and it earns that when a screen has nothing on it. Here it was
+           * announcing the absence of an optional thing on a page full of
+           * real content — a large box whose message is "there is nothing
+           * here", between two sections that had something.
+           */}
           {threads.length === 0 ? (
-            <Empty icon={MessagesSquare} title="Assigned, but nobody is waiting">
-              Open a thread to be told what came of it, rather than checking
-              back yourself.
-            </Empty>
+            <p className="text-muted-foreground text-sm">
+              Nobody is being told what comes of this. Open a thread and the
+              outcome is delivered to you instead of you checking back.
+            </p>
           ) : null}
           <Button
             variant="outline"
