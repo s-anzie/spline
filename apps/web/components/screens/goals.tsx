@@ -21,6 +21,7 @@ import {
   PageHeader,
   Pager,
   Panel,
+  Prose,
   Row,
   Section,
   Stat,
@@ -157,11 +158,17 @@ export function GoalDetail({ goalId }: { goalId: string }) {
   return (
     <>
       <BackTo label="Goals" href={routes.goals} />
-      <PageHeader
-        title={view.title}
-        lead={view.description ?? undefined}
-        actions={<Status value={view.status} />}
-      />
+      <PageHeader title={view.title} actions={<Status value={view.status} />} />
+
+      {/**
+       * Content, not a subtitle — see the note on the task's own description.
+       * A goal stated by a manager comes with its reasoning laid out in
+       * lines, and both `max-w-prose` and HTML's whitespace collapsing were
+       * quietly undoing that.
+       */}
+      {view.description ? (
+        <Prose text={view.description} />
+      ) : null}
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Meter value={view.progress} />

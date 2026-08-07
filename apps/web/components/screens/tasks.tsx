@@ -32,6 +32,7 @@ import {
   Pager,
   Panel,
   Picker,
+  Prose,
   Row,
   Section,
   Segmented,
@@ -191,11 +192,25 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   return (
     <>
       <BackTo label="Tasks" href={routes.tasks} />
-      <PageHeader
-        title={view.title}
-        lead={view.description ?? undefined}
-        actions={<Status value={view.status} />}
-      />
+      <PageHeader title={view.title} actions={<Status value={view.status} />} />
+
+      {/**
+       * The description is CONTENT, not a subtitle, and it is treated as one.
+       *
+       * As a `lead` it inherited `max-w-prose` — a reading measure, right for
+       * the one or two lines a lead usually is, and wrong for what a manager
+       * actually writes: eight numbered points and a list of constraints,
+       * squeezed into a column half the page wide with the other half empty.
+       *
+       * `whitespace-pre-wrap` is the half that matters more. The description
+       * arrives with the manager's own line breaks — a numbered list, one item
+       * per line — and HTML collapses every one of them, so a structured brief
+       * reached the screen as a single run-on paragraph. Nobody wrote it that
+       * way.
+       */}
+      {view.description ? (
+        <Prose text={view.description} />
+      ) : null}
 
       {/**
        * §20.6 — the hub says which moves exist; the screen offers those.

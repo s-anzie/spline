@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { emphasise } from "@/lib/emphasis";
 import { humanise } from "@/lib/format";
 import { toneOf, type Tone } from "@/lib/tone";
 import { PAGE_SIZES, type Paged } from "@/lib/paging";
@@ -438,6 +439,80 @@ export function Empty({
  * this prints the hub's own words rather than replacing them with "something
  * went wrong", the sentence that teaches people to stop reading.
  */
+/**
+ * A long piece of writing somebody else produced — a task's brief, a goal's
+ * reasoning — shown whole or shown short.
+ *
+ * Three things were wrong with how these arrived and each one hid the next.
+ *
+ * They were passed as a page `lead`, which carries `max-w-prose`: a reading
+ * measure, right for the line or two a lead usually is, and wrong for eight
+ * numbered points — so half the screen sat empty beside a tall narrow column.
+ *
+ * They lost their line breaks to HTML's whitespace collapsing, so a brief
+ * written as a list reached the screen as one paragraph. `whitespace-pre-wrap`
+ * gives those back — when there are any. A manager that wrote its brief as a
+ * single run-on sentence has none to give back, and that is the common case.
+ *
+ * Which leaves length. Twelve lines of somebody else's instructions between
+ * the title and everything a reader came to do is a wall, and it is on every
+ * visit, for ever. So it folds — and the toggle appears only when there is
+ * something folded, because a "show more" under three lines is a control that
+ * teaches people it does nothing.
+ */
+export function Prose({ text, lines = 5 }: { text: string; lines?: number }) {
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const body = useRef<HTMLParagraphElement>(null);
+
+  /**
+   * Measured, never guessed from a character count: how much fits depends on
+   * the width, the font and the line breaks, and a threshold in characters is
+   * wrong on half the screens it meets. Only while clamped — once open, the
+   * element grows to fit and would report that nothing overflows.
+   */
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (!element || open) {
+      return;
+    }
+    setLong(element.scrollHeight > element.clientHeight + 1);
+  }, [text, lines, open]);
+
+  return (
+    <div className="mb-6">
+      <p
+        ref={body}
+        className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap"
+        style={
+          open
+            ? undefined
+            : {
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: lines,
+                overflow: "hidden",
+              }
+        }
+      >
+        {emphasise(text)}
+      </p>
+      {long ? (
+        <button
+          type="button"
+          onClick={() => setOpen((was) => !was)}
+          className="text-muted-foreground hover:text-foreground mt-1.5 inline-flex items-center gap-1 text-xs transition-colors"
+        >
+          {open ? "Show less" : "Show all of it"}
+          <ChevronDown
+            className={`size-3 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function Note({
   children,
   tone = "signal",
