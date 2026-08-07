@@ -318,8 +318,17 @@ export function RunDetail({ runId }: { runId: string }) {
        * takes the narrow, and stays put while the story moves.
        */}
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[1fr_18rem]">
-        <div className="min-h-0 overflow-y-auto pr-1">
-          {view.attempts.length > 1 ? <Attempts attempts={view.attempts} /> : null}
+        {/**
+         * The heading stays; only the steps move. A title that scrolls away
+         * leaves a list of timestamps with nothing saying what they are —
+         * which is the same problem as the page scrolling, one level in.
+         */}
+        <div className="flex min-h-0 flex-col">
+          {view.attempts.length > 1 ? (
+            <div className="shrink-0">
+              <Attempts attempts={view.attempts} />
+            </div>
+          ) : null}
           <Trace attempts={view.attempts} />
         </div>
 
@@ -465,15 +474,21 @@ function Trace({ attempts }: { attempts: RunView["attempts"] }) {
   }
 
   return (
-    <Section title="What it did" count={trace.length}>
-      <Card className="gap-0 overflow-hidden py-0 shadow-none">
-        {/**
-         * No `max-h` and no inner scroll. A run's story is the reason this
-         * page exists; putting it in a 28rem box with its own scrollbar meant
-         * six of seventeen steps were visible and the rest needed a second
-         * scroll inside the first.
-         */}
-        <ul className="divide-border/60 divide-y">
+    /**
+     * Written out rather than wrapped in `Section`, because this one has to
+     * be a flex column: a fixed heading, then a body that takes what is left
+     * and scrolls inside it. `Section` is built for a page that scrolls as a
+     * whole, which is exactly what this screen stopped doing.
+     */
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2.5 flex shrink-0 items-center gap-2">
+        <h2 className="label">What it did</h2>
+        <span className="measure bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[0.625rem] normal-case">
+          {trace.length}
+        </span>
+      </div>
+      <Card className="min-h-0 flex-1 gap-0 overflow-hidden py-0 shadow-none">
+        <ul className="divide-border/60 min-h-0 flex-1 divide-y overflow-y-auto">
           {trace.map((entry, at) => {
             const said = entry.kind !== "used";
             /**
@@ -520,6 +535,6 @@ function Trace({ attempts }: { attempts: RunView["attempts"] }) {
           })}
         </ul>
       </Card>
-    </Section>
+    </section>
   );
 }
