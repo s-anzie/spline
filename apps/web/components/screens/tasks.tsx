@@ -251,106 +251,130 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         </div>
       ) : null}
 
-      <Waiting task={view} workspaceId={workspaceId} onDone={reload} />
-
       {/**
-       * Full width, and the facts moved to the foot of the page.
+       * Two columns: what is being decided on the left, what it belongs to on
+       * the right.
        *
-       * These two lived side by side in a two-column grid, and a grid row is
-       * as tall as its tallest cell — so one line of acceptance criteria sat
-       * in a panel two hundred pixels tall, held open by a facts card beside
-       * it. `items-start` stops the stretching but not the reserving; the
-       * only way a short thing stops paying for a tall one is not to put them
-       * in the same row.
+       * `items-start` so neither column is stretched by the other, and the
+       * pairing is deliberate — the left holds everything somebody acts on
+       * (the proof, the criteria, the blockers, handing it over), the right
+       * holds what this task IS and what has already happened to it. A reader
+       * scanning for "did anything run" no longer has to reach the bottom of
+       * the page to find out.
        */}
-      <Section title="Done means">
-        {view.acceptanceCriteria.length > 0 ? (
-          <Card className="gap-0 p-5 shadow-none">
-            <ol className="space-y-2.5">
-              {view.acceptanceCriteria.map((criterion, index) => (
-                <li key={index} className="flex gap-3 text-sm leading-relaxed">
-                  <span className="measure text-muted-foreground pt-0.5 text-xs">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>{criterion}</span>
-                </li>
-              ))}
-            </ol>
-          </Card>
-        ) : (
-          <Empty icon={CircleCheck} title="No acceptance criteria">
-            Nothing prevents this task from running — but nobody can say
-            whether it succeeded.
-          </Empty>
-        )}
-      </Section>
+      <div className="grid items-start gap-x-6 lg:grid-cols-[1fr_20rem]">
+        <div>
+          <Waiting task={view} workspaceId={workspaceId} onDone={reload} />
 
-      <Blockers task={view} workspaceId={workspaceId} onDone={reload} />
+          <Section title="Done means">
+            {view.acceptanceCriteria.length > 0 ? (
+              <Card className="gap-0 p-5 shadow-none">
+                <ol className="space-y-2.5">
+                  {view.acceptanceCriteria.map((criterion, index) => (
+                    <li key={index} className="flex gap-3 text-sm leading-relaxed">
+                      <span className="measure text-muted-foreground pt-0.5 text-xs">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span>{criterion}</span>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            ) : (
+              <Empty icon={CircleCheck} title="No acceptance criteria">
+                Nothing prevents this task from running — but nobody can say
+                whether it succeeded.
+              </Empty>
+            )}
+          </Section>
 
-      <Dispatch task={view} workspaceId={workspaceId} onDone={reload} />
+          <Blockers task={view} workspaceId={workspaceId} onDone={reload} />
 
-      <Delegation
-        task={view}
-        threads={(threads.data ?? []).filter((thread) => thread.taskId === view.id)}
-        onDone={reload}
-      />
+          <Dispatch task={view} workspaceId={workspaceId} onDone={reload} />
 
-      <Section title="Where this sits">
-        <Card className="gap-0 p-4 shadow-none">
-          <Facts
-            items={[
-              ["id", <Id key="id" value={view.id} />],
-              [
-                "assignee",
-                `${view.assignee.type.toLowerCase()} ${view.assignee.id.slice(0, 8)}`,
-              ],
-              ["priority", humanise(view.priority)],
-              [
-                "goal",
-                view.goalId ? (
-                  <Link
-                    key="goal"
-                    href={routes.goal(view.goalId)}
-                    className="underline underline-offset-2"
-                  >
-                    {view.goalId.slice(0, 8)}
-                  </Link>
-                ) : (
-                  "—"
-                ),
-              ],
-              ["estimated", money(view.estimatedCost)],
-              ["created", stamp(view.createdAt).slice(0, 16)],
-              ["updated", since(view.updatedAt)],
-            ]}
+          <Delegation
+            task={view}
+            threads={(threads.data ?? []).filter((thread) => thread.taskId === view.id)}
+            onDone={reload}
           />
-        </Card>
-      </Section>
+        </div>
 
-      <Section title="Runs" count={runs.data?.length}>
-        {runs.data && runs.data.length > 0 ? (
-          <Panel>
-            {runs.data.map((entry) => (
-              <Row key={entry.runId} href={routes.run(entry.runId)}>
-                <Stripe tone={toneOf(entry.status)} live={entry.status === "RUNNING"} />
-                <span className="measure text-muted-foreground text-xs">
-                  #{entry.attemptNumber}
-                </span>
-                <span className="flex-1 text-sm">
-                  {entry.attempts.map((attempt) => attempt.provider).join(", ") ||
-                    "no attempt yet"}
-                </span>
-                <Status value={entry.status} />
-                <span className="measure text-muted-foreground w-16 text-right text-xs">
-                  {since(entry.startedAt)}
-                </span>
-              </Row>
-            ))}
-          </Panel>
-        ) : (
-          <Empty icon={Play}>This task has never run.</Empty>
-        )}
-      </Section>
+        <div>
+          <Section title="Where this sits">
+            <Card className="gap-0 p-4 shadow-none">
+              <Facts
+                items={[
+                  ["id", <Id key="id" value={view.id} />],
+                  [
+                    "assignee",
+                    `${view.assignee.type.toLowerCase()} ${view.assignee.id.slice(0, 8)}`,
+                  ],
+                  ["priority", humanise(view.priority)],
+                  [
+                    "goal",
+                    view.goalId ? (
+                      <Link
+                        key="goal"
+                        href={routes.goal(view.goalId)}
+                        className="underline underline-offset-2"
+                      >
+                        {view.goalId.slice(0, 8)}
+                      </Link>
+                    ) : (
+                      "—"
+                    ),
+                  ],
+                  ["estimated", money(view.estimatedCost)],
+                  ["created", stamp(view.createdAt).slice(0, 16)],
+                  ["updated", since(view.updatedAt)],
+                ]}
+              />
+            </Card>
+          </Section>
+
+          <Section title="Runs" count={runs.data?.length}>
+            {runs.data && runs.data.length > 0 ? (
+              <Panel>
+                {runs.data.map((entry) => (
+                  <Row key={entry.runId} href={routes.run(entry.runId)} className="py-2.5">
+                    <Stripe
+                      tone={toneOf(entry.status)}
+                      live={entry.status === "RUNNING"}
+                    />
+                    {/*
+                     * Two lines rather than one, because this column is
+                     * twenty rem wide: a run's number, provider, state and
+                     * age laid out in a row would truncate the only part
+                     * anybody reads.
+                     */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="measure text-muted-foreground text-xs">
+                          #{entry.attemptNumber}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {entry.attempts.map((attempt) => attempt.provider).join(", ") ||
+                            "no attempt yet"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <Status value={entry.status} />
+                        <span className="measure text-muted-foreground text-xs">
+                          {since(entry.startedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </Row>
+                ))}
+              </Panel>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                This task has never run.
+              </p>
+            )}
+          </Section>
+        </div>
+      </div>
     </>
   );
 }
