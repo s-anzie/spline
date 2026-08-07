@@ -25,6 +25,7 @@ import {
   ResolveCommandSecretsUseCase,
 } from "./application/command.use-cases";
 import { AutoDispatchListener } from "./application/auto-dispatch.listener";
+import { EndSessionWithRunListener } from "./application/end-session-with-run.listener";
 import { RetryOnOtherProviderListener } from "./application/retry-on-other-provider.listener";
 import { DispatchTaskUseCase } from "./application/dispatch-task.use-case";
 import { CommandHealthProbe } from "./infrastructure/command-health.probe";
@@ -81,6 +82,7 @@ import {
     ClaimEnrolmentUseCase,
     DispatchTaskUseCase,
     AutoDispatchListener,
+    EndSessionWithRunListener,
     RetryOnOtherProviderListener,
     RegisterWorkerUseCase,
     AttachWorkerUseCase,

@@ -126,6 +126,11 @@ export class PrismaSessionStore implements SessionStore {
       where: {
         workspaceId: filter.workspaceId,
         ...(filter.workerId && { workerId: filter.workerId }),
+        ...(filter.taskId && { taskId: filter.taskId }),
+        ...(filter.agent && {
+          agentType: filter.agent.type,
+          agentId: filter.agent.actorId,
+        }),
         ...(filter.liveOnly && { status: { notIn: ["STOPPED", "CRASHED"] } }),
       },
       orderBy: { startedAt: "desc" },

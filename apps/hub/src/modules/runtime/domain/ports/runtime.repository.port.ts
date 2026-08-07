@@ -1,3 +1,4 @@
+import { ActorRef } from "../../../identity/domain/actor";
 import { AgentSession } from "../agent-session";
 import { RuntimeCommand } from "../runtime-command";
 import { ProviderProfile } from "../provider-profile";
@@ -23,6 +24,22 @@ export interface ListSessionsFilter {
   /** Mandatory (§4.2): a session belongs to exactly one workspace. */
   workspaceId: string;
   workerId?: string;
+  /**
+   * §4.12 — the task this instance was opened for.
+   *
+   * Needed to end a session whose run died without anybody reporting: the
+   * only thing the fact carries is the task, because the machine that held
+   * the order is exactly the thing that stopped answering.
+   */
+  taskId?: string;
+  /**
+   * §17.7 — whose instance this is.
+   *
+   * A per-agent ceiling is counted with this: "how many instances of this
+   * agent are live here". Without it there was no way to ask, and therefore
+   * no way to cap.
+   */
+  agent?: ActorRef;
   liveOnly?: boolean;
   limit?: number;
 }

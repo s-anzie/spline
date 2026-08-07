@@ -556,6 +556,8 @@ function Automation({ workspaceId }: { workspaceId: string }) {
   const on = current.automatic === true;
   const concurrent = typeof current.concurrentRuns === "number" ? current.concurrentRuns : 3;
   const perDay = typeof current.runsPerDay === "number" ? current.runsPerDay : 20;
+  const perAgent =
+    typeof current.sessionsPerAgent === "number" ? current.sessionsPerAgent : 1;
 
   /**
    * The whole bag goes back, with only this key changed. A settings object is
@@ -621,6 +623,29 @@ function Automation({ workspaceId }: { workspaceId: string }) {
               <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
                 Past this the hub stops starting things and waits for you. It is
                 what a misread instruction costs before somebody notices.
+              </p>
+            </div>
+            {/**
+             * §4.12 — a different ceiling from the two above, and the
+             * difference is what it protects. Those protect the machine and
+             * the wallet; this one protects the WORK. Two instances of one
+             * agent in one checkout queue on each other's locks, and what
+             * they lose to contention is more than the parallelism wins.
+             */}
+            <div>
+              <p className="label mb-1.5">Per agent, at once</p>
+              <Segmented
+                value={String(perAgent)}
+                onChange={(next: string) => save({ sessionsPerAgent: Number(next) })}
+                options={["1", "2", "3", "5"].map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
+              <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                How many instances of the same agent may work at the same time.
+                Two of them in one project queue on each other&apos;s locks — they
+                spend more waiting than they gain by being two.
               </p>
             </div>
           </div>

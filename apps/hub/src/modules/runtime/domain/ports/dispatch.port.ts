@@ -190,6 +190,8 @@ export interface AutomationPolicy {
     automatic: boolean;
     concurrentRuns: number;
     runsPerDay: number;
+    /** §4.12 — how many instances of ONE agent may be live here at once. */
+    sessionsPerAgent: number;
   }>;
 }
 

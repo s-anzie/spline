@@ -703,7 +703,12 @@ export class WorkspaceRuntimeController {
     });
     if (result.isFailure) {
       throw toHttpException(result.error, {
-        conflicts: ["TaskNotDispatchableError", "NoCapableWorkerError"],
+        conflicts: [
+          "TaskNotDispatchableError",
+          "NoCapableWorkerError",
+          // §4.12 — nothing is wrong with the request; it is not the moment.
+          "AgentAlreadyWorkingError",
+        ],
         forbidden: ["WorkerNotAttachedError"],
       });
     }

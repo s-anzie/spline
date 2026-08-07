@@ -33,6 +33,23 @@ export interface AutomationLimits {
    * protecting from, and it is countable from what exists.
    */
   runsPerDay: number;
+  /**
+   * §4.12, §17.7 — how many instances of ONE agent may be live at once.
+   *
+   * A different question from `concurrentRuns`, and that is why it is its own
+   * number rather than a share of it: the workspace ceiling protects the
+   * machine and the wallet, this one protects the WORK. Three runs at once is
+   * reasonable; three instances of the same agent in the same checkout is
+   * three agents queueing on each other's locks, and what they lose to
+   * contention is more than the parallelism wins.
+   *
+   * One by default, which is what "an agent" means to most people reading the
+   * screen. Raising it is deliberate.
+   *
+   * The question could not be asked at all until sessions existed: nothing
+   * recorded that an agent HAD an instance.
+   */
+  sessionsPerAgent: number;
 }
 
 export const AUTOMATION_DEFAULTS = {
@@ -43,8 +60,10 @@ export const AUTOMATION_DEFAULTS = {
    * write a number that means "no limit" while looking like one — which is
    * what 1e9 in a JSON field is.
    */
+  sessionsPerAgent: 1,
   maxConcurrentRuns: 50,
   maxRunsPerDay: 500,
+  maxSessionsPerAgent: 10,
 } as const;
 
 /**
@@ -75,13 +94,19 @@ export function automationOf(settings: WorkspaceSettings): AutomationLimits {
       AUTOMATION_DEFAULTS.runsPerDay,
       AUTOMATION_DEFAULTS.maxRunsPerDay,
     ),
+    sessionsPerAgent: bounded(
+      entry.sessionsPerAgent,
+      AUTOMATION_DEFAULTS.sessionsPerAgent,
+      AUTOMATION_DEFAULTS.maxSessionsPerAgent,
+    ),
   };
 }
 
-function defaults(): { concurrentRuns: number; runsPerDay: number } {
+function defaults(): Omit<AutomationLimits, "automatic"> {
   return {
     concurrentRuns: AUTOMATION_DEFAULTS.concurrentRuns,
     runsPerDay: AUTOMATION_DEFAULTS.runsPerDay,
+    sessionsPerAgent: AUTOMATION_DEFAULTS.sessionsPerAgent,
   };
 }
 

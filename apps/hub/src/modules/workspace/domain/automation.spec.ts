@@ -78,3 +78,41 @@ describe("automationOf", () => {
     expect(automationOf({ automation: { automatic: true } }).automatic).toBe(true);
   });
 });
+
+/**
+ * §4.12, §17.7 — how many instances of ONE agent may be live at once.
+ *
+ * A different question from `concurrentRuns`, and the reason this exists as
+ * its own number: the workspace ceiling protects the machine and the wallet,
+ * this one protects the WORK. Three runs at once is reasonable; three
+ * instances of the same agent editing the same repository is three agents
+ * fighting over the same locks, and the claims that keep them apart cost more
+ * than the parallelism gains.
+ *
+ * It could only be asked once sessions existed. Until then nothing recorded
+ * that an agent had an instance at all.
+ */
+describe("how many instances one agent may have", () => {
+  it("allows one at a time unless somebody says otherwise", () => {
+    expect(automationOf({}).sessionsPerAgent).toBe(1);
+  });
+
+  it("takes a number an operator wrote", () => {
+    expect(
+      automationOf({ automation: { sessionsPerAgent: 4 } }).sessionsPerAgent,
+    ).toBe(4);
+  });
+
+  /** The same ceiling-on-the-ceiling every other limit has. */
+  it("refuses a number that means no limit while looking like one", () => {
+    expect(
+      automationOf({ automation: { sessionsPerAgent: 1e9 } }).sessionsPerAgent,
+    ).toBe(AUTOMATION_DEFAULTS.maxSessionsPerAgent);
+    expect(
+      automationOf({ automation: { sessionsPerAgent: 0 } }).sessionsPerAgent,
+    ).toBe(1);
+    expect(
+      automationOf({ automation: { sessionsPerAgent: "many" } }).sessionsPerAgent,
+    ).toBe(1);
+  });
+});

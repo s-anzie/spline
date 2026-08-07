@@ -4,7 +4,7 @@ import {
   AUTOMATION_POLICY,
   AutomationPolicy,
 } from "../../runtime/domain/ports/dispatch.port";
-import { AUTOMATION_DEFAULTS, automationOf } from "../domain/automation";
+import { AutomationLimits, automationOf } from "../domain/automation";
 import {
   WORKSPACE_REPOSITORY,
   WorkspaceRepository,
@@ -24,20 +24,11 @@ export class AutomationPolicyAdapter implements AutomationPolicy {
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaces: WorkspaceRepository,
   ) {}
 
-  async limitsFor(workspaceId: string): Promise<{
-    automatic: boolean;
-    concurrentRuns: number;
-    runsPerDay: number;
-  }> {
+  async limitsFor(workspaceId: string): Promise<AutomationLimits> {
     const workspace = await this.workspaces.findById(workspaceId);
-    if (!workspace) {
-      return {
-        automatic: false,
-        concurrentRuns: AUTOMATION_DEFAULTS.concurrentRuns,
-        runsPerDay: AUTOMATION_DEFAULTS.runsPerDay,
-      };
-    }
-    return automationOf(workspace.settings);
+    // A workspace that is not there automates nothing, and reads the same
+    // defaults as one that never configured anything.
+    return workspace ? automationOf(workspace.settings) : automationOf({});
   }
 }
 

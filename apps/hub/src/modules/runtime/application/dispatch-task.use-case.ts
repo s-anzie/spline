@@ -1,12 +1,21 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { flushDomainEvents } from "../../../kernel/application/flush-domain-events";
 import { UseCase } from "../../../kernel/application/use-case";
 import { DomainError } from "../../../kernel/domain/domain-error";
 import { GuardViolation } from "../../../kernel/domain/guard";
+import { CLOCK, Clock } from "../../../kernel/domain/ports/clock.port";
+import {
+  EVENT_PUBLISHER,
+  EventPublisher,
+} from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
 import { branchNameFor } from "../../repository/domain/branch";
 import { buildAgentPrompt } from "../domain/agent-prompt";
+import { AgentSession } from "../domain/agent-session";
 import {
+  SESSION_STORE,
+  SessionStore,
   WORKER_STORE,
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
@@ -15,6 +24,8 @@ import {
   DISPATCHABLE_TASK,
   ORGANISING_ACTOR,
   OrganisingActor,
+  AUTOMATION_POLICY,
+  AutomationPolicy,
   TASK_ASSIGNEE,
   TaskAssignee,
   DispatchableTask,
@@ -43,6 +54,23 @@ export class NoCapableWorkerError extends DomainError {
 export class TaskNotDispatchableError extends DomainError {
   constructor(reason: string) {
     super(reason);
+  }
+}
+
+/**
+ * §4.12 — this agent already has as many instances as it may have.
+ *
+ * A conflict rather than a refusal of the request: nothing is wrong with what
+ * was asked, it is simply not the moment. Saying which agent and how many
+ * because "refused" without a number is a message an operator cannot act on.
+ */
+export class AgentAlreadyWorkingError extends DomainError {
+  constructor(agentId: string, live: number, ceiling: number) {
+    super(
+      `Agent ${agentId} is already working: ${live} live ` +
+        `${live === 1 ? "session" : "sessions"}, and this workspace allows ` +
+        `${ceiling}. Raise sessionsPerAgent, or wait for it to finish (§4.12)`,
+    );
   }
 }
 
@@ -107,6 +135,10 @@ export class DispatchTaskUseCase
     @Inject(WORKER_STORE) private readonly workers: WorkerStore,
     @Inject(TASK_ASSIGNEE) private readonly assignees: TaskAssignee,
     @Inject(ORGANISING_ACTOR) private readonly organisingActor: OrganisingActor,
+    @Inject(SESSION_STORE) private readonly sessions: SessionStore,
+    @Inject(AUTOMATION_POLICY) private readonly policy: AutomationPolicy,
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
     private readonly enqueue: EnqueueCommandUseCase,
   ) {}
 
@@ -149,6 +181,65 @@ export class DispatchTaskUseCase
       goalId: briefing.goalId,
       taskId: input.taskId,
     });
+
+    /**
+     * §4.12 — the living instance of this agent, opened before the order is.
+     *
+     * A run answers "what happened to this task"; a session answers "what is
+     * this AGENT doing, right now, on which machine". They are different
+     * questions, and the second one had no answer at all: the domain was
+     * complete — states, transitions, heartbeat, crash — and nothing ever
+     * created one. So the machines screen said "0 sessions" while agents were
+     * demonstrably working, nobody could count an agent's live instances (and
+     * therefore nobody could cap them), and a run that died left nothing
+     * saying an agent had died with it.
+     *
+     * Opened only when the task has an assignee, because a session belongs to
+     * an agent by definition. A task nobody holds still runs — it simply is
+     * not anybody's instance.
+     */
+    let sessionId: string | null = null;
+    if (assignee) {
+      /**
+       * §4.12, §17.7 — one agent, one instance, unless the workspace says
+       * otherwise.
+       *
+       * Refused here rather than left to the machine, because the machine
+       * would only discover it after starting: two instances of one agent in
+       * one checkout queue on each other's locks, and what they lose to
+       * contention is more than the parallelism wins. This ceiling protects
+       * the WORK; `concurrentRuns` protects the machine and the wallet, which
+       * is why they are two numbers and not one.
+       */
+      const limits = await this.policy.limitsFor(input.workspaceId);
+      const live = await this.sessions.list({
+        workspaceId: input.workspaceId,
+        agent: assignee,
+        liveOnly: true,
+        limit: limits.sessionsPerAgent + 1,
+      });
+      if (live.length >= limits.sessionsPerAgent) {
+        return Result.fail(
+          new AgentAlreadyWorkingError(assignee.actorId, live.length, limits.sessionsPerAgent),
+        );
+      }
+
+      const session = AgentSession.start({
+        workspaceId: input.workspaceId,
+        agent: assignee,
+        workerId: worker.value,
+        provider: input.provider,
+        ...(input.model ? { model: input.model } : {}),
+        taskId: input.taskId,
+        now: this.clock.now(),
+      });
+      if (session.isFailure) {
+        return Result.fail(session.error);
+      }
+      await this.sessions.save(session.value);
+      await flushDomainEvents(session.value, this.publisher);
+      sessionId = session.value.id.value;
+    }
 
     const enqueued = await this.enqueue.execute({
       workspaceId: input.workspaceId,
@@ -205,6 +296,12 @@ export class DispatchTaskUseCase
         secretNames: [...(input.secretNames ?? [])],
         runId: run.runId,
         taskId: input.taskId,
+        /**
+         * Carried on the order so the machine's own report can move the
+         * session without anybody having to search for it. The machine never
+         * reads it — it hands the order back and the hub does the rest.
+         */
+        ...(sessionId ? { sessionId } : {}),
         ...(resumedSessionId ? { resumeSessionId: resumedSessionId } : {}),
       },
     });

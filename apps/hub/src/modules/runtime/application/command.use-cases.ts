@@ -10,10 +10,13 @@ import {
   EventPublisher,
 } from "../../../kernel/domain/ports/event-publisher.port";
 import { Result } from "../../../kernel/domain/result";
+import { SessionStatus } from "../domain/agent-session";
 import { RuntimeCommand } from "../domain/runtime-command";
 import {
   COMMAND_STORE,
   CommandStore,
+  SESSION_STORE,
+  SessionStore,
   WORKER_STORE,
   WorkerStore,
 } from "../domain/ports/runtime.repository.port";
@@ -119,7 +122,17 @@ export class ClaimCommandsUseCase
     @Inject(RUN_LEDGER) private readonly runs: RunLedger,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
+    @Inject(SESSION_STORE) private readonly sessions: SessionStore,
   ) {}
+
+  private moveSession(
+    command: RuntimeCommand,
+    next: SessionStatus,
+    now: Date,
+    reason?: string,
+  ): Promise<void> {
+    return moveSessionOf(this.sessions, this.publisher, command, next, now, reason);
+  }
 
   async execute(
     input: ClaimCommandsInput,
@@ -173,6 +186,15 @@ export class ClaimCommandsUseCase
         model: typeof command.payload.model === "string" ? command.payload.model : null,
       });
 
+      /**
+       * §4.12 — taking the order IS the agent starting, so its session says
+       * so. Same instant as the run's first attempt and for the same reason:
+       * a session left at STARTING while a machine executes it would answer
+       * "is this agent really running?" with the wrong word for the whole
+       * duration.
+       */
+      await this.moveSession(command, "RUNNING", now);
+
       claimed.push({
         id: command.id.value,
         workspaceId: command.workspaceId,
@@ -182,6 +204,43 @@ export class ClaimCommandsUseCase
     }
     return Result.ok(claimed);
   }
+}
+
+
+/**
+ * §4.12 — moves the session an order belongs to, if it belongs to one.
+ *
+ * Shared by claiming and reporting because it is the same mechanical act at
+ * both ends, and two copies of it would be two places to forget. Every part
+ * of it is deliberately forgiving: an order that names no session (one
+ * enqueued by hand, or for a task nobody holds) simply has none, and a
+ * transition the state machine refuses is not a reason to un-take or
+ * un-finish an order that really happened. Bookkeeping must never undo work.
+ */
+async function moveSessionOf(
+  sessions: SessionStore,
+  publisher: EventPublisher,
+  command: RuntimeCommand,
+  next: SessionStatus,
+  now: Date,
+  reason?: string,
+): Promise<void> {
+  const sessionId =
+    typeof command.payload.sessionId === "string" ? command.payload.sessionId : null;
+  if (!sessionId) {
+    return;
+  }
+  const session = await sessions.findById(sessionId);
+  // §4.2 — a session of another workspace is simply not there.
+  if (!session || session.workspaceId !== command.workspaceId) {
+    return;
+  }
+  const moved = session.changeStatus(next, now, reason);
+  if (moved.isFailure) {
+    return;
+  }
+  await sessions.save(session);
+  await flushDomainEvents(session, publisher);
 }
 
 export interface ReportCommandInput {
@@ -214,7 +273,17 @@ export class ReportCommandUseCase
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
     @Inject(TASK_ASSIGNEE) private readonly tasks: TaskAssignee,
     @Inject(CONFLICT_REPORT) private readonly conflicts: ConflictReport,
+    @Inject(SESSION_STORE) private readonly sessions: SessionStore,
   ) {}
+
+  private moveSession(
+    command: RuntimeCommand,
+    next: SessionStatus,
+    now: Date,
+    reason?: string,
+  ): Promise<void> {
+    return moveSessionOf(this.sessions, this.publisher, command, next, now, reason);
+  }
 
   async execute(input: ReportCommandInput): Promise<Result<void, ReportCommandError>> {
     const guarded = Guard.againstEmpty(input.commandId, "commandId");
@@ -295,6 +364,21 @@ export class ReportCommandUseCase
       result: input.result ?? {},
       failureReason: input.failureReason ?? null,
     });
+
+    /**
+     * §4.12, §17.9 — the agent's instance ends with the work it was doing.
+     *
+     * CRASHED rather than STOPPED on failure, and the difference is the point:
+     * an operator asking "when did this session fail" needs the two to be
+     * different words. A run that failed used to leave an agent that, as far
+     * as anything could tell, was still working.
+     */
+    await this.moveSession(
+      command,
+      input.outcome === "COMPLETED" ? "STOPPED" : "CRASHED",
+      now,
+      input.failureReason ?? undefined,
+    );
 
     return Result.ok(undefined);
   }
