@@ -10,7 +10,18 @@ import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
-import { Empty, Field, Loading, Note, PageHeader, TONE_TEXT } from "@/components/kit";
+import {
+  Empty,
+  Field,
+  Loading,
+  Note,
+  PageHeader,
+  Panel,
+  Section,
+  Status,
+  Stripe,
+  TONE_TEXT,
+} from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { AddButton, NewGoal } from "@/components/forms";
 import { Verdict } from "@/components/verdict";
@@ -142,7 +153,7 @@ export function Work() {
      * pixels away on the right, and pairing the two took a deliberate eye
      * movement per row. Narrower is not smaller here — it is legible.
      */
-    <div className="max-w-4xl">
+    <div>
       <PageHeader
         title="Work"
         lead={
@@ -165,49 +176,61 @@ export function Work() {
         </Empty>
       ) : null}
 
-      {/* Goals breathe; the tasks inside one stay tight against it. */}
-      <div className="space-y-10">
-        {requests.map((request) => (
-          <Request
-            key={request.id}
-            request={request}
-            goals={goalsFor(request.id)}
-            tasksOf={tasksOf}
-            latestRun={latestRun}
-            awaited={awaited}
-            onDone={reloadAll}
-          />
-        ))}
+      {requests.length > 0 ? (
+        <Section title="Requests" count={requests.length}>
+          <div className="grid gap-4">
+            {requests.map((request) => (
+              <Request
+                key={request.id}
+                request={request}
+                goals={goalsFor(request.id)}
+                tasksOf={tasksOf}
+                latestRun={latestRun}
+                awaited={awaited}
+                onDone={reloadAll}
+              />
+            ))}
+          </div>
+        </Section>
+      ) : null}
 
-        {standaloneGoals.map((goal) => (
-          <Goal
-            key={goal.id}
-            goal={goal}
-            tasks={tasksOf(goal.id)}
-            latestRun={latestRun}
-            awaited={awaited}
-            onDone={reloadAll}
-          />
-        ))}
+      {standaloneGoals.length > 0 ? (
+        <Section title="Direct goals" count={standaloneGoals.length}>
+          <div className="grid gap-4">
+            {standaloneGoals.map((goal) => (
+              <Panel key={goal.id}>
+                <Goal
+                  goal={goal}
+                  tasks={tasksOf(goal.id)}
+                  latestRun={latestRun}
+                  awaited={awaited}
+                  onDone={reloadAll}
+                  framed
+                />
+              </Panel>
+            ))}
+          </div>
+        </Section>
+      ) : null}
 
-        {requestsGoal && requests.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No request from a person is waiting here.
-          </p>
-        ) : null}
+      {requestsGoal && requests.length === 0 && standaloneGoals.length > 0 ? (
+        <p className="text-muted-foreground mb-7 text-sm">
+          No request from a person is waiting here.
+        </p>
+      ) : null}
 
-        {loose.length > 0 ? (
-          <section>
-            <h2 className="text-muted-foreground mb-3 text-sm">Not under any goal</h2>
+      {loose.length > 0 ? (
+        <Section title="Not under any goal" count={loose.length}>
+          <Panel>
             <Tasks
               tasks={loose}
               latestRun={latestRun}
               awaited={awaited}
               onDone={reloadAll}
             />
-          </section>
-        ) : null}
-      </div>
+          </Panel>
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -237,8 +260,12 @@ function Request({
   const requestState = stateOf(request, latestRun.get(request.id));
 
   return (
-    <section className="border-border overflow-hidden rounded-lg border">
-      <div className="bg-muted/40 border-border flex items-start gap-3 border-b px-4 py-3.5">
+    <Panel>
+      <div className="bg-muted/30 flex items-stretch gap-3 px-4 py-3.5">
+        <Stripe
+          tone={request.openBlockerCount > 0 ? "signal" : toneOf(request.status)}
+          live={latestRun.get(request.id)?.status === "RUNNING"}
+        />
         <MessageSquareText
           className="text-muted-foreground mt-0.5 size-4 shrink-0"
           strokeWidth={1.75}
@@ -262,33 +289,28 @@ function Request({
         </span>
       </div>
 
-      <div className="px-4 py-4">
+      <div>
         {goals.length > 0 ? (
-          <div className="space-y-7">
+          <div className="divide-border divide-y">
             {goals.map((goal) => (
-              <div key={goal.id} className="relative pl-6">
-                <CornerDownRight
-                  className="text-muted-foreground absolute top-0.5 left-0 size-3.5"
-                  strokeWidth={1.75}
-                />
-                <Goal
-                  goal={goal}
-                  tasks={tasksOf(goal.id)}
-                  latestRun={latestRun}
-                  awaited={awaited}
-                  onDone={onDone}
-                />
-              </div>
+              <Goal
+                key={goal.id}
+                goal={goal}
+                tasks={tasksOf(goal.id)}
+                latestRun={latestRun}
+                awaited={awaited}
+                onDone={onDone}
+              />
             ))}
           </div>
         ) : (
-          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          <p className="text-muted-foreground flex items-center gap-2 px-4 py-3 text-sm">
             <span className="bg-waiting size-1.5 rounded-full" />
             The manager is still turning this request into goals and tasks.
           </p>
         )}
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -338,12 +360,14 @@ function Goal({
   latestRun,
   awaited,
   onDone,
+  framed = false,
 }: {
   goal: GoalView;
   tasks: TaskView[];
   latestRun: Map<string, RunView>;
   awaited: Map<string, string>;
   onDone: () => void;
+  framed?: boolean;
 }) {
   const live = tasks.some((task) => latestRun.get(task.id)?.status === "RUNNING");
   const done = tasks.filter((task) => task.status === "DONE").length;
@@ -351,8 +375,16 @@ function Goal({
 
   return (
     <section>
-      <div className="mb-3 flex items-baseline justify-between gap-6">
-        <h2 className="min-w-0 text-base font-medium">
+      <div className="flex items-center gap-3 px-4 py-3">
+        {framed ? (
+          <Stripe tone={toneOf(goal.status)} live={live} />
+        ) : (
+          <CornerDownRight
+            className="text-muted-foreground size-3.5 shrink-0"
+            strokeWidth={1.75}
+          />
+        )}
+        <h2 className="min-w-0 flex-1 text-sm font-medium">
           <Link
             href={routes.goal(goal.id)}
             className="hover:decoration-muted-foreground underline decoration-transparent underline-offset-4 transition-colors"
@@ -372,7 +404,7 @@ function Goal({
          * progress in the same place on every goal instead of chasing it
          * across titles of different lengths.
          */}
-        <div className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
+        <div className="text-muted-foreground hidden shrink-0 items-center gap-3 text-xs sm:flex">
           {/* No bar when there is nothing to measure: an empty track reads as
               zero progress, which is a different claim from "not started". */}
           {tasks.length > 0 ? (
@@ -387,10 +419,11 @@ function Goal({
             {tasks.length > 0 ? `${done}/${tasks.length} done` : "no task yet"}
           </span>
         </div>
+        <Status value={goal.status} />
       </div>
 
       {tasks.length === 0 ? (
-        <p className="text-muted-foreground border-border/70 border-l pl-4 text-sm">
+        <p className="text-muted-foreground border-border border-t px-4 py-3 text-sm">
           Stated, but nobody has cut it into tasks yet.
         </p>
       ) : (
@@ -417,7 +450,7 @@ function Tasks({
   onDone: () => void;
 }) {
   return (
-    <ul className="border-border/70 border-l">
+    <ul className="divide-border border-border divide-y border-t">
       {tasks.map((task) => (
         <Task
           key={task.id}
@@ -461,7 +494,7 @@ function Task({
   const blocker = task.blockers.find((entry) => entry.resolvedAt === null);
 
   return (
-    <li className="border-border/50 border-b last:border-b-0">
+    <li>
       <Link
         href={routes.task(task.id)}
         className="hover:bg-muted/40 block py-2.5 pr-3 pl-4 transition-colors"
