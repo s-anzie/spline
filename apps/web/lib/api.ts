@@ -29,6 +29,7 @@ export interface Affordable {
 export interface GoalView extends Affordable {
   id: string;
   parentGoalId: string | null;
+  sourceTaskId: string | null;
   title: string;
   description: string | null;
   successCriteria: string[];

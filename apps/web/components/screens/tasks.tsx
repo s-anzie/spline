@@ -41,6 +41,7 @@ import {
   Status,
   Stripe,
 } from "@/components/kit";
+import { Verdict } from "@/components/verdict";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AddButton, NewGoal } from "@/components/forms";
@@ -448,7 +449,7 @@ function Waiting({
                 {entry.requestedBy.id.slice(0, 8)} · {since(entry.createdAt)}
               </p>
             </div>
-            <Verdict validationId={entry.id} workspaceId={workspaceId} onDone={onDone} />
+            <Verdict validationId={entry.id} onDone={onDone} />
           </Row>
         ))}
         {settled.map((entry) => (
@@ -465,74 +466,6 @@ function Waiting({
         ))}
       </Panel>
     </Section>
-  );
-}
-
-/**
- * Pass or send back, in one press — the same two words the queue uses, so
- * the verdict reads the same wherever somebody is standing when they give it.
- */
-function Verdict({
-  validationId,
-  workspaceId,
-  onDone,
-}: {
-  validationId: string;
-  workspaceId: string;
-  onDone: () => void;
-}) {
-  const [refusing, setRefusing] = useState(false);
-  const [why, setWhy] = useState("");
-  const { run, pending, error } = useAction();
-
-  const pronounce = (action: "SUCCEEDED" | "FAILED", output?: string) =>
-    void run(async () => {
-      const started = await api.validations.settle(workspaceId, validationId, "START");
-      // Already RUNNING is somebody having pressed first, or this very click
-      // retried. Only a server fault is worth stopping for.
-      if (!started.ok && started.error.status >= 500) {
-        return started;
-      }
-      return api.validations.settle(workspaceId, validationId, action, output);
-    }, onDone);
-
-  if (refusing) {
-    return (
-      <div className="flex flex-1 flex-wrap items-end gap-2">
-        <Field
-          label="Why"
-          value={why}
-          onChange={setWhy}
-          placeholder="What is wrong with it?"
-          className="max-w-md flex-1"
-        />
-        <Button
-          size="sm"
-          variant="destructive"
-          disabled={pending || !why.trim()}
-          onClick={() => pronounce("FAILED", why.trim())}
-        >
-          {pending ? "Sending…" : "Send it back"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setRefusing(false)}>
-          Cancel
-        </Button>
-        {error ? <Note>{error}</Note> : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <Button size="sm" disabled={pending} onClick={() => pronounce("SUCCEEDED")}>
-        <CircleCheck />
-        {pending ? "Approving…" : "It passes"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => setRefusing(true)}>
-        Send it back
-      </Button>
-      {error ? <Note>{error}</Note> : null}
-    </div>
   );
 }
 

@@ -49,6 +49,7 @@ const STATUS_MACHINE = new StateMachine<GoalStatus>({
 interface GoalProps {
   workspaceId: string;
   parentGoalId: string | null;
+  sourceTaskId?: string | null;
   title: string;
   description: string | null;
   successCriteria: string[];
@@ -65,6 +66,7 @@ interface GoalProps {
 export interface CreateGoalProps {
   workspaceId: string;
   parentGoalId?: string;
+  sourceTaskId?: string;
   title: string;
   description?: string;
   successCriteria: readonly string[];
@@ -120,6 +122,7 @@ export class Goal extends AggregateRoot<GoalProps> {
       {
         workspaceId: workspaceId.value,
         parentGoalId: input.parentGoalId ?? null,
+        sourceTaskId: input.sourceTaskId?.trim() || null,
         title: title.value,
         description: input.description?.trim() || null,
         successCriteria: criteria.value,
@@ -150,6 +153,11 @@ export class Goal extends AggregateRoot<GoalProps> {
 
   get parentGoalId(): string | null {
     return this.props.parentGoalId;
+  }
+
+  /** The human request this outcome was derived from, when there was one. */
+  get sourceTaskId(): string | null {
+    return this.props.sourceTaskId ?? null;
   }
 
   get title(): string {

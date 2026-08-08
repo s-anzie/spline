@@ -40,6 +40,7 @@ interface GoalView {
   id: string;
   workspaceId: string;
   parentGoalId: string | null;
+  sourceTaskId: string | null;
   title: string;
   description: string | null;
   successCriteria: readonly string[];
@@ -59,6 +60,7 @@ function toView(goal: Goal): GoalView {
     id: goal.id.value,
     workspaceId: goal.workspaceId,
     parentGoalId: goal.parentGoalId,
+    sourceTaskId: goal.sourceTaskId,
     title: goal.title,
     description: goal.description,
     successCriteria: goal.successCriteria,

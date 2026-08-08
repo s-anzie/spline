@@ -171,6 +171,9 @@ model Goal {
   id               String     @id @default(uuid())
   workspaceId      String
   parentGoalId     String?
+  /// The intake task whose need caused this goal to be stated. Set by the
+  /// manager's execution context, never chosen by the model.
+  sourceTaskId     String?
   title            String
   description      String?
   successCriteria  Json       @default("[]")
@@ -193,6 +196,7 @@ model Goal {
 
   @@index([workspaceId, status])
   @@index([parentGoalId])
+  @@index([sourceTaskId])
   @@map("goals")
 }
 

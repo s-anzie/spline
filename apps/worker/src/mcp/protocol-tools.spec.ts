@@ -212,6 +212,7 @@ describe("the protocol tools", () => {
         path: "/workspaces/w-1/goals",
         body: {
           title: "Improve the document creation flow",
+          sourceTaskId: "t-1",
           description: "Take every piece of information it needs into account",
           successCriteria: ["no field is asked for twice", "a draft survives a reload"],
         },

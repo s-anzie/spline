@@ -185,7 +185,7 @@ export function Stat({
 
 export function StatRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-4">{children}</div>
+    <div className="mb-7 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">{children}</div>
   );
 }
 
@@ -306,7 +306,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="mb-6 flex items-start justify-between gap-8">
+    <header className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-8">
       <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight text-balance">{title}</h1>
         {lead ? (
@@ -315,7 +315,11 @@ export function PageHeader({
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex max-w-full flex-wrap items-center gap-2 sm:shrink-0">
+          {actions}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -333,7 +337,7 @@ export function Section({
 }) {
   return (
     <section className="mb-7">
-      <div className="mb-2.5 flex items-center justify-between gap-4">
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         <h2 className="label flex items-center gap-2">
           {title}
           {count === undefined ? null : (
@@ -388,7 +392,10 @@ export function Row({
   onOpen?: () => void;
   className?: string;
 }) {
-  const shared = cn("flex w-full items-center gap-3 px-4 py-3 text-left", className);
+  const shared = cn(
+    "flex w-full min-w-0 items-center gap-2.5 px-3 py-3 text-left sm:gap-3 sm:px-4",
+    className,
+  );
   const interactive = cn(shared, "hover:bg-accent/60 transition-colors");
 
   if (href) {

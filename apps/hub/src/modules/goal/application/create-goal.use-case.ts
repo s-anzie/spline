@@ -28,6 +28,7 @@ import { GOAL_REPOSITORY, GoalRepository } from "../domain/ports/goal.repository
 export interface CreateGoalInput {
   workspaceId: string;
   parentGoalId?: string;
+  sourceTaskId?: string;
   title: string;
   description?: string;
   successCriteria: readonly string[];
@@ -93,6 +94,7 @@ export class CreateGoalUseCase
     const goal = Goal.create({
       workspaceId: input.workspaceId,
       ...(input.parentGoalId !== undefined && { parentGoalId: input.parentGoalId }),
+      ...(input.sourceTaskId !== undefined && { sourceTaskId: input.sourceTaskId }),
       title: input.title,
       ...(input.description !== undefined && { description: input.description }),
       successCriteria: input.successCriteria,

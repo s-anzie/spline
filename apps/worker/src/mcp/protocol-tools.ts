@@ -298,6 +298,10 @@ export const PROTOCOL_TOOLS: readonly ProtocolTool[] = [
       path: `/workspaces/${context.workspaceId}/goals`,
       body: {
         title: text(args, "title"),
+        // Provenance comes from the bridge's immutable execution context.
+        // The model cannot omit it, mistype it, or attach somebody else's
+        // request to the goal it is stating.
+        sourceTaskId: context.taskId,
         ...(text(args, "description") ? { description: text(args, "description") } : {}),
         successCriteria: list(args, "successCriteria"),
         // §4.5 — a need that is really several becomes a tree, and the tree

@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Check,
   CheckCheck,
   CircleSlash,
   Cpu,
@@ -35,6 +34,7 @@ import {
   StatRow,
   Stripe,
 } from "@/components/kit";
+import { Verdict } from "@/components/verdict";
 import { Button } from "@/components/ui/button";
 
 /** How loudly each kind asks, and what it looks like. */
@@ -199,7 +199,7 @@ function QueueRow({ entry, onDone }: { entry: Intervention; onDone: () => void }
            * decoration.
            */}
           {entry.inline === "settle-validation" && entry.validationId ? (
-            <Settle validationId={entry.validationId} onDone={onDone} />
+            <Verdict validationId={entry.validationId} onDone={onDone} />
           ) : null}
           {entry.href ? (
             <Button variant="ghost" size="sm" asChild>
@@ -214,81 +214,6 @@ function QueueRow({ entry, onDone }: { entry: Intervention; onDone: () => void }
         {pairing ? <PairMachine onDone={onDone} /> : null}
       </div>
     </div>
-  );
-}
-
-/**
- * §11 — pass or refuse, in one press.
- *
- * Two buttons rather than a form: the verdict IS the decision, and asking
- * somebody to write a paragraph before they can say "yes" is how a queue
- * stops being cleared. A refusal takes a reason, because a refusal without
- * one leaves the agent exactly where it was.
- *
- * `START` before the verdict because §11 gives a validation a life: PENDING
- * → RUNNING → settled. Pressing once should not require the reader to know
- * that, so the two steps happen behind the one press.
- */
-function Settle({
-  validationId,
-  onDone,
-}: {
-  validationId: string;
-  onDone: () => void;
-}) {
-  const workspaceId = useSession((state) => state.workspaceId)!;
-  const [refusing, setRefusing] = useState(false);
-  const [why, setWhy] = useState("");
-  const { run, pending, error } = useAction();
-
-  const pronounce = (action: "SUCCEEDED" | "FAILED", output?: string) =>
-    void run(async () => {
-      const started = await api.validations.settle(workspaceId, validationId, "START");
-      // A validation already RUNNING refuses START, and that is not a failure
-      // — it is somebody having pressed first, or a retry of this very click.
-      if (!started.ok && started.error.status >= 500) {
-        return started;
-      }
-      return api.validations.settle(workspaceId, validationId, action, output);
-    }, onDone);
-
-  if (refusing) {
-    return (
-      <div className="flex w-full flex-wrap items-center gap-2">
-        <Field
-          label="Why"
-          value={why}
-          onChange={setWhy}
-          placeholder="What is wrong with it?"
-          className="max-w-md flex-1"
-        />
-        <Button
-          size="sm"
-          variant="destructive"
-          disabled={pending || !why.trim()}
-          onClick={() => pronounce("FAILED", why.trim())}
-        >
-          {pending ? "Sending…" : "Send it back"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setRefusing(false)}>
-          Cancel
-        </Button>
-        {error ? <Note>{error}</Note> : null}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <Button size="sm" disabled={pending} onClick={() => pronounce("SUCCEEDED")}>
-        <Check />
-        {pending ? "Approving…" : "It passes"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => setRefusing(true)}>
-        Send it back
-      </Button>
-      {error ? <Note>{error}</Note> : null}
-    </>
   );
 }
 

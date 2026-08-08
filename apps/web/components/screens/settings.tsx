@@ -22,17 +22,14 @@ import { Card } from "@/components/ui/card";
  */
 export function Settings() {
   return (
-    <>
-      <PageHeader
-        title="Settings"
-        lead="Your account, and the organization it owns. Anything scoped to one workspace lives on that workspace's own screen."
-      />
+    <div className="max-w-4xl">
+      <PageHeader title="Settings" />
       <Profile />
       <OrganizationSettings />
       <Appearance />
       <Console />
       <SessionNote />
-    </>
+    </div>
   );
 }
 
@@ -47,7 +44,7 @@ function Setting({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-4 py-4 sm:grid-cols-[14rem_1fr] sm:items-start sm:gap-8">
+    <div className="grid gap-2.5 py-3.5 sm:grid-cols-[11rem_1fr] sm:items-start sm:gap-6">
       <div className="min-w-0">
         <p className="text-sm font-medium">{label}</p>
         {hint ? (
@@ -61,7 +58,9 @@ function Setting({
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="divide-border gap-0 divide-y px-5 py-0 shadow-none">{children}</Card>
+    <Card className="divide-border gap-0 divide-y px-4 py-0 shadow-none sm:px-5">
+      {children}
+    </Card>
   );
 }
 
@@ -79,10 +78,7 @@ function Profile() {
   return (
     <Section title="You">
       <Panel>
-        <Setting
-          label="Your name"
-          hint="What every member list, thread and assigned task shows. Correcting it here corrects it everywhere."
-        >
+        <Setting label="Display name">
           <form
             className="flex max-w-md items-end gap-2"
             onSubmit={(event) => {
@@ -110,14 +106,11 @@ function Profile() {
           ) : null}
         </Setting>
 
-        <Setting
-          label="Email"
-          hint="What you sign in with. Moving it needs proof of the new address before it starts working, so it is not something this screen can do yet."
-        >
+        <Setting label="Email" hint="Used to sign in.">
           <p className="measure text-muted-foreground py-2 text-sm">{email}</p>
         </Setting>
 
-        <Setting label="Account id" hint="Ask for it when somebody needs to point at you.">
+        <Setting label="Account ID">
           <div className="py-1.5">
             <Id value={userId} full />
           </div>
@@ -158,10 +151,7 @@ function OrganizationSettings() {
   return (
     <Section title="Organization">
       <Panel>
-        <Setting
-          label="Name"
-          hint="Owns your machines, your agents and every workspace. Shown wherever this account's fleet is."
-        >
+        <Setting label="Name">
           <form
             className="flex max-w-md items-end gap-2"
             onSubmit={(event) => {
@@ -188,16 +178,13 @@ function OrganizationSettings() {
           ) : null}
         </Setting>
 
-        <Setting
-          label="Organization id"
-          hint="A machine is configured with this so it knocks here and appears in your list, and in nobody else's."
-        >
+        <Setting label="Organization ID" hint="Used when pairing a machine.">
           <div className="py-1.5">
             <Id value={organization.id} full />
           </div>
         </Setting>
 
-        <Setting label="Workspaces" hint="Everything below the organization.">
+        <Setting label="Workspaces">
           <p className="text-muted-foreground py-2 text-sm">
             {workspaces.length === 0
               ? "none yet"
@@ -235,8 +222,8 @@ function Organizations() {
 
   return (
     <Setting
-      label="Your organizations"
-      hint="Each owns its own machines, agents and workspaces. Nothing is shared between them."
+      label="Organizations"
+      hint="Separate fleets and workspaces."
     >
       <div className="grid max-w-md gap-3 py-1">
         {owned.length > 1 ? (
@@ -301,19 +288,16 @@ function Appearance() {
   useEffect(() => setMounted(true), []);
 
   const options = [
-    { value: "light", label: "Light", icon: Sun, hint: "for a bright room" },
-    { value: "dark", label: "Dark", icon: Moon, hint: "the default here" },
-    { value: "system", label: "System", icon: Monitor, hint: "follow the machine" },
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "System", icon: Monitor },
   ];
 
   return (
     <Section title="Appearance">
       <Panel>
-        <Setting
-          label="Theme"
-          hint="Remembered on this device. The console is dark by default because it tends to sit open on a second monitor."
-        >
-          <div className="grid max-w-md gap-2 py-1 sm:grid-cols-3">
+        <Setting label="Theme" hint="Saved on this device.">
+          <div className="bg-muted grid max-w-sm grid-cols-3 gap-1 rounded-lg p-1">
             {options.map((option) => {
               const active = mounted && theme === option.value;
               return (
@@ -323,18 +307,17 @@ function Appearance() {
                   aria-pressed={active}
                   onClick={() => setTheme(option.value)}
                   className={cn(
-                    "flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-colors",
+                    "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
                     active
-                      ? "border-signal bg-accent"
-                      : "border-border hover:border-foreground/25",
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <option.icon
                     className={cn("size-4", active ? "text-signal" : "text-muted-foreground")}
                     strokeWidth={1.75}
                   />
-                  <span className="text-sm font-medium">{option.label}</span>
-                  <span className="text-muted-foreground text-xs">{option.hint}</span>
+                  <span>{option.label}</span>
                 </button>
               );
             })}
@@ -354,8 +337,8 @@ function Console() {
     <Section title="Console">
       <Panel>
         <Setting
-          label="Organization in the sidebar"
-          hint="The organization has its own space, reached from your account menu. Turn this on to keep its machines and agents in the sidebar as well, above the workspace — for whoever runs the fleet and wants both levels at a glance. Workspaces and settings are not repeated there: the switcher and this menu already stand for them. Remembered on this device."
+          label="Organization links"
+          hint="Show fleet links above the workspace navigation."
         >
           <div className="flex items-center gap-3 py-1">
             <Button
@@ -377,7 +360,7 @@ function Console() {
 
         <Setting
           label="Rows per page"
-          hint="Every list uses this, and it is remembered on this device. Lists shorter than the smallest page show no pager at all."
+          hint="Applied to every list."
         >
           <div className="flex flex-wrap gap-2 py-1">
             {[10, 25, 50, 100, 250].map((size) => (
@@ -404,10 +387,7 @@ function SessionNote() {
   return (
     <Section title="Session">
       <Panel>
-        <Setting
-          label="How this session works"
-          hint="Two credentials, and the split is the point. The token that can actually do things lives in this tab's memory and never touches local storage — one any script on this origin could read turns a single XSS into a full takeover. What survives a reload is a cookie this console cannot read either, good for one thing: asking the hub for a new token. The hub replaces it on every use, so a copy of it stops working the moment you come back."
-        >
+        <Setting label="Sign out">
           <div className="py-1">
             <Button variant="outline" size="sm" onClick={() => void logOut()}>
               <LogOut />

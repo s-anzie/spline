@@ -35,6 +35,12 @@ export class CreateGoalDto {
   @IsString()
   @IsNotEmpty()
   parentGoalId?: string;
+
+  /** Execution provenance supplied by the manager bridge, not model input. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  sourceTaskId?: string;
 }
 
 export class UpdateGoalDto {

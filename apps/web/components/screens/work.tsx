@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Target } from "lucide-react";
+import { CornerDownRight, MessageSquareText, Target } from "lucide-react";
 
 import { api, type GoalView, type RunView, type TaskView } from "@/lib/api";
 import { since } from "@/lib/format";
@@ -10,9 +10,10 @@ import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
 import { useAction, useResource } from "@/lib/use-hub";
-import { Empty, Loading, Note, PageHeader, TONE_TEXT } from "@/components/kit";
+import { Empty, Field, Loading, Note, PageHeader, TONE_TEXT } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { AddButton, NewGoal } from "@/components/forms";
+import { Verdict } from "@/components/verdict";
 
 /**
  * §4.5, §4.6 — everything in flight, in one reading.
@@ -50,6 +51,13 @@ export function Work() {
   const runs = useResource(() => api.runs.list(workspaceId), [workspaceId], {
     pollMs: 6_000,
   });
+  /**
+   * §11 — what is waiting on a verdict, so a row that says "awaiting proof"
+   * can offer the verdict instead of only naming the wait.
+   */
+  const proof = useResource(() => api.validations.list(workspaceId), [workspaceId], {
+    pollMs: 15_000,
+  });
 
   const allGoals = goals.data ?? [];
   const allTasks = tasks.data ?? [];
@@ -72,7 +80,41 @@ export function Work() {
     return byTask;
   }, [allRuns]);
 
+  /** The proof each task is still waiting on, by task. */
+  const awaited = useMemo(() => {
+    const byTask = new Map<string, string>();
+    for (const entry of proof.data ?? []) {
+      if (entry.status === "PENDING" || entry.status === "RUNNING") {
+        byTask.set(entry.taskId, entry.id);
+      }
+    }
+    return byTask;
+  }, [proof.data]);
+
+  const reloadAll = () => {
+    proof.reload();
+    runs.reload();
+    tasks.reload();
+    goals.reload();
+  };
+
   const tasksOf = (goalId: string) => allTasks.filter((task) => task.goalId === goalId);
+  /**
+   * A human request is an intake task, not an outcome. Its standing container
+   * therefore disappears from the work hierarchy; each request becomes the
+   * context around the goals the manager derived from it.
+   */
+  const requestsGoal = allGoals.find((goal) => goal.title === "Requests from people");
+  const requests = requestsGoal ? tasksOf(requestsGoal.id) : [];
+  const goalsFor = (requestId: string) =>
+    allGoals.filter((goal) => goal.sourceTaskId === requestId);
+  const linkedGoalIds = new Set(
+    allGoals.filter((goal) => goal.sourceTaskId).map((goal) => goal.id),
+  );
+  const standaloneGoals = allGoals.filter(
+    (goal) => goal.id !== requestsGoal?.id && !linkedGoalIds.has(goal.id),
+  );
+  const outcomeCount = allGoals.length - (requestsGoal ? 1 : 0);
   /**
    * Work nobody stated a reason for. Shown rather than hidden: a task with no
    * goal is usually a mistake, and dropping it from the one screen that lists
@@ -105,7 +147,7 @@ export function Work() {
         title="Work"
         lead={
           loading ? undefined : (
-            <Summary open={open} goals={allGoals.length} running={running} />
+            <Summary open={open} goals={outcomeCount} running={running} />
           )
         }
         actions={<NewGoal trigger={<AddButton>State a goal</AddButton>} />}
@@ -125,23 +167,128 @@ export function Work() {
 
       {/* Goals breathe; the tasks inside one stay tight against it. */}
       <div className="space-y-10">
-        {allGoals.map((goal) => (
+        {requests.map((request) => (
+          <Request
+            key={request.id}
+            request={request}
+            goals={goalsFor(request.id)}
+            tasksOf={tasksOf}
+            latestRun={latestRun}
+            awaited={awaited}
+            onDone={reloadAll}
+          />
+        ))}
+
+        {standaloneGoals.map((goal) => (
           <Goal
             key={goal.id}
             goal={goal}
             tasks={tasksOf(goal.id)}
             latestRun={latestRun}
+            awaited={awaited}
+            onDone={reloadAll}
           />
         ))}
+
+        {requestsGoal && requests.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            No request from a person is waiting here.
+          </p>
+        ) : null}
 
         {loose.length > 0 ? (
           <section>
             <h2 className="text-muted-foreground mb-3 text-sm">Not under any goal</h2>
-            <Tasks tasks={loose} latestRun={latestRun} />
+            <Tasks
+              tasks={loose}
+              latestRun={latestRun}
+              awaited={awaited}
+              onDone={reloadAll}
+            />
           </section>
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * One human need and everything the manager stated in response to it.
+ *
+ * The bordered frame is intentional here: unlike a goal containing tasks,
+ * this is provenance. The frame answers "which request was this for?" even
+ * when several managers and several outcomes are moving at once.
+ */
+function Request({
+  request,
+  goals,
+  tasksOf,
+  latestRun,
+  awaited,
+  onDone,
+}: {
+  request: TaskView;
+  goals: GoalView[];
+  tasksOf: (goalId: string) => TaskView[];
+  latestRun: Map<string, RunView>;
+  awaited: Map<string, string>;
+  onDone: () => void;
+}) {
+  const requestState = stateOf(request, latestRun.get(request.id));
+
+  return (
+    <section className="border-border overflow-hidden rounded-lg border">
+      <div className="bg-muted/40 border-border flex items-start gap-3 border-b px-4 py-3.5">
+        <MessageSquareText
+          className="text-muted-foreground mt-0.5 size-4 shrink-0"
+          strokeWidth={1.75}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="label mb-1.5">Request from a person</p>
+          <Link
+            href={routes.task(request.id)}
+            className="text-sm font-medium underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+          >
+            {request.title}
+          </Link>
+          {request.description && request.description !== request.title ? (
+            <p className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
+              {request.description}
+            </p>
+          ) : null}
+        </div>
+        <span className={`shrink-0 text-xs ${requestState.tone}`}>
+          {requestState.word}
+        </span>
+      </div>
+
+      <div className="px-4 py-4">
+        {goals.length > 0 ? (
+          <div className="space-y-7">
+            {goals.map((goal) => (
+              <div key={goal.id} className="relative pl-6">
+                <CornerDownRight
+                  className="text-muted-foreground absolute top-0.5 left-0 size-3.5"
+                  strokeWidth={1.75}
+                />
+                <Goal
+                  goal={goal}
+                  tasks={tasksOf(goal.id)}
+                  latestRun={latestRun}
+                  awaited={awaited}
+                  onDone={onDone}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <span className="bg-waiting size-1.5 rounded-full" />
+            The manager is still turning this request into goals and tasks.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -189,10 +336,14 @@ function Goal({
   goal,
   tasks,
   latestRun,
+  awaited,
+  onDone,
 }: {
   goal: GoalView;
   tasks: TaskView[];
   latestRun: Map<string, RunView>;
+  awaited: Map<string, string>;
+  onDone: () => void;
 }) {
   const live = tasks.some((task) => latestRun.get(task.id)?.status === "RUNNING");
   const done = tasks.filter((task) => task.status === "DONE").length;
@@ -243,7 +394,12 @@ function Goal({
           Stated, but nobody has cut it into tasks yet.
         </p>
       ) : (
-        <Tasks tasks={tasks} latestRun={latestRun} />
+        <Tasks
+          tasks={tasks}
+          latestRun={latestRun}
+          awaited={awaited}
+          onDone={onDone}
+        />
       )}
     </section>
   );
@@ -252,14 +408,24 @@ function Goal({
 function Tasks({
   tasks,
   latestRun,
+  awaited,
+  onDone,
 }: {
   tasks: TaskView[];
   latestRun: Map<string, RunView>;
+  awaited: Map<string, string>;
+  onDone: () => void;
 }) {
   return (
     <ul className="border-border/70 border-l">
       {tasks.map((task) => (
-        <Task key={task.id} task={task} run={latestRun.get(task.id)} />
+        <Task
+          key={task.id}
+          task={task}
+          run={latestRun.get(task.id)}
+          validationId={awaited.get(task.id)}
+          onDone={onDone}
+        />
       ))}
     </ul>
   );
@@ -274,10 +440,25 @@ function Tasks({
  * tone lives in the dot, the word and its consequence live in one phrase on
  * the right, and nothing is said twice.
  */
-function Task({ task, run }: { task: TaskView; run: RunView | undefined }) {
+function Task({
+  task,
+  run,
+  validationId,
+  onDone,
+}: {
+  task: TaskView;
+  run: RunView | undefined;
+  validationId?: string;
+  onDone: () => void;
+}) {
+  const workspaceId = useSession((state) => state.workspaceId)!;
+  const [resolving, setResolving] = useState(false);
+  const [resolution, setResolution] = useState("");
+  const action = useAction();
   const running = run?.status === "RUNNING";
   const tone = toneOf(task.status);
   const state = stateOf(task, run);
+  const blocker = task.blockers.find((entry) => entry.resolvedAt === null);
 
   return (
     <li className="border-border/50 border-b last:border-b-0">
@@ -307,6 +488,76 @@ function Task({ task, run }: { task: TaskView; run: RunView | undefined }) {
           </span>
         ) : null}
       </Link>
+      {validationId ? (
+        <div className="border-border/50 flex flex-wrap items-center justify-end gap-2 border-t px-3 py-2 sm:px-4">
+          <span className="text-muted-foreground mr-auto text-xs">
+            This work is waiting for your verdict.
+          </span>
+          <Verdict validationId={validationId} onDone={onDone} compact />
+        </div>
+      ) : null}
+      {blocker ? (
+        <div className="border-border/50 border-t px-3 py-2.5 sm:px-4">
+          {resolving ? (
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void action.run(
+                  () =>
+                    api.tasks.resolveBlocker(
+                      workspaceId,
+                      task.id,
+                      blocker.id,
+                      resolution.trim(),
+                    ),
+                  () => {
+                    setResolving(false);
+                    setResolution("");
+                    onDone();
+                  },
+                );
+              }}
+            >
+              <Field
+                label="What unblocked it"
+                value={resolution}
+                onChange={setResolution}
+                placeholder="Granted the credential it asked for"
+                className="min-w-56 max-w-md flex-1"
+                autoFocus
+              />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={action.pending || !resolution.trim()}
+              >
+                {action.pending ? "Recording…" : "Resolve"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setResolving(false)}
+              >
+                Cancel
+              </Button>
+              {action.error ? <Note>{action.error}</Note> : null}
+            </form>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground mr-auto text-xs">
+                {task.openBlockerCount > 1
+                  ? `${task.openBlockerCount} blockers are open.`
+                  : "Record what removed this blocker."}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setResolving(true)}>
+                Resolve blocker
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }

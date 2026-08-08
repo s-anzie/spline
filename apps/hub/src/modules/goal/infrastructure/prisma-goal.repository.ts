@@ -17,6 +17,7 @@ export const GoalMapper = {
       {
         workspaceId: row.workspaceId,
         parentGoalId: row.parentGoalId,
+        sourceTaskId: row.sourceTaskId,
         title: row.title,
         description: row.description,
         successCriteria: (row.successCriteria ?? []) as string[],
@@ -42,6 +43,7 @@ export const GoalMapper = {
       id: goal.id.value,
       workspaceId: goal.workspaceId,
       parentGoalId: goal.parentGoalId,
+      sourceTaskId: goal.sourceTaskId,
       title: goal.title,
       description: goal.description,
       successCriteria: [...goal.successCriteria],

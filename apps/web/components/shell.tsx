@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronsUpDown,
   LogOut,
+  Menu,
   Monitor,
   Moon,
   Plus,
@@ -61,6 +62,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const organizationId = useOrganizationId();
   const pulse = usePulse(workspaceId, organizationId);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -72,6 +74,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // A route change is also a navigation acknowledgement on a small screen.
+  // Closing here keeps the rail from covering the destination it just opened.
+  useEffect(() => setRailOpen(false), [pathname]);
 
   const current = workspaces.find((workspace) => workspace.id === workspaceId);
 
@@ -87,7 +93,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <nav className="bg-sidebar border-sidebar-border sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r">
+      {railOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] md:hidden"
+          onClick={() => setRailOpen(false)}
+        />
+      ) : null}
+      <nav
+        aria-label="Main navigation"
+        className={cn(
+          "bg-sidebar border-sidebar-border fixed inset-y-0 left-0 z-50 flex h-screen w-60 shrink-0 flex-col border-r shadow-2xl transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:shadow-none",
+          railOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <Link href={routes.queue} className="flex h-14 items-center gap-2 px-4">
           <Spool />
           <span className="text-[0.9375rem] font-semibold tracking-tight">
@@ -292,8 +312,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background border-border flex h-14 shrink-0 items-center gap-4 border-b px-7">
-          <span className="text-sm font-medium">{titleFor(pathname)}</span>
+        <header className="bg-background/95 border-border flex h-14 shrink-0 items-center gap-3 border-b px-4 backdrop-blur sm:px-6 lg:px-7">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="-ml-2 size-8 md:hidden"
+            aria-label="Open navigation"
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen(true)}
+          >
+            <Menu className="size-4" />
+          </Button>
+          <span className="md:hidden">
+            <Spool />
+          </span>
+          <span className="text-sm font-semibold tracking-tight md:hidden">Spline</span>
+          <span className="text-muted-foreground hidden md:inline" aria-hidden>/</span>
+          <span className="min-w-0 truncate text-sm font-medium">{titleFor(pathname)}</span>
           {detailOf(pathname) ? (
             <span className="measure text-muted-foreground text-xs">
               / {detailOf(pathname)}
@@ -313,7 +348,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <main
             key={pathname}
-            className="settling mx-auto w-full max-w-6xl px-7 py-8"
+            className="settling mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-7"
           >
             {children}
           </main>
