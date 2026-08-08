@@ -14,6 +14,7 @@ import Link from "next/link";
 import { api, type MemberView, type RunView, type ThreadView } from "@/lib/api";
 import { humanise, since, stamp } from "@/lib/format";
 import { usePaged } from "@/lib/paging";
+import { emphasise } from "@/lib/emphasis";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/store";
 import { toneOf } from "@/lib/tone";
@@ -288,35 +289,55 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
       </div>
 
       <Card className="min-h-0 flex-1 gap-0 overflow-hidden p-0 shadow-none">
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        {/**
+         * A conversation is read from the bottom. `mt-auto` on the inner
+         * wrapper pushes a short thread down against the composer instead of
+         * leaving it stranded at the top with a field of empty space beneath
+         * it — and unlike `justify-end` on the scroller, it does not clip the
+         * oldest messages once the thread is long enough to scroll.
+         */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+          <div className="mt-auto space-y-5">
           {entries.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               Nothing said yet. {view.taskId ? "The work has been handed over — what it does will appear here." : ""}
             </p>
           ) : null}
 
-          {entries.map((entry) =>
-            entry.kind === "turn" ? (
-              <div key={entry.key} className="flex gap-3">
-                <span
-                  className={`mt-1 w-[2px] shrink-0 self-stretch rounded-full ${
-                    entry.actor?.id === userId ? "bg-border" : "bg-[var(--live)]"
-                  }`}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-muted-foreground mb-1 text-xs">
-                    <span className="text-foreground font-medium">
-                      {entry.actor?.id === userId ? "you" : nameOf(entry.actor!)}
-                    </span>
-                    <span className="ml-2" title={stamp(entry.at)}>
-                      {since(entry.at)}
-                    </span>
-                  </p>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {entry.text}
-                  </p>
-                </div>
-              </div>
+          {entries.map((entry, at) =>
+            /**
+             * Speech is speech, whoever is speaking and wherever it came from.
+             *
+             * What an agent SAID used to be rendered muted, unattributed and
+             * at the same weight as "took a lock" — so its words were both
+             * indistinguishable from its machinery and quieter than the
+             * human's, in a screen whose whole subject is the two of them
+             * talking. A turn and a sentence spoken mid-run are the same act;
+             * only WHEN differs, and the meta line is where that belongs.
+             */
+            entry.kind === "turn" || !entry.quiet ? (
+              <Said
+                key={entry.key}
+                who={
+                  entry.kind === "turn"
+                    ? entry.actor?.id === userId
+                      ? "you"
+                      : nameOf(entry.actor!)
+                    : nameOf(view.participant)
+                }
+                mine={entry.kind === "turn" && entry.actor?.id === userId}
+                aside={entry.kind !== "turn"}
+                at={entry.at}
+                text={entry.text}
+                /**
+                 * The name only when the voice changes. Four consecutive
+                 * paragraphs from one agent carried four identical headers —
+                 * "Bench agent · while working · 1d ago", over and over, in
+                 * the space of one screen. A conversation names a speaker
+                 * when they start speaking, not on every sentence.
+                 */
+                lead={!sameVoice(spokenBefore(entries, at), entry, userId)}
+              />
             ) : (
               <Work key={entry.key} entry={entry} />
             ),
@@ -329,7 +350,8 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
             </div>
           ) : null}
 
-          <div ref={bottom} />
+            <div ref={bottom} />
+          </div>
         </div>
 
         {/* Fixed at the foot of the frame: a composer that scrolls away is a
@@ -400,6 +422,58 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
  * somebody who asks. What the agent SAID stays in its own voice, indented
  * with the work but at full size, because it is speech.
  */
+/**
+ * One thing somebody said.
+ *
+ * The same treatment for a turn and for a sentence spoken mid-run, because
+ * they are the same act. What separates them is the meta line: a turn is
+ * addressed to you, a sentence from a run is the agent thinking out loud
+ * while it worked, and "while working" is the whole of that difference.
+ *
+ * The rail carries who: yours is quiet, theirs is live. Colour alone never
+ * decides anything here — the name is written out — but a reader scanning a
+ * long thread finds their own words by the rail before they read a word.
+ */
+function Said({
+  who,
+  mine,
+  aside,
+  at,
+  text,
+  lead,
+}: {
+  who: string;
+  mine: boolean;
+  aside: boolean;
+  at: string;
+  text: string;
+  lead: boolean;
+}) {
+  return (
+    <div className={`flex gap-3 ${lead ? "" : "-mt-3.5"}`}>
+      <span
+        className={`mt-1 w-0.5 shrink-0 self-stretch rounded-full ${
+          mine ? "bg-border" : "bg-live/60"
+        }`}
+      />
+      <div className="min-w-0 flex-1">
+        {lead ? (
+          <p className="text-muted-foreground mb-1 text-xs">
+            <span className="text-foreground font-medium">{who}</span>
+            {aside ? <span className="ml-2">while working</span> : null}
+            <span className="ml-2" title={stamp(at)}>
+              {since(at)}
+            </span>
+          </p>
+        ) : null}
+        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+          {emphasise(text)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function Work({ entry }: { entry: Entry }) {
   const [open, setOpen] = useState(false);
   const steps = entry.steps ?? [entry.text];
@@ -759,4 +833,43 @@ function OpenThread({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * The last thing anybody SAID before this one.
+ *
+ * Machinery is skipped rather than compared: a step between two sentences
+ * does not change who is speaking — an agent that took a lock mid-thought is
+ * still mid-thought. Comparing against the machinery itself is what made the
+ * agent's name vanish from the whole thread, because a trace step and a trace
+ * sentence are both "the agent".
+ */
+function spokenBefore(entries: Entry[], at: number): Entry | undefined {
+  for (let index = at - 1; index >= 0; index -= 1) {
+    const candidate = entries[index];
+    if (candidate && (candidate.kind === "turn" || !candidate.quiet)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Whether these two came from the same voice, so the second need not name it.
+ */
+function sameVoice(
+  previous: Entry | undefined,
+  entry: Entry,
+  userId: string | null,
+): boolean {
+  if (!previous) {
+    return false;
+  }
+  const voice = (candidate: Entry) =>
+    candidate.kind === "turn"
+      ? candidate.actor?.id === userId
+        ? "me"
+        : `turn:${candidate.actor?.id ?? "?"}`
+      : "agent";
+  return voice(previous) === voice(entry);
 }
